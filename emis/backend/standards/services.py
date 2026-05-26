@@ -445,6 +445,22 @@ def create_zip_from_standards(standard_ids: list, include_excel: bool = False) -
                 if os.path.exists(full_path):
                     file_path = full_path
 
+            # 降级使用 pdf_file
+            if not file_path and std.pdf_file and std.pdf_file.name:
+                rel_path = std.pdf_file.name.replace('\\', '/')
+                disk_file_path = os.path.join(shared_root, rel_path)
+                media_file_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+                
+                if os.path.exists(disk_file_path):
+                    file_path = disk_file_path
+                elif os.path.exists(media_file_path):
+                    file_path = media_file_path
+                elif rel_path.startswith('media/'):
+                    clean_path = rel_path.replace('media/', '', 1)
+                    clean_file_path = os.path.join(settings.MEDIA_ROOT, clean_path)
+                    if os.path.exists(clean_file_path):
+                        file_path = clean_file_path
+
             # 如果文件存在，加入 ZIP
             if file_path:
                 arcname = f'{std.standard_no.replace("/", "_")}.pdf'

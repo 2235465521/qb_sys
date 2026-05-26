@@ -161,7 +161,7 @@ class RandomPackRequestView(APIView):
                 type='enterprise',
                 is_parsed='0'
             ).filter(
-                Q(pdf_file__isnull=False) & ~Q(pdf_file='') | ~Q(disk_filename='')
+                (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) | (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
             ).values_list('id', flat=True)
 
             id_list = list(qs)
@@ -204,7 +204,7 @@ class RandomPackRequestView(APIView):
                 company_id__in=company_ids,
                 type='enterprise'
             ).filter(
-                Q(pdf_file__isnull=False) & ~Q(pdf_file='') | ~Q(disk_filename='')
+                (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) | (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
             ).values_list('id', flat=True)
 
             standard_ids = list(qs)
@@ -233,7 +233,7 @@ class RandomPackRequestView(APIView):
                 type='enterprise',
                 is_parsed=is_parsed_val
             ).filter(
-                Q(pdf_file__isnull=False) & ~Q(pdf_file='') | ~Q(disk_filename='')
+                (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) | (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
             )
             
             if region_q:
