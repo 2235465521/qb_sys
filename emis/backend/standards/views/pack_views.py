@@ -199,11 +199,13 @@ class RandomPackRequestView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # 只查询具有 disk_filename 的企标（优先使用磁盘文件）
+            # 查询具有 disk_filename 或 pdf_file 的企标
             qs = Standard.objects.filter(
                 company_id__in=company_ids,
                 type='enterprise'
-            ).exclude(disk_filename='').values_list('id', flat=True)
+            ).filter(
+                Q(pdf_file__isnull=False) & ~Q(pdf_file='') | ~Q(disk_filename='')
+            ).values_list('id', flat=True)
 
             standard_ids = list(qs)
 
