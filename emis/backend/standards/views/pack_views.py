@@ -66,7 +66,7 @@ class PackStatusView(APIView):
                     rel_url = f"/api{rel_url}"
                 else:
                     rel_url = f"/api/{rel_url}"
-            task_info['download_url'] = request.build_absolute_uri(rel_url)
+            task_info['download_url'] = rel_url
 
         return Response(task_info)
 
