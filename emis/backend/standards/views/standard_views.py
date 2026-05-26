@@ -212,21 +212,14 @@ class StandardDownloadView(APIView):
         if not file_path:
             raise Http404("此标准尚未关联有效的 PDF 文件")
 
-        # 6. 构造返回响应
+        # 6. 直接流式返回 PDF（兼容中文路径，规避 Nginx X-Accel-Redirect 中文乱码问题）
         filename = os.path.basename(file_path)
-        is_production = not settings.DEBUG
 
-        if is_production:
-            response = HttpResponse()
-            response['Content-Type'] = 'application/pdf'
-            response['X-Accel-Redirect'] = redirect_url
-        else:
-            response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
-
-        # 7. 设置文件名（解决中文乱码）
         try:
-            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            content_disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
         except Exception:
-            response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+            content_disposition = f"attachment; filename={quote(filename)}"
 
+        response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
+        response['Content-Disposition'] = content_disposition
         return response
