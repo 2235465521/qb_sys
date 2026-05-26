@@ -30,8 +30,6 @@ class StandardListSerializer(serializers.ModelSerializer):
             if request and request.auth:
                 token_str = f"?token={str(request.auth)}"
             url = f"/api/client/standards/{obj.id}/download/{token_str}"
-            if request:
-                return request.build_absolute_uri(url)
             return url
         return None
 
@@ -62,7 +60,5 @@ class StandardDetailSerializer(serializers.ModelSerializer):
             if request and request.auth:
                 token_str = f"?token={str(request.auth)}"
             url = f"/api/client/standards/{obj.id}/download/{token_str}"
-            if request:
-                return request.build_absolute_uri(url)
             return url
         return None
