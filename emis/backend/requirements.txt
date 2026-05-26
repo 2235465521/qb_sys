@@ -27,3 +27,4 @@ python-decouple>=3.8,<4.0
 
 # 开发工具
 ipython
+gunicorn>=21.2.0,<22.0.0
