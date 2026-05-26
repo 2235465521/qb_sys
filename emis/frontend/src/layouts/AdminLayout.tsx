@@ -3,17 +3,9 @@ import { Layout, Menu, Button, theme, Space, Avatar, Tag } from 'antd';
 import {
   MenuFoldOutlined,
   MenuUnfoldOutlined,
-  DashboardOutlined,
-  BankOutlined,
-  SettingOutlined,
-  MessageOutlined,
   LogoutOutlined,
   UserOutlined,
   CloudServerOutlined,
-  FileTextOutlined,
-  TeamOutlined,
-  LineChartOutlined,
-  CustomerServiceOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
