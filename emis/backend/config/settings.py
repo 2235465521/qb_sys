@@ -221,6 +221,6 @@ USE_TZ = True
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ============================================================
-# 共享磁盘物理路径配置（适配 Windows 局域网磁盘映射）
+# 共享磁盘物理路径配置（适配 Windows 局域网磁盘映射 / Linux 挂载）
 # ============================================================
-SHARED_DISK_ROOT = r"Y:\磁盘阵列\标准文件下载\企标下载"
+SHARED_DISK_ROOT = config('SHARED_DISK_ROOT', default=r"Y:\磁盘阵列\标准文件下载\企标下载")
