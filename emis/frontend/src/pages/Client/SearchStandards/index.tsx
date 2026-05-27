@@ -143,6 +143,7 @@ const SearchStandardsPage: React.FC = () => {
             total={data.count}
             onChange={handlePageChange}
             showSizeChanger={false}
+            showQuickJumper
             style={{
               background: '#fff',
               padding: '8px 24px',
