@@ -48,12 +48,31 @@ const StandardsManagerPage: React.FC = () => {
     setScanning(true);
     try {
       const { data } = await apiClient.post('/client/standards/scan-pdf-sync/');
-      message.success(data.message || '扫盘对齐成功！');
-      standardQuery.refetch();
+      message.info(data.message || '扫盘匹配任务已在后台提交，正在异步处理中...');
+      
+      const pollTimer = setInterval(async () => {
+        try {
+          const res = await apiClient.get('/client/standards/scan-pdf-sync/');
+          const status = res.data.status;
+          
+          if (status === 'done') {
+            clearInterval(pollTimer);
+            setScanning(false);
+            message.success(`扫盘对齐完成！共成功对齐 ${res.data.matched_count} 个企标 PDF。`);
+            standardQuery.refetch();
+          } else if (status === 'failed') {
+            clearInterval(pollTimer);
+            setScanning(false);
+            message.error(`扫盘失败: ${res.data.error}`);
+          }
+        } catch (err) {
+          // Ignore network errors during polling
+        }
+      }, 1500);
+
     } catch (err: any) {
-      const errMsg = err?.response?.data?.error || '扫盘失败，请重试';
+      const errMsg = err?.response?.data?.error || '扫盘提交失败，请重试';
       message.error(errMsg);
-    } finally {
       setScanning(false);
     }
   };

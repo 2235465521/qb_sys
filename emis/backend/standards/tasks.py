@@ -169,7 +169,9 @@ def align_disk_files_task(self):
     }, timeout=3600)
 
     try:
-        target_dir = "/mnt/std_bk/磁盘阵列/标准文件下载/企标下载/整合"
+        from django.conf import settings
+        shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
+        target_dir = os.path.join(shared_root, "整合")
         
         if not os.path.exists(target_dir):
             err_msg = f"找不到目标磁盘阵列路径: {target_dir}"

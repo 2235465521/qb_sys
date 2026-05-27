@@ -193,6 +193,9 @@ if REDIS_AVAILABLE:
             'default': {
                 'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
                 'LOCATION': str(MEDIA_ROOT / 'django_cache'),
+                'OPTIONS': {
+                    'MAX_ENTRIES': 10000
+                }
             }
         }
 else:
@@ -201,6 +204,9 @@ else:
         'default': {
             'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
             'LOCATION': str(MEDIA_ROOT / 'django_cache'),
+            'OPTIONS': {
+                'MAX_ENTRIES': 10000
+            }
         }
     }
 
