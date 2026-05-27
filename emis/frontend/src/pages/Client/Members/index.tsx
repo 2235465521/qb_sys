@@ -195,7 +195,7 @@ const MemberCenterPage: React.FC = () => {
           columns={memberColumns}
           rowKey="id"
           loading={memberQuery.isLoading}
-          pagination={{
+          pagination={{ showQuickJumper: true,
             current: params.page,
             pageSize: 10,
             total: memberQuery.data?.count,

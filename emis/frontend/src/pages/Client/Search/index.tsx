@@ -6,6 +6,7 @@ import StandardDrawer from './components/StandardDrawer';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Company, CompanySearchParams } from '@/types';
 import apiClient from '@/api/client';
+import { useTaskContext } from '@/store/TaskContext';
 
 const { Text, Title } = Typography;
 
@@ -15,12 +16,7 @@ const CompanySearchPage: React.FC = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedCompanyIds, setSelectedCompanyIds] = useState<number[]>([]);
 
-  // 打包下载相关状态
-  const [packModalVisible, setPackModalVisible] = useState(false);
-  const [packProgress, setPackProgress] = useState(0);
-  const [packStatusText, setPackStatusText] = useState('');
-  const [packError, setPackError] = useState<string | null>(null);
-  const pollIntervalRef = useRef<any>(null);
+  const { dispatchTask } = useTaskContext();
 
   const { useCompanySearch } = useSearchData();
   const { data: result, isLoading, isFetching } = useCompanySearch(params);
@@ -44,10 +40,6 @@ const CompanySearchPage: React.FC = () => {
 
   const handlePackSelectedCompanies = async () => {
     if (selectedCompanyIds.length === 0) return;
-    setPackError(null);
-    setPackProgress(5);
-    setPackStatusText('正在向云端提交打包请求...');
-    setPackModalVisible(true);
 
     try {
       const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', {
@@ -55,53 +47,19 @@ const CompanySearchPage: React.FC = () => {
         company_ids: selectedCompanyIds,
       });
       const { token, count } = data;
-      setPackProgress(20);
-      setPackStatusText(`已成功锁定所选企业名下的企标（共计 ${count} 个），开始在云端打包...`);
-
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(
-            `/client/standards/pack/${token}/status/`
-          );
-
-          if (res.data.status === 'running') {
-            setPackProgress(60);
-            setPackStatusText('云端正在高速压缩并生成 ZIP 归档中，请稍候...');
-          } else if (res.data.status === 'done' && res.data.download_url) {
-            setPackProgress(100);
-            setPackStatusText('云端打包完成！正在唤起本地安全下载通道...');
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-            const downloadUrl = res.data.download_url;
-            window.open(downloadUrl, '_blank');
-
-            setTimeout(() => {
-              setPackModalVisible(false);
-              message.success('所选企业的企标文件打包下载成功！');
-              setSelectedCompanyIds([]);
-            }, 1200);
-          } else if (res.data.status === 'failed') {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            setPackError(res.data.error || '打包失败，请稍后重试');
-          }
-        } catch (err) {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          setPackError('轮询状态异常，请检查网络连接');
-        }
-      }, 1500);
+      
+      message.success(`已锁定所选企业名下的企标（共计 ${count} 个），打包任务已提交至后台处理...`);
+      dispatchTask(token, '所选企业企标下载');
+      setSelectedCompanyIds([]);
 
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
-      setPackProgress(0);
-      setPackError(errMsg);
+      message.error(errMsg);
     }
   };
 
   const handleCancelPack = () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    setPackModalVisible(false);
+    // Legacy modal function
   };
 
   return (
@@ -184,6 +142,7 @@ const CompanySearchPage: React.FC = () => {
             total={result.count}
             onChange={(newPage) => setParams({ ...params, page: newPage })}
             showSizeChanger={false}
+            showQuickJumper
             style={{
               background: '#fff',
               padding: '8px 24px',
@@ -247,60 +206,7 @@ const CompanySearchPage: React.FC = () => {
         </div>
       )}
 
-      {/* 异步打包状态进度 Modal（Glassmorphism 现代质感） */}
-      <Modal
-        title={
-          <Space>
-            <CloudDownloadOutlined style={{ color: '#13c2c2', fontSize: 18 }} />
-            <span style={{ fontWeight: 'bold' }}>云端企标批量打包系统</span>
-          </Space>
-        }
-        open={packModalVisible}
-        onCancel={handleCancelPack}
-        footer={[
-          <Button key="cancel" onClick={handleCancelPack} style={{ borderRadius: 6 }}>
-            {packError ? '关闭' : '取消打包'}
-          </Button>
-        ]}
-        centered
-        width={420}
-        bodyStyle={{ padding: '24px 16px' }}
-      >
-        {packError ? (
-          <div style={{ textAlign: 'center' }}>
-            <Progress type="circle" percent={packProgress} status="exception" width={80} />
-            <div style={{ marginTop: 16, color: '#ff4d4f', fontWeight: 'bold', fontSize: 14 }}>
-              打包失败
-            </div>
-            <div style={{ marginTop: 8, color: '#666', fontSize: 13 }}>
-              {packError}
-            </div>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center' }}>
-            <Progress
-              type="circle"
-              percent={packProgress}
-              strokeColor={{
-                '0%': '#13c2c2',
-                '100%': '#00bcd4',
-              }}
-              width={80}
-              status="active"
-            />
-            <div style={{ marginTop: 16, color: '#333', fontWeight: 500, fontSize: 14 }}>
-              {packProgress === 100 ? '打包就绪！' : '正在全力打包中...'}
-            </div>
-            <div style={{ marginTop: 8, color: '#8c8c8c', fontSize: 12, lineHeight: '1.6' }}>
-              {packStatusText}
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#bfbfbf', fontSize: 11 }}>
-              <InfoCircleOutlined />
-              <span>本系统由 Celery 高速异步通道强力驱动</span>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modal is removed and managed by TaskContext */}
     </div>
   );
 };

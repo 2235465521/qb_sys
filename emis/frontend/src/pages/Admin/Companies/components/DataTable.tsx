@@ -112,7 +112,7 @@ const DataTable: React.FC<DataTableProps> = ({
       dataSource={data}
       rowKey="id"
       loading={loading}
-      pagination={{
+      pagination={{ showQuickJumper: true,
         ...pagination,
         showSizeChanger: true,
         showTotal: (total) => `共 ${total} 条数据`,

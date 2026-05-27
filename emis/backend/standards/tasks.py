@@ -158,7 +158,6 @@ def align_disk_files_task(self):
     扫描磁盘阵列并与数据库clean_id对齐，更新到 disk_filename 字段，并在缓存中维护执行状态
     """
     import os
-    from django.conf import settings
     from django.core.cache import cache
     from django.utils import timezone
     from standards.models import Standard
@@ -170,8 +169,7 @@ def align_disk_files_task(self):
     }, timeout=3600)
 
     try:
-        root_path = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
-        target_dir = os.path.join(root_path, "整合")
+        target_dir = "/mnt/std_bk/磁盘阵列/标准文件下载/企标下载/整合"
         
         if not os.path.exists(target_dir):
             err_msg = f"找不到目标磁盘阵列路径: {target_dir}"
@@ -202,21 +200,16 @@ def align_disk_files_task(self):
             
             matched_file = None
             for filename, fnorm in file_norms:
-                if fnorm.startswith(clean_norm):
+                if clean_norm in fnorm:
                     matched_file = filename
                     break
             
             if matched_file:
                 relative_path = f"整合/{matched_file}"
-                if std.disk_filename != relative_path:
-                    std.disk_filename = relative_path
-                    std.save(update_fields=['disk_filename'])
+                if std.pdf_file.name != relative_path:
+                    std.pdf_file.name = relative_path
+                    std.save(update_fields=['pdf_file'])
                 success_count += 1
-
-        try:
-            cache.clear()
-        except Exception:
-            pass
 
         # 2. 写入成功结果
         cache.set('scan_pdf_sync_task', {

@@ -6,21 +6,17 @@ import StandardsTable from './components/StandardsTable';
 import CustomPackModal from './components/CustomPackModal';
 import { useClientStandardSearch } from '@/hooks/useClientStandardSearch';
 import apiClient from '@/api/client';
+import { useTaskContext } from '@/store/TaskContext';
 
 const { Text } = Typography;
 
 const SearchStandardsPage: React.FC = () => {
   const [params, setParams] = useState({ page: 1, keyword: '' });
 
-  // 批量下载相关状态
-  const [packModalVisible, setPackModalVisible] = useState(false);
-  const [packProgress, setPackProgress] = useState(0);
-  const [packStatusText, setPackStatusText] = useState('');
-  const [packError, setPackError] = useState<string | null>(null);
-  const pollIntervalRef = useRef<any>(null);
-
   // 自定义打包弹窗状态
   const [customPackVisible, setCustomPackVisible] = useState(false);
+
+  const { dispatchTask } = useTaskContext();
 
   const { data, isLoading, isFetching } = useClientStandardSearch(params);
 
@@ -37,68 +33,25 @@ const SearchStandardsPage: React.FC = () => {
 
   // 触发 100 个随机企标批量打包下载
   const handleRandomPack100 = async () => {
-    setPackError(null);
-    setPackProgress(5);
-    setPackStatusText('正在向云端提交打包请求...');
-    setPackModalVisible(true);
-
     try {
       const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', { mode: 'standards' });
       const { token, count } = data;
-      setPackProgress(25);
-      setPackStatusText(`已成功锁定 ${count} 个符合条件（已上传 PDF 附件）的企标，开始云端打包...`);
-
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(
-            `/client/standards/pack/${token}/status/`
-          );
-
-          if (res.data.status === 'running') {
-            setPackProgress(65);
-            setPackStatusText('云端正在高速压缩并生成 ZIP 归档中，请稍候...');
-          } else if (res.data.status === 'done' && res.data.download_url) {
-            setPackProgress(100);
-            setPackStatusText('云端打包完成！正在唤起本地安全下载通道...');
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-            const downloadUrl = res.data.download_url;
-            window.open(downloadUrl, '_blank');
-
-            setTimeout(() => {
-              setPackModalVisible(false);
-              message.success('成功打包下载 100 个随机企标文件！');
-            }, 1200);
-          } else if (res.data.status === 'failed') {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            setPackError(res.data.error || '打包失败，请稍后重试');
-          }
-        } catch (err) {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          setPackError('轮询状态异常，请检查网络连接');
-        }
-      }, 1500);
+      
+      message.success(`已锁定 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
+      dispatchTask(token, '随机下载100个企标');
 
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
-      setPackProgress(0);
-      setPackError(errMsg);
+      message.error(errMsg);
     }
   };
 
   const handleCancelPack = () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    setPackModalVisible(false);
+    // Legacy modal function
   };
 
   const handleCustomPack = async (packParams: { province_ids: number[], city_ids: number[], parse_target: string }) => {
     setCustomPackVisible(false);
-    setPackError(null);
-    setPackProgress(5);
-    setPackStatusText('正在向云端提交自定义打包请求...');
-    setPackModalVisible(true);
 
     try {
       const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', { 
@@ -106,46 +59,13 @@ const SearchStandardsPage: React.FC = () => {
         ...packParams
       });
       const { token, count } = data;
-      setPackProgress(25);
-      setPackStatusText(`已成功锁定 ${count} 个符合条件的企标，开始云端打包及生成 Excel...`);
-
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(
-            `/client/standards/pack/${token}/status/`
-          );
-
-          if (res.data.status === 'running') {
-            setPackProgress(65);
-            setPackStatusText('云端正在生成 Excel 并高速压缩 ZIP 归档中，请稍候...');
-          } else if (res.data.status === 'done' && res.data.download_url) {
-            setPackProgress(100);
-            setPackStatusText('云端打包完成！正在唤起本地安全下载通道...');
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-
-            const downloadUrl = res.data.download_url;
-            window.open(downloadUrl, '_blank');
-
-            setTimeout(() => {
-              setPackModalVisible(false);
-              message.success('成功完成自定义批量打包下载！');
-            }, 1200);
-          } else if (res.data.status === 'failed') {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-            setPackError(res.data.error || '打包失败，请稍后重试');
-          }
-        } catch (err) {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          setPackError('轮询状态异常，请检查网络连接');
-        }
-      }, 1500);
+      
+      message.success(`已锁定 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
+      dispatchTask(token, '自定义选择下载');
 
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
-      setPackProgress(0);
-      setPackError(errMsg);
+      message.error(errMsg);
     }
   };
 
@@ -238,60 +158,7 @@ const SearchStandardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* 异步打包状态进度 Modal（Glassmorphism 现代质感） */}
-      <Modal
-        title={
-          <Space>
-            <CloudDownloadOutlined style={{ color: '#00acc1', fontSize: 18 }} />
-            <span style={{ fontWeight: 'bold' }}>云端企标批量打包系统</span>
-          </Space>
-        }
-        open={packModalVisible}
-        onCancel={handleCancelPack}
-        footer={[
-          <Button key="cancel" onClick={handleCancelPack} style={{ borderRadius: 6 }}>
-            {packError ? '关闭' : '取消打包'}
-          </Button>
-        ]}
-        centered
-        width={420}
-        bodyStyle={{ padding: '24px 16px' }}
-      >
-        {packError ? (
-          <div style={{ textAlign: 'center' }}>
-            <Progress type="circle" percent={packProgress} status="exception" width={80} />
-            <div style={{ marginTop: 16, color: '#ff4d4f', fontWeight: 'bold', fontSize: 14 }}>
-              打包失败
-            </div>
-            <div style={{ marginTop: 8, color: '#666', fontSize: 13 }}>
-              {packError}
-            </div>
-          </div>
-        ) : (
-          <div style={{ textAlign: 'center' }}>
-            <Progress
-              type="circle"
-              percent={packProgress}
-              strokeColor={{
-                '0%': '#00acc1',
-                '100%': '#00838f',
-              }}
-              width={80}
-              status="active"
-            />
-            <div style={{ marginTop: 16, color: '#333', fontWeight: 500, fontSize: 14 }}>
-              {packProgress === 100 ? '打包就绪！' : '正在全力打包中...'}
-            </div>
-            <div style={{ marginTop: 8, color: '#8c8c8c', fontSize: 12, lineHeight: '1.6' }}>
-              {packStatusText}
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: '#bfbfbf', fontSize: 11 }}>
-              <InfoCircleOutlined />
-              <span>本系统由 Celery 高速异步通道强力驱动</span>
-            </div>
-          </div>
-        )}
-      </Modal>
+      {/* Modal is removed and managed by TaskContext */}
 
       <CustomPackModal
         open={customPackVisible}

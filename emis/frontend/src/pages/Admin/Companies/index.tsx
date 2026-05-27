@@ -85,7 +85,7 @@ const CompanyListPage: React.FC = () => {
       <DataTable
         data={companyQuery.data?.results || []}
         loading={companyQuery.isLoading}
-        pagination={{
+        pagination={{ showQuickJumper: true,
           current: params.page,
           pageSize: 20,
           total: companyQuery.data?.count || 0,

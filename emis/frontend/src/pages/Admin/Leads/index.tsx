@@ -268,7 +268,7 @@ const AdminLeadsPage: React.FC = () => {
           columns={columns}
           rowKey="id"
           loading={isLoading}
-          pagination={{
+          pagination={{ showQuickJumper: true,
             current: params.page,
             pageSize: 10,
             total: data?.count || 0,

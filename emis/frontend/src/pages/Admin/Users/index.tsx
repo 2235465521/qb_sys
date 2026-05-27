@@ -208,7 +208,7 @@ const UsersManagerPage: React.FC = () => {
         columns={columns}
         rowKey="id"
         loading={loading}
-        pagination={{
+        pagination={{ showQuickJumper: true,
           pageSize: 10,
           showTotal: (total) => `共 ${total} 位系统用户`,
         }}

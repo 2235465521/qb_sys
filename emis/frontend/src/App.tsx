@@ -14,12 +14,16 @@ const queryClient = new QueryClient({
   },
 });
 
+import { TaskProvider } from '@/store/TaskContext';
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider locale={zhCN}>
-        <RouterProvider router={router} />
-      </ConfigProvider>
+      <TaskProvider>
+        <ConfigProvider locale={zhCN}>
+          <RouterProvider router={router} />
+        </ConfigProvider>
+      </TaskProvider>
     </QueryClientProvider>
   );
 }

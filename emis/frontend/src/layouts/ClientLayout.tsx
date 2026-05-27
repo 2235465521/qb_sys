@@ -11,9 +11,13 @@ import {
   FileTextOutlined,
   RadarChartOutlined,
 } from '@ant-design/icons';
+} from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
+import { Badge, Popover, List, Progress } from 'antd';
+import { BellOutlined } from '@ant-design/icons';
+import { useTaskContext } from '@/store/TaskContext';
 
 const { Header, Sider, Content } = Layout;
 
@@ -61,6 +65,36 @@ const ClientLayout: React.FC = () => {
     navigate('/login');
   };
 
+  const { tasks, clearDoneTasks } = useTaskContext();
+  
+  const runningTasks = tasks.filter(t => t.status === 'running');
+  
+  const tasksPopoverContent = (
+    <div style={{ width: 300 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+        <span style={{ fontWeight: 'bold' }}>任务中心</span>
+        <Button type="link" size="small" onClick={clearDoneTasks} style={{ padding: 0 }}>清除已完成</Button>
+      </div>
+      <List
+        dataSource={tasks}
+        locale={{ emptyText: '暂无后台任务' }}
+        renderItem={item => (
+          <List.Item>
+            <div style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                <span style={{ fontSize: 13 }} title={item.name}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
+                <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
+                  {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
+                </span>
+              </div>
+              <Progress percent={item.progress} status={item.status === 'failed' ? 'exception' : item.status === 'done' ? 'success' : 'active'} size="small" />
+            </div>
+          </List.Item>
+        )}
+      />
+    </div>
+  );
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
@@ -94,6 +128,11 @@ const ClientLayout: React.FC = () => {
                 进入管理后台
               </Button>
             )}
+            <Popover content={tasksPopoverContent} trigger="click" placement="bottomRight">
+              <Badge count={runningTasks.length} size="small">
+                <Button type="text" icon={<BellOutlined style={{ fontSize: 18 }} />} />
+              </Badge>
+            </Popover>
             <Space>
               <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1677ff' }} />
               <span style={{ color: '#333', fontWeight: 500 }}>

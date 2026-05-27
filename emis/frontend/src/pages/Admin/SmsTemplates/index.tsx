@@ -3,6 +3,7 @@ import { Table, Button, Space, Card, Modal, Form, Input, Switch, Popconfirm, Tag
 import { PlusOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useSmsData } from '@/hooks/useSmsData';
 import type { SmsTemplate } from '@/types';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 const { Text } = Typography;
 
@@ -79,7 +80,7 @@ const SmsTemplatesPage: React.FC = () => {
   return (
     <Card title="短信模板管理" extra={<Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>新增模板</Button>}>
       <Table
-        dataSource={templateQuery.data}
+        dataSource={Array.isArray(templateQuery.data) ? templateQuery.data : []}
         columns={columns}
         rowKey="id"
         loading={templateQuery.isLoading}
@@ -121,4 +122,10 @@ const SmsTemplatesPage: React.FC = () => {
   );
 };
 
-export default SmsTemplatesPage;
+export default function SmsTemplatesPageWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <SmsTemplatesPage />
+    </ErrorBoundary>
+  );
+}

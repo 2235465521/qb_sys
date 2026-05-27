@@ -289,6 +289,7 @@ const ReverseTracer: React.FC = () => {
                 total={data.count}
                 onChange={handlePageChange}
                 showSizeChanger={false}
+                showQuickJumper
                 simple
               />
             </div>

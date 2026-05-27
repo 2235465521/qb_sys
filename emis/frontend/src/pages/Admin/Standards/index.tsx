@@ -109,7 +109,7 @@ const StandardsManagerPage: React.FC = () => {
       <DataTable
         data={standardQuery.data?.results || []}
         loading={standardQuery.isLoading}
-        pagination={{
+        pagination={{ showQuickJumper: true,
           current: params.page,
           pageSize: 20,
           total: standardQuery.data?.count || 0,
