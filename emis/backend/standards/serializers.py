@@ -24,7 +24,7 @@ class StandardListSerializer(serializers.ModelSerializer):
         ]
 
     def get_pdf_url(self, obj):
-        if obj.disk_filename:
+        if obj.disk_filename or obj.pdf_file:
             request = self.context.get('request')
             token_str = ""
             if request and request.auth:
@@ -54,7 +54,7 @@ class StandardDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_pdf_url(self, obj):
-        if obj.disk_filename:
+        if obj.disk_filename or obj.pdf_file:
             request = self.context.get('request')
             token_str = ""
             if request and request.auth:

@@ -64,7 +64,7 @@ const ClientLayout: React.FC = () => {
     navigate('/login');
   };
 
-  const { tasks, clearDoneTasks } = useTaskContext();
+  const { tasks, clearDoneTasks, cancelTask } = useTaskContext();
   
   const runningTasks = tasks.filter(t => t.status === 'running');
   
@@ -80,11 +80,16 @@ const ClientLayout: React.FC = () => {
         renderItem={item => (
           <List.Item>
             <div style={{ width: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
                 <span style={{ fontSize: 13 }} title={item.name}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
-                <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
-                  {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
-                </span>
+                <Space size="small">
+                  <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
+                    {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
+                  </span>
+                  {item.status === 'running' && (
+                    <Button type="link" size="small" style={{ padding: 0, fontSize: 12, color: '#999' }} onClick={() => cancelTask(item.id)}>取消</Button>
+                  )}
+                </Space>
               </div>
               <Progress percent={item.progress} status={item.status === 'failed' ? 'exception' : item.status === 'done' ? 'success' : 'active'} size="small" />
             </div>

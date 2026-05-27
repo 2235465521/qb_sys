@@ -15,6 +15,7 @@ interface TaskContextType {
   tasks: BackgroundTask[];
   dispatchTask: (token: string, name: string) => void;
   clearDoneTasks: () => void;
+  cancelTask: (token: string) => void;
 }
 
 const TaskContext = createContext<TaskContextType | undefined>(undefined);
@@ -82,6 +83,13 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setTasks(prev => prev.filter(t => t.status === 'running'));
   };
 
+  const cancelTask = (token: string) => {
+    if (intervalsRef.current[token]) {
+      clearInterval(intervalsRef.current[token]);
+    }
+    setTasks(prev => prev.filter(t => t.id !== token));
+  };
+
   useEffect(() => {
     return () => {
       Object.values(intervalsRef.current).forEach(clearInterval);
@@ -89,7 +97,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   return (
-    <TaskContext.Provider value={{ tasks, dispatchTask, clearDoneTasks }}>
+    <TaskContext.Provider value={{ tasks, dispatchTask, clearDoneTasks, cancelTask }}>
       {children}
     </TaskContext.Provider>
   );
