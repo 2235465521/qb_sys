@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, Modal, Progress, message, Checkbox } from 'antd';
-import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox } from 'antd';
+import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import LbsSearchBar from './components/LbsSearchBar';
 import StandardDrawer from './components/StandardDrawer';
 import { useSearchData } from '@/hooks/useSearchData';
@@ -56,10 +56,6 @@ const CompanySearchPage: React.FC = () => {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
       message.error(errMsg);
     }
-  };
-
-  const handleCancelPack = () => {
-    // Legacy modal function
   };
 
   return (

@@ -21,7 +21,7 @@ const TaskContext = createContext<TaskContextType | undefined>(undefined);
 
 export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
-  const intervalsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const intervalsRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
   const dispatchTask = (token: string, name: string) => {
     setTasks(prev => [...prev, { id: token, name, status: 'running', progress: 10 }]);

@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
-import { Space, Button, Pagination, Modal, Progress, message, Typography } from 'antd';
-import { FileTextOutlined, CloudDownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import React, { useState } from 'react';
+import { Button, Pagination, message, Typography } from 'antd';
+import { FileTextOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import StandardsTable from './components/StandardsTable';
 import CustomPackModal from './components/CustomPackModal';
@@ -44,10 +44,6 @@ const SearchStandardsPage: React.FC = () => {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
       message.error(errMsg);
     }
-  };
-
-  const handleCancelPack = () => {
-    // Legacy modal function
   };
 
   const handleCustomPack = async (packParams: { province_ids: number[], city_ids: number[], parse_target: string }) => {
