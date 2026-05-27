@@ -11,7 +11,6 @@ import {
   FileTextOutlined,
   RadarChartOutlined,
 } from '@ant-design/icons';
-} from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
