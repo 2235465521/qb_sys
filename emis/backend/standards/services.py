@@ -441,7 +441,9 @@ def create_zip_from_standards(standard_ids: list, include_excel: bool = False) -
 
             # 优先使用 disk_filename
             if std.disk_filename:
-                full_path = os.path.join(shared_root, std.disk_filename)
+                # 兼容 Windows 导入的含有反斜杠 \ 的旧路径，在 Linux 环境下转换为正斜杠 /
+                norm_disk_filename = std.disk_filename.replace('\\', '/')
+                full_path = os.path.join(shared_root, norm_disk_filename)
                 if os.path.exists(full_path):
                     file_path = full_path
 

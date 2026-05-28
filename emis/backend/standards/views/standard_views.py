@@ -179,10 +179,12 @@ class StandardDownloadView(APIView):
 
         # 3. 优先策略：先尝试 disk_filename
         if standard.disk_filename:
-            disk_file_path = os.path.join(shared_root, standard.disk_filename)
+            # 兼容 Windows 导入的含有反斜杠 \ 的旧路径，在 Linux 环境下转换为正斜杠 /
+            norm_disk_filename = standard.disk_filename.replace('\\', '/')
+            disk_file_path = os.path.join(shared_root, norm_disk_filename)
             if os.path.exists(disk_file_path):
                 file_path = disk_file_path
-                redirect_url = f"/protected_shared_disk/{standard.disk_filename.replace(chr(92), '/')}"
+                redirect_url = f"/protected_shared_disk/{norm_disk_filename}"
 
         # 4. 降级策略：如果 disk_filename 不存在或为空，尝试 pdf_file
         if not file_path and standard.pdf_file:
