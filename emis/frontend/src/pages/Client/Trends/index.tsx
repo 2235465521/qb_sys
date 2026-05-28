@@ -140,49 +140,89 @@ const TrendDashboard: React.FC = () => {
     ]
   };
 
-  // Group low frequency provinces to '其他地区' to look clean and neat
+  // Sort and process all provinces without '其他地区' grouping
   const rawData = regionalQuery.data || [];
-  const topCount = 7;
-  let chartData = [];
-  if (rawData.length > topCount) {
-    const topData = rawData.slice(0, topCount);
-    const otherData = rawData.slice(topCount);
-    const otherSum = otherData.reduce((sum, item) => sum + item.count, 0);
-    chartData = topData.map(item => ({ name: item.province, value: item.count }));
-    if (otherSum > 0) {
-      chartData.push({ name: '其他地区', value: otherSum });
-    }
-  } else {
-    chartData = rawData.map(item => ({ name: item.province, value: item.count }));
-  }
+  const sortedData = [...rawData].sort((a, b) => b.count - a.count);
+  const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
 
   const regionalOption = {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
-    legend: { 
-      type: 'scroll',
-      orient: 'vertical',
-      right: '2%',
-      top: 'center',
-      icon: 'circle',
-      textStyle: { fontSize: 11 }
+    tooltip: { 
+      trigger: 'axis', 
+      axisPointer: { type: 'shadow' },
+      formatter: (params: any) => {
+        const item = params[0];
+        return `${item.name}<br/>关联企标数量: <b>${item.value}</b> 项`;
+      }
     },
+    grid: { 
+      left: '3%', 
+      right: '12%', 
+      top: '4%', 
+      bottom: '4%', 
+      containLabel: true 
+    },
+    xAxis: { 
+      type: 'value', 
+      name: '数量(项)',
+      axisLabel: { show: true },
+      splitLine: { lineStyle: { type: 'dashed' } }
+    },
+    yAxis: {
+      type: 'category',
+      data: chartData.map(item => item.name).reverse(), // Highest count at the top
+      axisLabel: { 
+        fontWeight: 'bold',
+        interval: 0
+      }
+    },
+    dataZoom: [
+      {
+        type: 'slider',
+        show: chartData.length > 7, // Only show scroll bar if there are more than 7 items
+        yAxisIndex: [0],
+        left: '94%',
+        width: 10,
+        start: Math.max(0, 100 - (7 / Math.max(1, chartData.length)) * 100), // Dynamically show top 7 initially
+        end: 100,
+        borderColor: 'transparent',
+        backgroundColor: '#f5f5f5',
+        fillerColor: '#d9d9d9',
+        showDetail: false,
+        handleSize: '0%',
+        zoomLock: true // Act purely as a scrollbar without zoom resizing
+      },
+      {
+        type: 'inside',
+        yAxisIndex: [0],
+        zoomLock: true
+      }
+    ],
     series: [
       {
-        name: '分布区域',
-        type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['35%', '50%'], // Center left
-        minAngle: 15, // Prevent overlapping labels by enforcing a minimum sector angle
-        avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
-        label: { 
-          show: true, 
-          position: 'outside',
-          formatter: '{b}\n{c}项 ({d}%)',
-          fontSize: 10
+        name: '关联企标数',
+        type: 'bar',
+        data: chartData.map(item => item.value).reverse(),
+        itemStyle: {
+          color: {
+            type: 'linear',
+            x: 0,
+            y: 0,
+            x2: 1,
+            y2: 0,
+            colorStops: [
+              { offset: 0, color: '#a0d911' }, // start: bright lime
+              { offset: 1, color: '#52c41a' }  // end: deep forest green
+            ]
+          },
+          borderRadius: [0, 4, 4, 0]
         },
-        labelLine: { show: true, length: 8, length2: 6 },
-        data: chartData
+        label: {
+          show: true,
+          position: 'right',
+          formatter: '{c}项',
+          fontWeight: 'bold',
+          color: '#333'
+        }
       }
     ]
   };
