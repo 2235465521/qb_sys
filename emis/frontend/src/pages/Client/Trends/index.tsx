@@ -146,83 +146,45 @@ const TrendDashboard: React.FC = () => {
   const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
 
   const regionalOption = {
-    tooltip: { 
-      trigger: 'axis', 
-      axisPointer: { type: 'shadow' },
-      formatter: (params: any) => {
-        const item = params[0];
-        return `${item.name}<br/>关联企标数量: <b>${item.value}</b> 项`;
-      }
+    tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
+    legend: { 
+      type: 'scroll', // 启用滚动条控制
+      orient: 'vertical',
+      right: '2%',
+      top: 'center',
+      icon: 'circle',
+      textStyle: { fontSize: 11 },
+      pageIconSize: 10,
+      pageTextStyle: { fontSize: 9 }
     },
-    grid: { 
-      left: '3%', 
-      right: '12%', 
-      top: '4%', 
-      bottom: '4%', 
-      containLabel: true 
-    },
-    xAxis: { 
-      type: 'value', 
-      name: '数量(项)',
-      axisLabel: { show: true },
-      splitLine: { lineStyle: { type: 'dashed' } }
-    },
-    yAxis: {
-      type: 'category',
-      data: chartData.map(item => item.name).reverse(), // Highest count at the top
-      axisLabel: { 
-        fontWeight: 'bold',
-        interval: 0
-      }
-    },
-    dataZoom: [
-      {
-        type: 'slider',
-        show: chartData.length > 7, // Only show scroll bar if there are more than 7 items
-        yAxisIndex: [0],
-        left: '94%',
-        width: 10,
-        start: Math.max(0, 100 - (7 / Math.max(1, chartData.length)) * 100), // Dynamically show top 7 initially
-        end: 100,
-        borderColor: 'transparent',
-        backgroundColor: '#f5f5f5',
-        fillerColor: '#d9d9d9',
-        showDetail: false,
-        handleSize: '0%',
-        zoomLock: true // Act purely as a scrollbar without zoom resizing
-      },
-      {
-        type: 'inside',
-        yAxisIndex: [0],
-        zoomLock: true
-      }
-    ],
     series: [
       {
-        name: '关联企标数',
-        type: 'bar',
-        data: chartData.map(item => item.value).reverse(),
-        itemStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 1,
-            y2: 0,
-            colorStops: [
-              { offset: 0, color: '#a0d911' }, // start: bright lime
-              { offset: 1, color: '#52c41a' }  // end: deep forest green
-            ]
+        name: '分布区域',
+        type: 'pie',
+        radius: ['45%', '70%'],
+        center: ['35%', '50%'], // 偏左显示，为右侧滚动条图例留出空间
+        minAngle: 6, // 强制最小扇区角度，避免超小占比扇区挤在一起
+        avoidLabelOverlap: true,
+        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
+        label: { 
+          show: true, 
+          position: 'outside',
+          formatter: (params: any) => {
+            // 只有占比大于等于 3% 的地区才在外侧显示文字标签，防止 30 多个省份的标签线条交叉重叠
+            if (params.percent < 3) {
+              return '';
+            }
+            return `${params.name}\n${params.value}项 (${params.percent.toFixed(1)}%)`;
           },
-          borderRadius: [0, 4, 4, 0]
+          fontSize: 10
         },
-        label: {
-          show: true,
-          position: 'right',
-          formatter: '{c}项',
-          fontWeight: 'bold',
-          color: '#333'
-        }
+        labelLine: { 
+          show: true, 
+          length: 8, 
+          length2: 6,
+          smooth: true
+        },
+        data: chartData
       }
     ]
   };
