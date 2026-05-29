@@ -267,11 +267,11 @@ const AdminLeadsPage: React.FC = () => {
       setCompanies(prev => [newCompany, ...prev]);
       
       if (quickCompanySource === 'create') {
-        createForm.setFieldsValue({ enterprise: newCompany.id });
+        createForm.setFieldsValue({ enterprise: Number(newCompany.id) });
       } else if (quickCompanySource === 'details') {
-        detailsForm.setFieldsValue({ enterprise: newCompany.id });
+        detailsForm.setFieldsValue({ enterprise: Number(newCompany.id) });
         // Since setFieldsValue doesn't trigger onValuesChange, manually trigger lead update
-        await handleUpdateDetails({ enterprise: newCompany.id });
+        await handleUpdateDetails({ enterprise: Number(newCompany.id) });
       }
       
       setQuickCompanyModalOpen(false);
@@ -293,8 +293,8 @@ const AdminLeadsPage: React.FC = () => {
   const handleOpenDetails = (lead: Lead) => {
     setSelectedLead(lead);
     
-    if (lead.enterprise && !companies.some(c => c.id === lead.enterprise)) {
-      setCompanies(prev => [{ id: lead.enterprise, name: lead.enterprise_name }, ...prev]);
+    if (lead.enterprise && !companies.some(c => String(c.id) === String(lead.enterprise))) {
+      setCompanies(prev => [{ id: Number(lead.enterprise), name: lead.enterprise_name }, ...prev]);
     }
 
     detailsForm.setFieldsValue({
@@ -302,7 +302,7 @@ const AdminLeadsPage: React.FC = () => {
       source: lead.source,
       req_type: lead.req_type,
       assignee: lead.assignee,
-      enterprise: lead.enterprise,
+      enterprise: lead.enterprise ? Number(lead.enterprise) : null,
       contact_name: lead.contact_name,
       contact_phone: lead.contact_phone,
       contact_wechat: lead.contact_wechat,
@@ -907,13 +907,13 @@ const AdminLeadsPage: React.FC = () => {
                   {(() => {
                     const list = [...companies];
                     const selectedId = createForm.getFieldValue('enterprise');
-                    if (selectedId && !list.some(c => c.id === selectedId)) {
-                      const matched = list.find(c => c.id === selectedId);
+                    if (selectedId && !list.some(c => String(c.id) === String(selectedId))) {
+                      const matched = list.find(c => String(c.id) === String(selectedId));
                       const name = matched ? matched.name : '新置企业';
-                      list.push({ id: selectedId, name });
+                      list.push({ id: Number(selectedId), name });
                     }
                     return list.map(c => (
-                      <Option key={c.id} value={c.id}>{c.name}</Option>
+                      <Option key={String(c.id)} value={Number(c.id)}>{c.name}</Option>
                     ));
                   })()}
                 </Select>
@@ -1216,12 +1216,12 @@ const AdminLeadsPage: React.FC = () => {
                       {(() => {
                         const list = [...companies];
                         const selectedId = detailsForm.getFieldValue('enterprise') || selectedLead?.enterprise;
-                        if (selectedId && !list.some(c => c.id === selectedId)) {
+                        if (selectedId && !list.some(c => String(c.id) === String(selectedId))) {
                           const name = selectedLead?.enterprise_name || '已设企业';
-                          list.push({ id: selectedId, name });
+                          list.push({ id: Number(selectedId), name });
                         }
                         return list.map(c => (
-                          <Option key={c.id} value={c.id}>{c.name}</Option>
+                          <Option key={String(c.id)} value={Number(c.id)}>{c.name}</Option>
                         ));
                       })()}
                     </Select>
