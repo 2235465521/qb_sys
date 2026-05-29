@@ -164,4 +164,33 @@ class LeadAPITests(APITestCase):
         # Confirm N+1 query issue is prevented (query count should be small, typically < 6 with select_related and prefetch_related disabled)
         self.assertLess(len(ctx.captured_queries), 8)
 
+    def test_company_quick_create(self):
+        url = reverse('admin-company-quick-create')
+        
+        # 1. Create with only name (credit_code should be auto-generated starting with TEMP_)
+        data = {'name': '快捷测试新企业'}
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], '快捷测试新企业')
+        self.assertTrue(response.data['credit_code'].startswith('TEMP_'))
+        
+        # 2. Create with existing name (should return existing company)
+        response2 = self.client.post(url, data, format='json')
+        self.assertEqual(response2.status_code, status.HTTP_200_OK)
+        self.assertEqual(response2.data['id'], response.data['id'])
+        
+        # 3. Create with name and credit_code
+        data3 = {'name': '快捷另一个企业', 'credit_code': '91110000MA88888888'}
+        response3 = self.client.post(url, data3, format='json')
+        self.assertEqual(response3.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response3.data['name'], '快捷另一个企业')
+        self.assertEqual(response3.data['credit_code'], '91110000MA88888888')
+        
+        # 4. Create with existing credit_code (should return existing company)
+        data4 = {'name': '随便名字', 'credit_code': '91110000MA88888888'}
+        response4 = self.client.post(url, data4, format='json')
+        self.assertEqual(response4.status_code, status.HTTP_200_OK)
+        self.assertEqual(response4.data['id'], response3.data['id'])
+
+
 

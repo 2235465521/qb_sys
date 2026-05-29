@@ -35,6 +35,6 @@ urlpatterns = [
     path('api/client/notifications/', include('notifications.urls.task_urls')),
 ]
 
-# 开发环境：挂载媒体文件服务
-if settings.DEBUG:
-    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+# 媒体文件静态代理 (Django static() 内部在非 DEBUG 模式下会自动清空，无需额外包裹)
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+

@@ -99,7 +99,9 @@ class AttachmentSerializer(serializers.ModelSerializer):
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.file.url)
-            return obj.file.url
+            from django.conf import settings
+            backend_url = getattr(settings, 'BACKEND_URL', 'http://127.0.0.1:8000')
+            return f"{backend_url.rstrip('/')}{obj.file.url}"
         return None
 
 

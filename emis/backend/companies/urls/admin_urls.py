@@ -6,6 +6,7 @@ from django.urls import path
 from companies.views.admin_views import (
     CompanyAdminListCreateView,
     CompanyAdminDetailView,
+    CompanyQuickCreateView,
     CompanyImportView,
     CompanyImportTemplateView,
     CompanyExportView,
@@ -15,6 +16,7 @@ from companies.views.admin_views import (
 
 urlpatterns = [
     path('', CompanyAdminListCreateView.as_view(), name='admin-company-list'),
+    path('quick_create/', CompanyQuickCreateView.as_view(), name='admin-company-quick-create'),
     path('<int:pk>/', CompanyAdminDetailView.as_view(), name='admin-company-detail'),
     path('import/', CompanyImportView.as_view(), name='admin-company-import'),
     path('import/template/', CompanyImportTemplateView.as_view(), name='admin-company-import-template'),

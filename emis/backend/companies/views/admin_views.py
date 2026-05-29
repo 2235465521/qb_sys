@@ -40,6 +40,66 @@ class CompanyAdminListCreateView(generics.ListCreateAPIView):
         )
 
 
+class CompanyQuickCreateView(generics.CreateAPIView):
+    """
+    POST /api/admin/companies/quick_create/ — 快捷创建企业
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        import uuid
+        name = request.data.get('name', '').strip()
+        credit_code = request.data.get('credit_code', '').strip()
+
+        if not name:
+            return Response({'error': '企业名称不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. 优先根据 credit_code 查重（如果用户输入了）
+        if credit_code:
+            existing = Company.objects.filter(credit_code=credit_code, is_deleted=False).first()
+            if existing:
+                return Response({
+                    'id': existing.id,
+                    'name': existing.name,
+                    'credit_code': existing.credit_code
+                }, status=status.HTTP_200_OK)
+        else:
+            # 2. 如果没输 credit_code，根据企业名称模糊/精确匹配已有企业，防止重名新建
+            existing = Company.objects.filter(name=name, is_deleted=False).first()
+            if existing:
+                return Response({
+                    'id': existing.id,
+                    'name': existing.name,
+                    'credit_code': existing.credit_code
+                }, status=status.HTTP_200_OK)
+
+        # 3. 都没有匹配到，则新建。如果 credit_code 为空，生成临时代码
+        if not credit_code:
+            credit_code = f"TEMP_{uuid.uuid4().hex[:14].upper()}"
+            while Company.objects.filter(credit_code=credit_code).exists():
+                credit_code = f"TEMP_{uuid.uuid4().hex[:14].upper()}"
+        else:
+            # 双重确认：如果此时 credit_code 在已软删除的企业里有，也可以直接复用或提示冲突
+            # 此处简单起见，如果跟被软删除的冲突，就不强求，如果直接存在就报错
+            if Company.objects.filter(credit_code=credit_code).exists():
+                # 说明存在（可能被软删除了或者是 normal），为保持 database 唯一性，提示错误
+                return Response({'error': '该信用代码已存在'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            company = Company.objects.create(
+                name=name,
+                credit_code=credit_code,
+                status='active'
+            )
+            return Response({
+                'id': company.id,
+                'name': company.name,
+                'credit_code': company.credit_code
+            }, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            return Response({'error': f'创建企业失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 class CompanyAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     GET    /api/admin/companies/{id}/ — 企业详情

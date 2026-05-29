@@ -47,6 +47,12 @@ const AdminLeadsPage: React.FC = () => {
   const [followupText, setFollowupText] = useState('');
   const [followupFiles, setFollowupFiles] = useState<any[]>([]);
 
+  // Quick Create Company States
+  const [quickCompanyModalOpen, setQuickCompanyModalOpen] = useState(false);
+  const [quickCompanyForm] = Form.useForm();
+  const [quickCompanySource, setQuickCompanySource] = useState<'create' | 'details' | null>(null);
+  const [searchedCompanyName, setSearchedCompanyName] = useState('');
+
   const { 
     useAdminLeads, 
     createAdminLeadMutation, 
@@ -89,6 +95,55 @@ const AdminLeadsPage: React.FC = () => {
     fetchUsers();
     searchCompanies('');
   }, []);
+
+  const handleCompanySearch = (val: string) => {
+    setSearchedCompanyName(val.trim());
+    searchCompanies(val);
+  };
+
+  const handleDropdownVisibleChange = (open: boolean) => {
+    if (!open) {
+      setSearchedCompanyName('');
+    }
+  };
+
+  const handleOpenQuickCreate = (name: string, source: 'create' | 'details') => {
+    setQuickCompanySource(source);
+    setQuickCompanyModalOpen(true);
+    quickCompanyForm.setFieldsValue({
+      name: name,
+      credit_code: ''
+    });
+  };
+
+  const handleQuickCreateCompany = async () => {
+    try {
+      const values = await quickCompanyForm.validateFields();
+      const response = await apiClient.post('/admin/companies/quick_create/', {
+        name: values.name.trim(),
+        credit_code: values.credit_code ? values.credit_code.trim() : ''
+      });
+      
+      const newCompany = response.data;
+      
+      // Update local companies list so the Select can display the option
+      setCompanies(prev => [newCompany, ...prev]);
+      
+      if (quickCompanySource === 'create') {
+        createForm.setFieldsValue({ enterprise: newCompany.id });
+      } else if (quickCompanySource === 'details') {
+        detailsForm.setFieldsValue({ enterprise: newCompany.id });
+        // Since setFieldsValue doesn't trigger onValuesChange, manually trigger lead update
+        await handleUpdateDetails({ enterprise: newCompany.id });
+      }
+      
+      setQuickCompanyModalOpen(false);
+      quickCompanyForm.resetFields();
+      setSearchedCompanyName('');
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   const handleSearch = (value: string) => {
     setParams({ ...params, page: 1, keyword: value.trim() });
@@ -615,9 +670,31 @@ const AdminLeadsPage: React.FC = () => {
                   showSearch
                   placeholder="检索匹配库中企业"
                   filterOption={false}
-                  onSearch={searchCompanies}
+                  onSearch={handleCompanySearch}
+                  onDropdownVisibleChange={handleDropdownVisibleChange}
                   loading={companyLoading}
                   allowClear
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      {searchedCompanyName && !companies.some(c => c.name === searchedCompanyName) && (
+                        <>
+                          <Divider style={{ margin: '4px 0' }} />
+                          <div style={{ padding: '4px 8px' }}>
+                            <Button 
+                              type="primary" 
+                              size="small"
+                              icon={<PlusOutlined />} 
+                              block
+                              onClick={() => handleOpenQuickCreate(searchedCompanyName, 'create')}
+                            >
+                              + 快捷创建企业: "{searchedCompanyName}"
+                            </Button>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  )}
                 >
                   {companies.map(c => (
                     <Option key={c.id} value={c.id}>{c.name}</Option>
@@ -678,6 +755,46 @@ const AdminLeadsPage: React.FC = () => {
               保存并指派
             </Button>
           </div>
+        </Form>
+      </Modal>
+
+      {/* 快捷新建企业极简 Modal */}
+      <Modal
+        title={
+          <Space>
+            <PlusOutlined style={{ color: '#1890ff' }} />
+            <span style={{ fontWeight: 'bold' }}>快捷新建企业主表</span>
+          </Space>
+        }
+        open={quickCompanyModalOpen}
+        onCancel={() => {
+          setQuickCompanyModalOpen(false);
+          quickCompanyForm.resetFields();
+        }}
+        onOk={handleQuickCreateCompany}
+        okText="确认创建"
+        cancelText="取消"
+        width={400}
+        destroyOnClose
+      >
+        <Form
+          form={quickCompanyForm}
+          layout="vertical"
+          style={{ marginTop: 16 }}
+        >
+          <Form.Item
+            name="name"
+            label="企业名称"
+            rules={[{ required: true, message: '请输入企业名称' }]}
+          >
+            <Input placeholder="请填写企业名称" />
+          </Form.Item>
+          <Form.Item
+            name="credit_code"
+            label="统一社会信用代码"
+          >
+            <Input placeholder="统一社会信用代码 (非必填)" maxLength={25} />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -818,9 +935,31 @@ const AdminLeadsPage: React.FC = () => {
                       showSearch
                       placeholder="关联现有企业"
                       filterOption={false}
-                      onSearch={searchCompanies}
+                      onSearch={handleCompanySearch}
+                      onDropdownVisibleChange={handleDropdownVisibleChange}
                       loading={companyLoading}
                       allowClear
+                      dropdownRender={(menu) => (
+                        <>
+                          {menu}
+                          {searchedCompanyName && !companies.some(c => c.name === searchedCompanyName) && (
+                            <>
+                              <Divider style={{ margin: '4px 0' }} />
+                              <div style={{ padding: '4px 8px' }}>
+                                <Button 
+                                  type="primary" 
+                                  size="small"
+                                  icon={<PlusOutlined />} 
+                                  block
+                                  onClick={() => handleOpenQuickCreate(searchedCompanyName, 'details')}
+                                >
+                                  + 快捷创建企业: "{searchedCompanyName}"
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </>
+                      )}
                     >
                       {companies.map(c => (
                         <Option key={c.id} value={c.id}>{c.name}</Option>
