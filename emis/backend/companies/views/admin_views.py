@@ -496,3 +496,19 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
         return response
 
 
+class AdminAttachmentViewSet(viewsets.ModelViewSet):
+    """
+    后台线索附件管理，支持物理删除
+    DELETE /api/admin/companies/leads/attachments/{id}/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = AttachmentSerializer
+    queryset = Attachment.objects.all()
+
+    def perform_destroy(self, instance):
+        if instance.file:
+            instance.file.delete(save=False)
+        instance.delete()
+
+
+

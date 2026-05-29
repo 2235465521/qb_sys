@@ -12,6 +12,7 @@ from companies.views.admin_views import (
     CompanyExportView,
     AdminDashboardStatsView,
     AdminLeadViewSet,
+    AdminAttachmentViewSet,
 )
 
 urlpatterns = [
@@ -26,6 +27,7 @@ urlpatterns = [
     path('leads/<int:pk>/', AdminLeadViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='admin-lead-detail'),
     path('leads/<int:pk>/followup/', AdminLeadViewSet.as_view({'post': 'add_followup'}), name='admin-lead-followup'),
     path('leads/<int:pk>/delete_attachment/', AdminLeadViewSet.as_view({'post': 'delete_attachment'}), name='admin-lead-delete-attachment'),
+    path('leads/attachments/<int:pk>/', AdminAttachmentViewSet.as_view({'delete': 'destroy'}), name='admin-lead-attachment-detail'),
     path('leads/export/', AdminLeadViewSet.as_view({'get': 'export', 'post': 'export'}), name='admin-lead-export'),
 ]
 

@@ -116,6 +116,19 @@ class LeadAPITests(APITestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
         self.assertEqual(Attachment.objects.filter(lead=self.lead).count(), 0)
 
+        # Test deleting the attachment using the new RESTful DELETE API
+        new_att = Attachment.objects.create(
+            lead=self.lead,
+            filename='test_delete_rest.txt',
+            size=100
+        )
+        self.assertEqual(Attachment.objects.filter(lead=self.lead).count(), 1)
+        
+        rest_delete_url = reverse('admin-lead-attachment-detail', kwargs={'pk': new_att.id})
+        rest_delete_response = self.client.delete(rest_delete_url)
+        self.assertEqual(rest_delete_response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(Attachment.objects.filter(lead=self.lead).count(), 0)
+
     def test_lead_export(self):
         url = reverse('admin-lead-export')
         # GET export

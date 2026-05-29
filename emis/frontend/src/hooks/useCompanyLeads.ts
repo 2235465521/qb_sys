@@ -165,6 +165,20 @@ export const useCompanyLeads = () => {
     }
   });
 
+  // 8. Admin RESTful Delete Lead Attachment (DELETE to /admin/companies/leads/attachments/:id/)
+  const deleteAttachmentRESTMutation = useMutation({
+    mutationFn: async (attachmentId: number) => {
+      await apiClient.delete(`/admin/companies/leads/attachments/${attachmentId}/`);
+    },
+    onSuccess: () => {
+      message.success('附件已彻底从磁盘删除。');
+      queryClient.invalidateQueries({ queryKey: ['admin_leads'] });
+    },
+    onError: (err: any) => {
+      message.error(err.response?.data?.detail || '删除附件失败，请重试！');
+    }
+  });
+
   return {
     createLeadMutation,
     useAdminLeads,
@@ -172,7 +186,8 @@ export const useCompanyLeads = () => {
     updateLeadMutation,
     deleteLeadMutation,
     addFollowUpMutation,
-    deleteAttachmentMutation
+    deleteAttachmentMutation,
+    deleteAttachmentRESTMutation
   };
 };
 

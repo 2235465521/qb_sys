@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Card, Table, Tag, Input, Select, Button, Space, Modal, Form, 
   Popconfirm, Drawer, Row, Col, Timeline, Upload, 
-  Radio, Checkbox, Divider, Typography, Avatar, Badge, Image, Tooltip
+  Radio, Checkbox, Divider, Typography, Avatar, Badge, Image, Tooltip, message
 } from 'antd';
 import { 
   SearchOutlined, UserOutlined, PhoneOutlined, WechatOutlined, 
@@ -53,13 +53,18 @@ const AdminLeadsPage: React.FC = () => {
   const [quickCompanySource, setQuickCompanySource] = useState<'create' | 'details' | null>(null);
   const [searchedCompanyName, setSearchedCompanyName] = useState('');
 
+  // TXT Preview States
+  const [txtModalOpen, setTxtModalOpen] = useState(false);
+  const [txtModalTitle, setTxtModalTitle] = useState('');
+  const [txtModalContent, setTxtModalContent] = useState('');
+
   const { 
     useAdminLeads, 
     createAdminLeadMutation, 
     updateLeadMutation, 
     deleteLeadMutation,
     addFollowUpMutation,
-    deleteAttachmentMutation
+    deleteAttachmentRESTMutation
   } = useCompanyLeads();
 
   const { data, isLoading, refetch } = useAdminLeads(params);
@@ -214,13 +219,56 @@ const AdminLeadsPage: React.FC = () => {
   const handleDeleteAttachment = async (attachmentId: number) => {
     if (!selectedLead || !selectedLead.id) return;
     try {
-      const updatedLead = await deleteAttachmentMutation.mutateAsync({
-        leadId: selectedLead.id,
-        attachmentId
+      await deleteAttachmentRESTMutation.mutateAsync(attachmentId);
+      setSelectedLead(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          attachments: (prev.attachments || []).filter(att => att.id !== attachmentId)
+        };
       });
-      setSelectedLead(updatedLead);
       refetch();
     } catch (err) {}
+  };
+
+  const downloadFileByBlob = async (fileUrl: string, filename: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('下载失败');
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      message.error('文件下载失败，请重试！');
+    }
+  };
+
+  const handlePreviewTxtFile = async (fileUrl: string, filename: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      if (!response.ok) throw new Error('获取文本内容失败');
+      const blob = await response.blob();
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        setTxtModalTitle(filename);
+        setTxtModalContent(text);
+        setTxtModalOpen(true);
+      };
+      // 设置以 GBK / GB2312 编码解码，支持 Windows 中文 TXT 格式
+      reader.readAsText(blob, 'gbk');
+    } catch (err) {
+      console.error(err);
+      message.error('读取文本内容失败，请直接下载查看！');
+    }
   };
 
   const handleCreateLead = async (values: any) => {
@@ -811,6 +859,43 @@ const AdminLeadsPage: React.FC = () => {
         </Form>
       </Modal>
 
+      {/* TXT 文本在线预览 Modal */}
+      <Modal
+        title={
+          <Space>
+            <PaperClipOutlined style={{ color: '#fa8c16' }} />
+            <span style={{ fontWeight: 'bold' }}>{txtModalTitle}</span>
+          </Space>
+        }
+        open={txtModalOpen}
+        onCancel={() => {
+          setTxtModalOpen(false);
+          setTxtModalContent('');
+        }}
+        footer={[
+          <Button key="close" onClick={() => setTxtModalOpen(false)}>
+            关闭
+          </Button>
+        ]}
+        width={700}
+        destroyOnClose
+      >
+        <div style={{ 
+          maxHeight: 450, 
+          overflowY: 'auto', 
+          background: '#f5f5f5', 
+          padding: 16, 
+          borderRadius: 8, 
+          whiteSpace: 'pre-wrap', 
+          fontFamily: 'monospace',
+          fontSize: 13,
+          lineHeight: '1.6',
+          color: '#333'
+        }}>
+          {txtModalContent}
+        </div>
+      </Modal>
+
       {/* Advanced Custom Export Modal */}
       <Modal
         title={
@@ -1096,7 +1181,7 @@ const AdminLeadsPage: React.FC = () => {
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
                           <Image.PreviewGroup>
                             {selectedLead.attachments.filter(att => isImageFile(att.filename)).map(att => (
-                              <div key={att.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <div key={att.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                                 <Image
                                   src={att.file_url || att.file}
                                   alt={att.filename}
@@ -1104,27 +1189,36 @@ const AdminLeadsPage: React.FC = () => {
                                   height={80}
                                   style={{ objectFit: 'cover', borderRadius: 8, border: '1px solid #f0f0f0' }}
                                 />
-                                <Tooltip title={att.filename}>
-                                  <div style={{ fontSize: 10, color: '#8c8c8c', textAlign: 'center', marginTop: 4, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                    {att.filename}
-                                  </div>
-                                </Tooltip>
                                 <Popconfirm
-                                  title="确认删除该图片？"
+                                  title="确认彻底删除该图片？"
                                   onConfirm={() => handleDeleteAttachment(att.id)}
                                   okText="确定"
                                   cancelText="取消"
                                 >
                                   <Button 
-                                    type="text" 
-                                    danger 
-                                    size="small" 
-                                    icon={<DeleteOutlined style={{ fontSize: 10 }} />}
-                                    style={{ height: 20, fontSize: 11, padding: '0 4px', marginTop: 2 }}
-                                  >
-                                    删除
-                                  </Button>
+                                    type="primary"
+                                    danger
+                                    shape="circle"
+                                    size="small"
+                                    icon={<DeleteOutlined style={{ fontSize: 9 }} />}
+                                    style={{ 
+                                      position: 'absolute', 
+                                      top: -6, 
+                                      right: -6, 
+                                      width: 20, 
+                                      height: 20, 
+                                      minWidth: 20,
+                                      padding: 0,
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+                                      zIndex: 10
+                                    }}
+                                  />
                                 </Popconfirm>
+                                <Tooltip title={att.filename}>
+                                  <div style={{ fontSize: 10, color: '#8c8c8c', textAlign: 'center', marginTop: 4, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {att.filename}
+                                  </div>
+                                </Tooltip>
                               </div>
                             ))}
                           </Image.PreviewGroup>
@@ -1142,55 +1236,91 @@ const AdminLeadsPage: React.FC = () => {
                           文档资料
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          {selectedLead.attachments.filter(att => !isImageFile(att.filename)).map((att: Attachment) => (
-                            <div 
-                              key={att.id} 
-                              style={{ 
-                                display: 'flex', 
-                                justifyContent: 'space-between', 
-                                alignItems: 'center',
-                                padding: '8px 12px',
-                                background: '#ffffff',
-                                borderRadius: 8,
-                                border: '1px solid #f0f0f0'
-                              }}
-                            >
-                              <Space>
-                                {getFileIcon(att.filename)}
-                                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                  <Text strong style={{ fontSize: 12, maxWidth: 300 }} ellipsis={{ tooltip: att.filename }}>
-                                    {att.filename}
-                                  </Text>
-                                  <Text type="secondary" style={{ fontSize: 10 }}>
-                                    {formatBytes(att.size)} · 上传于 {new Date(att.created_at).toLocaleDateString()}
-                                  </Text>
-                                </div>
-                              </Space>
-                              <Space>
-                                <Button 
-                                  type="text" 
-                                  icon={<EyeOutlined />} 
-                                  onClick={() => window.open(att.file_url || att.file, '_blank')}
-                                >
-                                  预览 / 下载
-                                </Button>
-                                <Popconfirm
-                                  title="确认删除该文件？"
-                                  onConfirm={() => handleDeleteAttachment(att.id)}
-                                  okText="确定"
-                                  cancelText="取消"
-                                >
+                          {selectedLead.attachments.filter(att => !isImageFile(att.filename)).map((att: Attachment) => {
+                            const fileUrl = att.file_url || att.file;
+                            const ext = att.filename.split('.').pop()?.toLowerCase() || '';
+                            const isOffice = ['xlsx', 'xls', 'docx', 'doc', 'pptx', 'ppt'].includes(ext);
+                            const canPreview = ['pdf', 'txt'].includes(ext);
+
+                            return (
+                              <div 
+                                key={att.id} 
+                                style={{ 
+                                  display: 'flex', 
+                                  justifyContent: 'space-between', 
+                                  alignItems: 'center',
+                                  padding: '8px 12px',
+                                  background: '#ffffff',
+                                  borderRadius: 8,
+                                  border: '1px solid #f0f0f0'
+                                }}
+                              >
+                                <Space>
+                                  {getFileIcon(att.filename)}
+                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                    <Text strong style={{ fontSize: 12, maxWidth: 300 }} ellipsis={{ tooltip: att.filename }}>
+                                      {att.filename}
+                                    </Text>
+                                    <Text type="secondary" style={{ fontSize: 10 }}>
+                                      {formatBytes(att.size)} · 上传于 {new Date(att.created_at).toLocaleDateString()}
+                                    </Text>
+                                  </div>
+                                </Space>
+                                <Space size={8}>
+                                  {canPreview ? (
+                                    <Button 
+                                      type="text" 
+                                      icon={<EyeOutlined />} 
+                                      onClick={() => {
+                                        if (ext === 'pdf') {
+                                          window.open(fileUrl, '_blank');
+                                        } else if (ext === 'txt') {
+                                          handlePreviewTxtFile(fileUrl, att.filename);
+                                        }
+                                      }}
+                                    >
+                                      预览
+                                    </Button>
+                                  ) : (
+                                    <Tooltip title={isOffice ? "不支持在线预览，请下载查看" : "不支持在线预览"}>
+                                      <span>
+                                        <Button 
+                                          type="text" 
+                                          disabled 
+                                          icon={<EyeOutlined />}
+                                        >
+                                          预览
+                                        </Button>
+                                      </span>
+                                    </Tooltip>
+                                  )}
+
                                   <Button 
                                     type="text" 
-                                    danger 
-                                    icon={<DeleteOutlined />}
+                                    icon={<DownloadOutlined />} 
+                                    onClick={() => downloadFileByBlob(fileUrl, att.filename)}
                                   >
-                                    删除
+                                    下载
                                   </Button>
-                                </Popconfirm>
-                              </Space>
-                            </div>
-                          ))}
+
+                                  <Popconfirm
+                                    title="确认删除该文件？"
+                                    onConfirm={() => handleDeleteAttachment(att.id)}
+                                    okText="确定"
+                                    cancelText="取消"
+                                  >
+                                    <Button 
+                                      type="text" 
+                                      danger 
+                                      icon={<DeleteOutlined />}
+                                    >
+                                      删除
+                                    </Button>
+                                  </Popconfirm>
+                                </Space>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
