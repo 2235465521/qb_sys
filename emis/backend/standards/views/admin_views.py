@@ -23,8 +23,12 @@ class StandardAdminListCreateView(generics.ListCreateAPIView):
         return StandardDetailSerializer
 
     def get_queryset(self):
-        # 默认只列出企业标准类型 (enterprise)，供企标管理使用
-        qs = Standard.objects.filter(type='enterprise').select_related('company')
+        params = self.request.query_params
+        std_type = params.get('type', 'enterprise') # 默认列出企标
+        if std_type == 'all':
+            qs = Standard.objects.all().select_related('company')
+        else:
+            qs = Standard.objects.filter(type=std_type).select_related('company')
         
         # 支持按标准号、标准名称、或者所属企业筛选
         params = self.request.query_params
@@ -55,22 +59,47 @@ class StandardAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class StandardImportView(APIView):
     """
-    POST /api/admin/standards/import/ — 拖拽上传爬取格式 Excel 一键批量导入企标和企业
+    POST /api/admin/standards/import/ — 上传 Excel 一键批量导入各类型标准与关联企业
+    支持 URL 参数 ?type=enterprise/national/industry/local/group
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser]
 
     def post(self, request):
         file_obj = request.FILES.get('file')
+        std_type = request.query_params.get('type') or request.data.get('type') or 'enterprise'
+        
         if not file_obj:
             return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not file_obj.name.endswith(('.xlsx', '.xls')):
             return Response({'error': '仅支持 .xlsx 或 .xls 格式的文件'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 调用我们高精对准业务的 Excel 企标空间导入引擎！
-        result = services.import_standards_from_excel(file_obj)
+        # 调用支持多维分类的 Excel 导入引擎
+        result = services.import_standards_by_type(file_obj, std_type)
         return Response(result, status=status.HTTP_200_OK)
+
+
+class StandardImportTemplateView(APIView):
+    """
+    GET /api/admin/standards/import/template/ — 下载各标准类型的 Excel 导入模板
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.http import HttpResponse
+        std_type = request.query_params.get('type', 'enterprise')
+        try:
+            excel_bytes, filename = services.generate_standard_import_template(std_type)
+            response = HttpResponse(
+                excel_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            from urllib.parse import quote
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            return response
+        except Exception as e:
+            return Response({'error': f'生成模板失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class StandardIndicatorImportView(APIView):

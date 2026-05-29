@@ -470,3 +470,123 @@ def export_companies_to_excel(queryset) -> bytes:
     wb.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def export_companies_to_excel_advanced(queryset, fields=None, include_standards=False) -> bytes:
+    """
+    高级企业导出服务，支持前端传递列名数组动态选择列，并支持带出企业关联的所有标准目录。
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    import io
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "企业高级定制导出"
+
+    # 表头样式
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    # 完整字段到导出列与数据的映射表
+    FIELD_MAPPING = {
+        'name': ('企业名称', lambda c: c.name),
+        'credit_code': ('统一社会信用代码', lambda c: c.credit_code),
+        'legal_person': ('法人', lambda c: c.legal_person),
+        'province': ('省份', lambda c: c.province.name if c.province else ''),
+        'city': ('城市', lambda c: c.city.name if c.city else ''),
+        'district': ('区县', lambda c: c.district.name if c.district else ''),
+        'latitude': ('纬度', lambda c: float(c.latitude) if c.latitude else ''),
+        'longitude': ('经度', lambda c: float(c.longitude) if c.longitude else ''),
+        'contact': ('联系方式', lambda c: c.contact),
+        'address': ('详细地址', lambda c: c.address),
+        'status': ('状态', lambda c: c.get_status_display()),
+        'created_at': ('入库时间', lambda c: c.created_at.strftime('%Y-%m-%d') if c.created_at else ''),
+        # 16 个新增字段
+        'established_date': ('成立日期', lambda c: c.established_date.strftime('%Y-%m-%d') if c.established_date else ''),
+        'registered_address': ('注册地址', lambda c: c.registered_address),
+        'registered_zipcode': ('注册地址邮编', lambda c: c.registered_zipcode),
+        'valid_mobile': ('有效手机号', lambda c: c.valid_mobile),
+        'more_phones': ('更多电话', lambda c: c.more_phones),
+        'email': ('邮箱', lambda c: c.email),
+        'company_type': ('企业(机构)类型', lambda c: c.company_type),
+        'registration_no': ('注册号', lambda c: c.registration_no),
+        'organization_code': ('组织机构代码', lambda c: c.organization_code),
+        'industry_category': ('国标行业门类', lambda c: c.industry_category),
+        'industry_major': ('国标行业大类', lambda c: c.industry_major),
+        'industry_middle': ('国标行业中类', lambda c: c.industry_middle),
+        'industry_minor': ('国标行业小类', lambda c: c.industry_minor),
+        'company_size': ('企业规模', lambda c: c.company_size),
+        'english_name': ('英文名', lambda c: c.english_name),
+        'former_names': ('曾用名', lambda c: c.former_names),
+    }
+
+    # 默认导出所有字段
+    if not fields or len(fields) == 0:
+        fields = list(FIELD_MAPPING.keys())
+
+    # 筛选匹配的字段
+    headers = []
+    active_fields = []
+    for f in fields:
+        if f in FIELD_MAPPING:
+            headers.append(FIELD_MAPPING[f][0])
+            active_fields.append(f)
+
+    # 追加关联标准目录表头
+    if include_standards:
+        headers.append('关联标准目录')
+
+    # 写入表头
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+
+    # 级联预加载关联的标准，优化 N+1 问题
+    if include_standards:
+        queryset = queryset.prefetch_related('standards')
+
+    # 写入数据行
+    for row_idx, company in enumerate(queryset, 2):
+        for col_idx, field_code in enumerate(active_fields, 1):
+            val = FIELD_MAPPING[field_code][1](company)
+            ws.cell(row=row_idx, column=col_idx, value=val)
+
+        if include_standards:
+            # 获取所有关联标准目录列表并拼接
+            standards = company.standards.all()
+            standards_text = ""
+            if standards.exists():
+                standards_text = "\n".join([
+                    f"{s.standard_no} 《{s.title or '未命名'}》 [{s.get_type_display()}]"
+                    for s in standards
+                ])
+            cell = ws.cell(row=row_idx, column=len(headers), value=standards_text)
+            cell.alignment = Alignment(wrap_text=True, vertical='top')
+
+    # 自动列宽（对多行换行的标准目录只取最宽的单行线，防止列宽过宽影响观感）
+    for col in ws.columns:
+        max_len = 0
+        for cell in col:
+            val_str = str(cell.value or '')
+            lines = val_str.split('\n')
+            for line in lines:
+                # 兼容中文字符宽度计算
+                # 简单估算：一个中文字符宽度相当于1.7个西文字符
+                import unicodedata
+                line_len = 0
+                for char in line:
+                    if unicodedata.east_asian_width(char) in ('F', 'W', 'A'):
+                        line_len += 2
+                    else:
+                        line_len += 1
+                max_len = max(max_len, line_len)
+        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 12), 60)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()

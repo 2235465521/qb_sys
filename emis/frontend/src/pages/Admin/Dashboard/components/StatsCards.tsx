@@ -1,6 +1,7 @@
 import React from 'react';
 import { Row, Col, Card } from 'antd';
 import { BankOutlined, TeamOutlined, FileProtectOutlined, SendOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 
 interface StatsProps {
   totalCompanies: number;
@@ -25,6 +26,8 @@ const StatsCards: React.FC<StatsProps> = ({
   totalSmsTasks,
   totalSentSms,
 }) => {
+  const navigate = useNavigate();
+
   const cardData = [
     {
       title: '企业总数',
@@ -33,6 +36,7 @@ const StatsCards: React.FC<StatsProps> = ({
       icon: <BankOutlined style={{ fontSize: 24, color: '#fff' }} />,
       grad: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
       shadow: 'rgba(24, 144, 255, 0.2)',
+      path: '/admin/companies',
     },
     {
       title: '会员总数',
@@ -41,6 +45,7 @@ const StatsCards: React.FC<StatsProps> = ({
       icon: <TeamOutlined style={{ fontSize: 24, color: '#fff' }} />,
       grad: 'linear-gradient(135deg, #52c41a 0%, #13c2c2 100%)',
       shadow: 'rgba(82, 196, 26, 0.2)',
+      path: '/admin/members',
     },
     {
       title: '标准资产',
@@ -49,6 +54,7 @@ const StatsCards: React.FC<StatsProps> = ({
       icon: <FileProtectOutlined style={{ fontSize: 24, color: '#fff' }} />,
       grad: 'linear-gradient(135deg, #faad14 0%, #ff4d4f 100%)',
       shadow: 'rgba(250, 173, 20, 0.2)',
+      path: '/admin/standards',
     },
     {
       title: '短信推送',
@@ -57,6 +63,7 @@ const StatsCards: React.FC<StatsProps> = ({
       icon: <SendOutlined style={{ fontSize: 24, color: '#fff' }} />,
       grad: 'linear-gradient(135deg, #f759ab 0%, #722ed1 100%)',
       shadow: 'rgba(247, 89, 171, 0.2)',
+      path: '/admin/sms-templates',
     },
   ];
 
@@ -77,6 +84,7 @@ const StatsCards: React.FC<StatsProps> = ({
             }}
             bodyStyle={{ padding: '24px 20px' }}
             hoverable
+            onClick={() => navigate(c.path)}
           >
             {/* Decorative background shape */}
             <div style={{ position: 'absolute', right: -20, bottom: -20, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.1)' }} />

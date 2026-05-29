@@ -106,6 +106,24 @@ class Company(models.Model):
     contact = models.CharField('联系方式', max_length=100, blank=True)
     address = models.CharField('详细地址', max_length=500, blank=True)
 
+    # ── 模块二新增 16 个企业库扩展字段 ────────────────────────
+    established_date = models.DateField('成立日期', null=True, blank=True, help_text='企业或机构的成立日期')
+    registered_address = models.CharField('注册地址', max_length=500, blank=True, help_text='企业营业执照上的注册地址')
+    registered_zipcode = models.CharField('注册地址邮编', max_length=20, blank=True, help_text='注册地址对应的邮政编码')
+    valid_mobile = models.CharField('有效手机号', max_length=50, blank=True, help_text='主要联系手机号码，用于接收重要推送或通知')
+    more_phones = models.CharField('更多电话', max_length=200, blank=True, help_text='其他备用联系电话')
+    email = models.EmailField('邮箱', blank=True, help_text='企业的官方或联系邮箱')
+    company_type = models.CharField('企业(机构)类型', max_length=100, blank=True, help_text='例如：有限责任公司、股份有限公司等')
+    registration_no = models.CharField('注册号', max_length=100, blank=True, help_text='工商注册号')
+    organization_code = models.CharField('组织机构代码', max_length=100, blank=True, help_text='组织机构代码证编号')
+    industry_category = models.CharField('国标行业门类', max_length=100, blank=True, help_text='国标行业分类门类名称或代码')
+    industry_major = models.CharField('国标行业大类', max_length=100, blank=True, help_text='国标行业分类大类')
+    industry_middle = models.CharField('国标行业中类', max_length=100, blank=True, help_text='国标行业分类中类')
+    industry_minor = models.CharField('国标行业小类', max_length=100, blank=True, help_text='国标行业分类小类')
+    company_size = models.CharField('企业规模', max_length=50, blank=True, help_text='例如：大型、中型、小型、微型')
+    english_name = models.CharField('英文名', max_length=200, blank=True, help_text='企业英文名称')
+    former_names = models.CharField('曾用名', max_length=500, blank=True, help_text='企业历史曾用名')
+
     status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='active')
     is_deleted = models.BooleanField('是否软删除', default=False, db_index=True)
 

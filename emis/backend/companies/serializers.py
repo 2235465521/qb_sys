@@ -72,6 +72,12 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             'province_id', 'city_id', 'district_id',
             'latitude', 'longitude', 'contact', 'address',
             'status', 'is_deleted', 'created_at', 'updated_at',
+            # 16个新增详细字段
+            'established_date', 'registered_address', 'registered_zipcode',
+            'valid_mobile', 'more_phones', 'email', 'company_type',
+            'registration_no', 'organization_code', 'industry_category',
+            'industry_major', 'industry_middle', 'industry_minor',
+            'company_size', 'english_name', 'former_names',
         ]
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
 

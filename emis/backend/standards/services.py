@@ -684,3 +684,171 @@ def import_standards_from_excel(file_obj) -> dict:
     result['companies_created'] = companies_created_count
     result['companies_updated'] = companies_updated_count
     return result
+
+
+def generate_standard_import_template(std_type: str) -> tuple:
+    """
+    动态生成导入 Excel 模板，返回 (excel_bytes, filename)
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '标准导入模板'
+    
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    if std_type == 'enterprise':
+        headers = ['标准编号*', '标准名称*', '起草单位/企业名称*', '统一社会信用代码*', '法定代表人', '注册地址', '公开时间(YYYY-MM-DD)', '标准状态(现行/废止/草案)', 'PDF文件名']
+        filename = "企业标准导入模板.xlsx"
+    else:
+        # 国标/行标/地标/团标模板
+        headers = ['标准编号*', '标准名称*', '发布日期(YYYY-MM-DD)', '实施日期(YYYY-MM-DD)', '标准状态(现行/废止/草案)', 'ICS分类号', 'CCS分类号', '关联起草企业名称(可选)', '起草企业信用代码(可选)', '磁盘阵列文件路径(可选)']
+        type_map = {
+            'national': '国家标准',
+            'industry': '行业标准',
+            'local': '地方标准',
+            'group': '团体标准'
+        }
+        filename = f"{type_map.get(std_type, '其他标准')}导入模板.xlsx"
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+        ws.column_dimensions[cell.column_letter].width = 25
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue(), filename
+
+
+def import_standards_by_type(file_obj, std_type: str) -> dict:
+    """
+    多类型标准统一导入逻辑。
+    如果是 enterprise（企业标准），保留原有逻辑，实现对起草单位的企业建档以及 PDF 扫盘对齐。
+    如果是 national/industry/local/group 等，支持字段解析，并支持可选的企业关联。
+    """
+    if std_type == 'enterprise':
+        return import_standards_from_excel(file_obj)
+
+    # 非企业标准导入逻辑
+    import pandas as pd
+    import uuid
+    from django.utils import timezone
+    from companies.models import Company
+    from standards.models import Standard
+    
+    result = {
+        'success': 0,
+        'skipped': 0,
+        'companies_created': 0,
+        'companies_updated': 0,
+        'errors': []
+    }
+
+    try:
+        df = pd.read_excel(file_obj)
+    except Exception as e:
+        result['errors'].append(f'文件解析失败: {str(e)}')
+        return result
+
+    if df.empty:
+        result['errors'].append('Excel 数据为空')
+        return result
+
+    standards_to_create = []
+    skipped_count = 0
+
+    with transaction.atomic():
+        for idx, row in df.iterrows():
+            row_idx = idx + 2
+            
+            # 安全读取前两个核心必填字段
+            std_no = str(row.iloc[0]).strip() if len(row) > 0 and pd.notna(row.iloc[0]) else ''
+            std_title = str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else ''
+            
+            if not std_no or std_no == 'nan':
+                result['errors'].append(f'第 {row_idx} 行: 标准编号必填，已跳过')
+                continue
+            if not std_title or std_title == 'nan':
+                result['errors'].append(f'第 {row_idx} 行: 标准名称必填，已跳过')
+                continue
+
+            clean_id = generate_clean_id(std_no)
+
+            # 查重
+            if Standard.objects.filter(clean_id=clean_id).exists():
+                skipped_count += 1
+                continue
+
+            # 日期解析
+            publish_date = None
+            implement_date = None
+            if len(row) > 2 and pd.notnull(row.iloc[2]):
+                try: publish_date = pd.to_datetime(row.iloc[2]).date()
+                except: pass
+            if len(row) > 3 and pd.notnull(row.iloc[3]):
+                try: implement_date = pd.to_datetime(row.iloc[3]).date()
+                except: pass
+
+            # 状态解析
+            status_str = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ''
+            standard_status = 'active'
+            if '废止' in status_str:
+                standard_status = 'deprecated'
+            elif '草案' in status_str:
+                standard_status = 'draft'
+
+            ics_val = str(row.iloc[5]).strip() if len(row) > 5 and pd.notna(row.iloc[5]) else ''
+            ccs_val = str(row.iloc[6]).strip() if len(row) > 6 and pd.notna(row.iloc[6]) else ''
+
+            # 关联企业逻辑
+            company = None
+            co_name = str(row.iloc[7]).strip() if len(row) > 7 and pd.notna(row.iloc[7]) else ''
+            co_code = str(row.iloc[8]).strip() if len(row) > 8 and pd.notna(row.iloc[8]) else ''
+
+            if co_code and co_code != 'nan':
+                company = Company.objects.filter(credit_code=co_code).first()
+                if not company and co_name and co_name != 'nan':
+                    company = Company.objects.create(
+                        name=co_name,
+                        credit_code=co_code,
+                        status='active'
+                    )
+                    result['companies_created'] += 1
+            elif co_name and co_name != 'nan':
+                company = Company.objects.filter(name=co_name).first()
+                if not company:
+                    company = Company.objects.create(
+                        name=co_name,
+                        credit_code=f'TEMP_{uuid.uuid4().hex[:14].upper()}',
+                        status='active'
+                    )
+                    result['companies_created'] += 1
+
+            disk_path = str(row.iloc[9]).strip() if len(row) > 9 and pd.notna(row.iloc[9]) else ''
+
+            new_standard = Standard(
+                standard_no=std_no,
+                clean_id=clean_id,
+                type=std_type,
+                title=std_title,
+                company=company,
+                publish_date=publish_date,
+                implement_date=implement_date,
+                status=standard_status,
+                ics=ics_val if ics_val != 'nan' else '',
+                ccs=ccs_val if ccs_val != 'nan' else '',
+                disk_filename=disk_path if disk_path != 'nan' else ''
+            )
+            standards_to_create.append(new_standard)
+
+        if standards_to_create:
+            Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+
+    result['success'] = len(standards_to_create)
+    result['skipped'] = skipped_count
+    return result

@@ -93,26 +93,70 @@ class CompanyImportTemplateView(APIView):
 
 class CompanyExportView(APIView):
     """
-    GET /api/admin/companies/export/ — 导出 Excel
+    GET/POST /api/admin/companies/export/ — 高级定制导出 Excel
+    支持参数：
+      - fields: 列名数组，按需导出字段
+      - include_standards: 是否连带导出关联的标准目录
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        params = request.query_params
+    def get_export_params(self, request):
+        if request.method == 'POST':
+            data = request.data or {}
+            fields = data.get('fields', [])
+            include_standards = data.get('include_standards', False)
+            keyword = data.get('keyword', '')
+            province_id = data.get('province_id')
+            city_id = data.get('city_id')
+            district_id = data.get('district_id')
+            status = data.get('status', 'active')
+        else:
+            params = request.query_params
+            fields_str = params.get('fields', '')
+            fields = [f.strip() for f in fields_str.split(',') if f.strip()] if fields_str else []
+            include_standards = params.get('include_standards', 'false').lower() == 'true'
+            keyword = params.get('keyword', '')
+            province_id = params.get('province_id')
+            city_id = params.get('city_id')
+            district_id = params.get('district_id')
+            status = params.get('status', 'active')
+
+        return fields, include_standards, keyword, province_id, city_id, district_id, status
+
+    def handle_export(self, request):
+        fields, include_standards, keyword, province_id, city_id, district_id, status = self.get_export_params(request)
+
+        # 检索符合条件的企业列表
         qs = services.search_companies(
-            keyword=params.get('keyword', ''),
-            province_id=params.get('province_id'),
-            city_id=params.get('city_id'),
-            district_id=params.get('district_id'),
+            keyword=keyword,
+            province_id=province_id,
+            city_id=city_id,
+            district_id=district_id,
+            status=status
         )
 
-        excel_bytes = services.export_companies_to_excel(qs)
+        # 调用高级导出服务
+        excel_bytes = services.export_companies_to_excel_advanced(
+            queryset=qs,
+            fields=fields,
+            include_standards=include_standards
+        )
+
         response = HttpResponse(
             excel_bytes,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        response['Content-Disposition'] = 'attachment; filename="companies_export.xlsx"'
+        # 兼容中文文件名下载
+        from urllib.parse import quote
+        filename = "企业库高级导出.xlsx"
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
         return response
+
+    def get(self, request):
+        return self.handle_export(request)
+
+    def post(self, request):
+        return self.handle_export(request)
 
 
 class AdminDashboardStatsView(APIView):
