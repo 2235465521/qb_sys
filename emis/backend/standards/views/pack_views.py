@@ -265,3 +265,71 @@ class RandomPackRequestView(APIView):
             'status': 'pending',
             'count': len(standard_ids)
         }, status=status.HTTP_202_ACCEPTED)
+
+
+class EnterprisePackRequestView(APIView):
+    """
+    POST /api/client/standards/pack-enterprises/
+    批量打包指定企业名下的所有 PDF 企标文件
+
+    Body: { "enterprise_ids": [1, 2, 3] }
+    Returns: { "task_id": "xxx", "status": "PENDING" }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        enterprise_ids = request.data.get('enterprise_ids', [])
+        if not enterprise_ids or not isinstance(enterprise_ids, list):
+            return Response(
+                {'error': 'enterprise_ids 不能为空且必须为列表'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 限制单次打包企业数
+        if len(enterprise_ids) > 100:
+            return Response(
+                {'error': '单次打包最多选择 100 家企业'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 生成唯一下载 UUID
+        import uuid
+        uuid_str = str(uuid.uuid4())
+
+        # 调度 Celery 异步打包任务
+        from standards.tasks import pack_enterprises_zip_task
+        task = pack_enterprises_zip_task.delay(enterprise_ids=enterprise_ids, uuid_str=uuid_str)
+
+        return Response({
+            'task_id': task.id,
+            'status': 'PENDING'
+        }, status=status.HTTP_202_ACCEPTED)
+
+
+class PackTaskStatusView(APIView):
+    """
+    GET /api/client/standards/pack-tasks/<str:task_id>/
+    查询 Celery 异步打包任务的状态与下载 URL
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, task_id):
+        from celery.result import AsyncResult
+        from django.conf import settings
+
+        result = AsyncResult(task_id)
+        response_data = {
+            'task_id': task_id,
+            'status': result.status, # PENDING, SUCCESS, FAILURE, etc.
+        }
+
+        if result.status == 'SUCCESS':
+            relative_url = result.result # 'exports/{uuid}.zip'
+            if relative_url:
+                response_data['download_url'] = settings.MEDIA_URL + relative_url
+        elif result.status == 'FAILURE':
+            # Celery 异常信息
+            response_data['error'] = str(result.result or result.info or '打包过程中发生未知错误')
+
+        return Response(response_data)
+

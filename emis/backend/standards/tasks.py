@@ -59,6 +59,107 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
         raise self.retry(exc=exc, countdown=5, max_retries=2)
 
 
+@shared_task(bind=True, name='standards.pack_enterprises_zip')
+def pack_enterprises_zip_task(self, enterprise_ids: list, uuid_str: str):
+    """
+    异步打包选中企业名下的所有 PDF 企标文件。
+    目录结构：企业名称/标准号_标准名称.pdf
+    """
+    import os
+    import zipfile
+    from django.conf import settings
+    from companies.models import Company
+    from standards.models import Standard
+    from django.db.models import Q
+
+    # 1. 准备临时导出目录
+    export_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
+    os.makedirs(export_dir, exist_ok=True)
+    
+    zip_filename = f"{uuid_str}.zip"
+    zip_filepath = os.path.join(export_dir, zip_filename)
+    
+    shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
+    
+    added_count = 0
+    skipped_count = 0
+
+    # 2. 查找选中的企业
+    companies = Company.objects.filter(id__in=enterprise_ids)
+
+    with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for company in companies:
+            # 查找该公司名下的所有企标（存在 pdf_file 或 disk_filename）
+            standards = Standard.objects.filter(
+                company=company,
+                type='enterprise'
+            ).filter(
+                (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) | 
+                (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
+            )
+            
+            # 清理企业名称中的非法目录字符
+            safe_company_name = "".join(c for c in company.name if c not in r'\/:*?"<>|').strip()
+            if not safe_company_name:
+                safe_company_name = f"Enterprise_{company.id}"
+
+            for std in standards:
+                file_path = None
+                
+                # 优先使用 disk_filename
+                if std.disk_filename:
+                    norm_disk_filename = std.disk_filename.replace('\\', '/')
+                    full_path = os.path.join(shared_root, norm_disk_filename)
+                    if os.path.exists(full_path):
+                        file_path = full_path
+
+                # 降级使用 pdf_file
+                if not file_path and std.pdf_file and std.pdf_file.name:
+                    rel_path = std.pdf_file.name.replace('\\', '/')
+                    disk_file_path = os.path.join(shared_root, rel_path)
+                    media_file_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+                    
+                    if os.path.exists(disk_file_path):
+                        file_path = disk_file_path
+                    elif os.path.exists(media_file_path):
+                        file_path = media_file_path
+                    elif rel_path.startswith('media/'):
+                        clean_path = rel_path.replace('media/', '', 1)
+                        clean_file_path = os.path.join(settings.MEDIA_ROOT, clean_path)
+                        if os.path.exists(clean_file_path):
+                            file_path = clean_file_path
+
+                if file_path:
+                    # 去除非法文件名字符并把标准号中本身有的/替换为_
+                    safe_std_no = "".join(c for c in std.standard_no if c not in r'\/:*?"<>|').strip()
+                    safe_std_no = safe_std_no.replace('/', '_')
+                    safe_title = "".join(c for c in std.title if c not in r'\/:*?"<>|').strip() if std.title else ""
+                    
+                    if safe_title:
+                        arcname = f"{safe_company_name}/{safe_std_no}_{safe_title}.pdf"
+                    else:
+                        arcname = f"{safe_company_name}/{safe_std_no}.pdf"
+                        
+                    try:
+                        zf.write(file_path, arcname=arcname)
+                        added_count += 1
+                    except Exception:
+                        skipped_count += 1
+                else:
+                    skipped_count += 1
+
+    if added_count == 0:
+        if os.path.exists(zip_filepath):
+            try:
+                os.remove(zip_filepath)
+            except OSError:
+                pass
+        raise ValueError("所选企业下未找到任何可供打包的标准 PDF 文件")
+
+    return f"exports/{zip_filename}"
+
+
+
 # ============================================================
 # 模块三：短信批量发送任务
 # ============================================================

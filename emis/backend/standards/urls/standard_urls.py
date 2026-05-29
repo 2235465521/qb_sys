@@ -4,7 +4,7 @@ standards.urls.standard_urls — 标准路由（模块一）
 
 from django.urls import path
 from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView
-from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView
+from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView
 
 urlpatterns = [
     path('', StandardListView.as_view(), name='client-standard-list'),
@@ -15,4 +15,6 @@ urlpatterns = [
     path('pack/download/', ZipDownloadView.as_view(), name='client-standard-pack-download'),
     path('random-pack/', RandomPackRequestView.as_view(), name='client-standard-random-pack'),
     path('scan-pdf-sync/', ScanPdfSyncView.as_view(), name='client-standard-scan-pdf-sync'),
+    path('pack-enterprises/', EnterprisePackRequestView.as_view(), name='client-enterprise-pack'),
+    path('pack-tasks/<str:task_id>/', PackTaskStatusView.as_view(), name='client-pack-task-status'),
 ]
