@@ -398,6 +398,28 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
                 size=file.size
             )
 
+        # Re-fetch lead with fresh prefetch to load the newly created follow-ups and attachments
+        lead = Lead.objects.select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
+        serializer = self.get_serializer(lead)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='delete_attachment')
+    def delete_attachment(self, request, pk=None):
+        lead = self.get_object()
+        attachment_id = request.data.get('attachment_id')
+        if not attachment_id:
+            return Response({'error': '附件ID不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            attachment = Attachment.objects.get(id=attachment_id, lead=lead)
+            if attachment.file:
+                attachment.file.delete(save=False)
+            attachment.delete()
+        except Attachment.DoesNotExist:
+            return Response({'error': '附件不存在或不属于当前线索'}, status=status.HTTP_404_NOT_FOUND)
+
+        # Re-fetch lead with fresh prefetch to load the updated attachments
+        lead = Lead.objects.select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
         serializer = self.get_serializer(lead)
         return Response(serializer.data, status=status.HTTP_200_OK)
 

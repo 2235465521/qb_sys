@@ -109,6 +109,13 @@ class LeadAPITests(APITestCase):
         self.assertEqual(self.lead.attachments.count(), 1)
         self.assertEqual(self.lead.attachments.first().filename, 'contract_draft.docx')
 
+        # Test deleting the attachment
+        attachment = self.lead.attachments.first()
+        delete_url = reverse('admin-lead-delete-attachment', kwargs={'pk': self.lead.id})
+        delete_response = self.client.post(delete_url, {'attachment_id': attachment.id}, format='json')
+        self.assertEqual(delete_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Attachment.objects.filter(lead=self.lead).count(), 0)
+
     def test_lead_export(self):
         url = reverse('admin-lead-export')
         # GET export

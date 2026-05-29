@@ -58,7 +58,8 @@ const AdminLeadsPage: React.FC = () => {
     createAdminLeadMutation, 
     updateLeadMutation, 
     deleteLeadMutation,
-    addFollowUpMutation 
+    addFollowUpMutation,
+    deleteAttachmentMutation
   } = useCompanyLeads();
 
   const { data, isLoading, refetch } = useAdminLeads(params);
@@ -206,6 +207,18 @@ const AdminLeadsPage: React.FC = () => {
       setSelectedLead(updatedLead);
       setFollowupText('');
       setFollowupFiles([]);
+      refetch();
+    } catch (err) {}
+  };
+
+  const handleDeleteAttachment = async (attachmentId: number) => {
+    if (!selectedLead || !selectedLead.id) return;
+    try {
+      const updatedLead = await deleteAttachmentMutation.mutateAsync({
+        leadId: selectedLead.id,
+        attachmentId
+      });
+      setSelectedLead(updatedLead);
       refetch();
     } catch (err) {}
   };
@@ -1096,6 +1109,22 @@ const AdminLeadsPage: React.FC = () => {
                                     {att.filename}
                                   </div>
                                 </Tooltip>
+                                <Popconfirm
+                                  title="确认删除该图片？"
+                                  onConfirm={() => handleDeleteAttachment(att.id)}
+                                  okText="确定"
+                                  cancelText="取消"
+                                >
+                                  <Button 
+                                    type="text" 
+                                    danger 
+                                    size="small" 
+                                    icon={<DeleteOutlined style={{ fontSize: 10 }} />}
+                                    style={{ height: 20, fontSize: 11, padding: '0 4px', marginTop: 2 }}
+                                  >
+                                    删除
+                                  </Button>
+                                </Popconfirm>
                               </div>
                             ))}
                           </Image.PreviewGroup>
@@ -1137,13 +1166,29 @@ const AdminLeadsPage: React.FC = () => {
                                   </Text>
                                 </div>
                               </Space>
-                              <Button 
-                                type="text" 
-                                icon={<EyeOutlined />} 
-                                onClick={() => window.open(att.file_url || att.file, '_blank')}
-                              >
-                                预览 / 下载
-                              </Button>
+                              <Space>
+                                <Button 
+                                  type="text" 
+                                  icon={<EyeOutlined />} 
+                                  onClick={() => window.open(att.file_url || att.file, '_blank')}
+                                >
+                                  预览 / 下载
+                                </Button>
+                                <Popconfirm
+                                  title="确认删除该文件？"
+                                  onConfirm={() => handleDeleteAttachment(att.id)}
+                                  okText="确定"
+                                  cancelText="取消"
+                                >
+                                  <Button 
+                                    type="text" 
+                                    danger 
+                                    icon={<DeleteOutlined />}
+                                  >
+                                    删除
+                                  </Button>
+                                </Popconfirm>
+                              </Space>
                             </div>
                           ))}
                         </div>

@@ -148,13 +148,31 @@ export const useCompanyLeads = () => {
     }
   });
 
+  // 7. Admin Delete Lead Attachment (POST to /admin/companies/leads/:id/delete_attachment/)
+  const deleteAttachmentMutation = useMutation({
+    mutationFn: async ({ leadId, attachmentId }: { leadId: number; attachmentId: number }) => {
+      const { data } = await apiClient.post<Lead>(`/admin/companies/leads/${leadId}/delete_attachment/`, {
+        attachment_id: attachmentId
+      });
+      return data;
+    },
+    onSuccess: () => {
+      message.success('附件已成功删除。');
+      queryClient.invalidateQueries({ queryKey: ['admin_leads'] });
+    },
+    onError: (err: any) => {
+      message.error(err.response?.data?.error || '删除附件失败，请重试！');
+    }
+  });
+
   return {
     createLeadMutation,
     useAdminLeads,
     createAdminLeadMutation,
     updateLeadMutation,
     deleteLeadMutation,
-    addFollowUpMutation
+    addFollowUpMutation,
+    deleteAttachmentMutation
   };
 };
 
