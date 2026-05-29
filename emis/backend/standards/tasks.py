@@ -189,8 +189,12 @@ def align_disk_files_task(self):
             return "".join(c for c in s if c.isalnum()).lower() if s else ""
 
         file_norms = [(f, normalize(f)) for f in disk_files]
-        standards = Standard.objects.all()
+        
+        # 优化1：避免一次性加载所有记录导致内存溢出 (OOM)，只查询需要的字段并使用游标按块流式获取
+        standards = Standard.objects.only('id', 'clean_id', 'pdf_file').iterator(chunk_size=10000)
+        
         success_count = 0
+        updates = []
 
         for std in standards:
             if not std.clean_id:
@@ -210,8 +214,17 @@ def align_disk_files_task(self):
                 relative_path = f"整合/{matched_file}"
                 if std.pdf_file.name != relative_path:
                     std.pdf_file.name = relative_path
-                    std.save(update_fields=['pdf_file'])
+                    updates.append(std)
                 success_count += 1
+                
+            # 优化2：每积攒 1000 条记录执行一次批量更新，极大减少数据库 I/O 压力
+            if len(updates) >= 1000:
+                Standard.objects.bulk_update(updates, ['pdf_file'])
+                updates = []
+
+        # 将剩余未满 1000 条的记录更新掉
+        if updates:
+            Standard.objects.bulk_update(updates, ['pdf_file'])
 
         # 2. 写入成功结果
         cache.set('scan_pdf_sync_task', {
