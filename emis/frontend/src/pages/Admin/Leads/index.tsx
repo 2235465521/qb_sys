@@ -256,15 +256,19 @@ const AdminLeadsPage: React.FC = () => {
       if (!response.ok) throw new Error('获取文本内容失败');
       const blob = await response.blob();
       
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const text = e.target?.result as string;
-        setTxtModalTitle(filename);
-        setTxtModalContent(text);
-        setTxtModalOpen(true);
-      };
-      // 设置以 GBK / GB2312 编码解码，支持 Windows 中文 TXT 格式
-      reader.readAsText(blob, 'gbk');
+      const buffer = await blob.arrayBuffer();
+      let text = '';
+      try {
+        const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+        text = utf8Decoder.decode(buffer);
+      } catch (e) {
+        const gbkDecoder = new TextDecoder('gbk');
+        text = gbkDecoder.decode(buffer);
+      }
+
+      setTxtModalTitle(filename);
+      setTxtModalContent(text);
+      setTxtModalOpen(true);
     } catch (err) {
       console.error(err);
       message.error('读取文本内容失败，请直接下载查看！');
@@ -1252,35 +1256,51 @@ const AdminLeadsPage: React.FC = () => {
                                   padding: '8px 12px',
                                   background: '#ffffff',
                                   borderRadius: 8,
-                                  border: '1px solid #f0f0f0'
+                                  border: '1px solid #f0f0f0',
+                                  width: '100%',
+                                  minWidth: 0,
+                                  gap: '12px'
                                 }}
                               >
-                                <Space>
-                                  {getFileIcon(att.filename)}
-                                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                    <Text strong style={{ fontSize: 12, maxWidth: 300 }} ellipsis={{ tooltip: att.filename }}>
-                                      {att.filename}
-                                    </Text>
+                                <div style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0, gap: '8px' }}>
+                                  <span style={{ display: 'inline-flex', flexShrink: 0 }}>
+                                    {getFileIcon(att.filename)}
+                                  </span>
+                                  <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+                                    <Tooltip title={att.filename}>
+                                      <Text 
+                                        strong 
+                                        style={{ 
+                                          fontSize: 12, 
+                                          overflow: 'hidden', 
+                                          textOverflow: 'ellipsis', 
+                                          whiteSpace: 'nowrap', 
+                                          display: 'block' 
+                                        }}
+                                      >
+                                        {att.filename}
+                                      </Text>
+                                    </Tooltip>
                                     <Text type="secondary" style={{ fontSize: 10 }}>
                                       {formatBytes(att.size)} · 上传于 {new Date(att.created_at).toLocaleDateString()}
                                     </Text>
                                   </div>
-                                </Space>
-                                <Space size={8}>
+                                </div>
+                                <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                                   {canPreview ? (
-                                    <Button 
-                                      type="text" 
-                                      icon={<EyeOutlined />} 
-                                      onClick={() => {
-                                        if (ext === 'pdf') {
-                                          window.open(fileUrl, '_blank');
-                                        } else if (ext === 'txt') {
-                                          handlePreviewTxtFile(fileUrl, att.filename);
-                                        }
-                                      }}
-                                    >
-                                      预览
-                                    </Button>
+                                    <Tooltip title="预览">
+                                      <Button 
+                                        type="text" 
+                                        icon={<EyeOutlined />} 
+                                        onClick={() => {
+                                          if (ext === 'pdf') {
+                                            window.open(fileUrl, '_blank');
+                                          } else if (ext === 'txt') {
+                                            handlePreviewTxtFile(fileUrl, att.filename);
+                                          }
+                                        }}
+                                      />
+                                    </Tooltip>
                                   ) : (
                                     <Tooltip title={isOffice ? "不支持在线预览，请下载查看" : "不支持在线预览"}>
                                       <span>
@@ -1288,20 +1308,18 @@ const AdminLeadsPage: React.FC = () => {
                                           type="text" 
                                           disabled 
                                           icon={<EyeOutlined />}
-                                        >
-                                          预览
-                                        </Button>
+                                        />
                                       </span>
                                     </Tooltip>
                                   )}
 
-                                  <Button 
-                                    type="text" 
-                                    icon={<DownloadOutlined />} 
-                                    onClick={() => downloadFileByBlob(fileUrl, att.filename)}
-                                  >
-                                    下载
-                                  </Button>
+                                  <Tooltip title="下载">
+                                    <Button 
+                                      type="text" 
+                                      icon={<DownloadOutlined />} 
+                                      onClick={() => downloadFileByBlob(fileUrl, att.filename)}
+                                    />
+                                  </Tooltip>
 
                                   <Popconfirm
                                     title="确认删除该文件？"
@@ -1309,15 +1327,15 @@ const AdminLeadsPage: React.FC = () => {
                                     okText="确定"
                                     cancelText="取消"
                                   >
-                                    <Button 
-                                      type="text" 
-                                      danger 
-                                      icon={<DeleteOutlined />}
-                                    >
-                                      删除
-                                    </Button>
+                                    <Tooltip title="删除">
+                                      <Button 
+                                        type="text" 
+                                        danger 
+                                        icon={<DeleteOutlined />}
+                                      />
+                                    </Tooltip>
                                   </Popconfirm>
-                                </Space>
+                                </div>
                               </div>
                             );
                           })}
