@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Space, message, Modal, Checkbox, Switch, Row, Col, Divider } from 'antd';
+import { Button, Space, message, Modal, Checkbox, Switch, Row, Col, Divider, Radio } from 'antd';
 import { PlusOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import DataTable from './components/DataTable';
@@ -41,6 +41,13 @@ const EXPORT_FIELDS_OPTIONS = [
   { label: '曾用名', value: 'former_names' }
 ];
 
+// 定义预设模板字段集合
+const PRESETS = {
+  basic: ['name', 'credit_code', 'legal_person', 'province', 'city', 'district', 'address', 'status', 'created_at'],
+  contact: ['name', 'contact', 'valid_mobile', 'more_phones', 'email'],
+  all: EXPORT_FIELDS_OPTIONS.map(o => o.value)
+};
+
 const CompanyListPage: React.FC = () => {
   const [params, setParams] = useState<CompanySearchParams>({ page: 1 });
   const [modalVisible, setModalVisible] = useState(false);
@@ -48,8 +55,12 @@ const CompanyListPage: React.FC = () => {
   const [editingRecord, setEditingRecord] = useState<Company | null>(null);
   const [isViewOnly, setIsViewOnly] = useState(false);
 
+  // 表格复选框勾选的行 ID 列表
+  const [selectedRowKeys, setSelectedRowKeys] = useState<number[]>([]);
+
   // 导出配置 Modal 状态
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportScope, setExportScope] = useState<'selected' | 'query'>('query');
   const [exportFields, setExportFields] = useState<string[]>(EXPORT_FIELDS_OPTIONS.map(o => o.value));
   const [includeStandards, setIncludeStandards] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -90,6 +101,12 @@ const CompanyListPage: React.FC = () => {
   };
 
   const handleExportClick = () => {
+    // 默认根据是否有勾选行决定导出范围
+    if (selectedRowKeys.length > 0) {
+      setExportScope('selected');
+    } else {
+      setExportScope('query');
+    }
     setExportModalVisible(true);
   };
 
@@ -103,10 +120,12 @@ const CompanyListPage: React.FC = () => {
       setExporting(true);
       message.loading({ content: '正在导出 Excel 数据...', key: 'exporting', duration: 0 });
       
-      // 使用 POST 请求发送大对象数组 fields，解决 URL 参数过长的限制
+      // 发送高级导出 POST 请求
       const response = await apiClient.post('/admin/companies/export/', {
-        ...params,
-        fields: exportFields,
+        export_scope: exportScope,
+        ids: exportScope === 'selected' ? selectedRowKeys : [],
+        filters: params, // 将当前页面检索条件传入
+        selected_fields: exportFields,
         include_standards: includeStandards,
       }, {
         responseType: 'blob',
@@ -115,18 +134,29 @@ const CompanyListPage: React.FC = () => {
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `企业数据导出_${new Date().toLocaleDateString()}.xlsx`);
+      link.setAttribute('download', `企业高级定制导出_${new Date().toLocaleDateString()}.xlsx`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
-      message.success({ content: '导出成功！', key: 'exporting' });
+      message.success({ content: '数据导出成功！', key: 'exporting' });
       setExportModalVisible(false);
-    } catch (error) {
-      message.error({ content: '导出失败，请重试', key: 'exporting' });
+    } catch (error: any) {
+      message.error({ content: '导出失败，请重新尝试。', key: 'exporting' });
     } finally {
       setExporting(false);
     }
+  };
+
+  // 快捷操作：反选
+  const handleInvertSelectFields = () => {
+    const allFieldValues = EXPORT_FIELDS_OPTIONS.map(o => o.value);
+    setExportFields(prev => allFieldValues.filter(val => !prev.includes(val)));
+  };
+
+  // 快捷应用预设模板
+  const applyPresetTemplate = (type: 'basic' | 'contact' | 'all') => {
+    setExportFields(PRESETS[type]);
   };
 
   return (
@@ -159,6 +189,8 @@ const CompanyListPage: React.FC = () => {
           pageSize: 20,
           total: companyQuery.data?.count || 0,
         }}
+        selectedRowKeys={selectedRowKeys}
+        onSelectionChange={setSelectedRowKeys}
         onEdit={handleEdit}
         onViewDetails={handleViewDetails}
         onDelete={(id) => deleteMutation.mutate(id)}
@@ -191,51 +223,85 @@ const CompanyListPage: React.FC = () => {
         title={
           <Space>
             <ExportOutlined style={{ color: '#1890ff' }} />
-            <span>配置导出属性</span>
+            <span>高级数据导出</span>
           </Space>
         }
         open={exportModalVisible}
         onCancel={() => setExportModalVisible(false)}
         onOk={executeExport}
         confirmLoading={exporting}
-        width={680}
+        width={720}
         okText="确认导出"
         cancelText="取消"
+        destroyOnClose
       >
         <div style={{ padding: '8px 0' }}>
-          <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontWeight: 500 }}>选择需要导出的字段：</span>
-            <Checkbox
-              checked={exportFields.length === EXPORT_FIELDS_OPTIONS.length}
-              indeterminate={exportFields.length > 0 && exportFields.length < EXPORT_FIELDS_OPTIONS.length}
-              onChange={(e) => {
-                setExportFields(e.target.checked ? EXPORT_FIELDS_OPTIONS.map(o => o.value) : []);
-              }}
-            >
-              全选
-            </Checkbox>
-          </div>
           
-          <Checkbox.Group 
-            value={exportFields} 
-            onChange={(checkedValues) => setExportFields(checkedValues as string[])}
-            style={{ width: '100%' }}
-          >
-            <Row gutter={[12, 12]}>
-              {EXPORT_FIELDS_OPTIONS.map((opt) => (
-                <Col span={6} key={opt.value}>
-                  <Checkbox value={opt.value}>{opt.label}</Checkbox>
-                </Col>
-              ))}
-            </Row>
-          </Checkbox.Group>
+          {/* 1. 导出范围配置 */}
+          <div style={{ marginBottom: 20 }}>
+            <span style={{ fontWeight: 600, display: 'block', marginBottom: 8, color: '#333' }}>1. 导出数据范围：</span>
+            <Radio.Group 
+              value={exportScope} 
+              onChange={(e) => setExportScope(e.target.value)}
+              style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
+              <Radio value="selected" disabled={selectedRowKeys.length === 0}>
+                导出当前选中数据 <span style={{ color: '#1890ff', fontWeight: 'bold' }}>({selectedRowKeys.length} 条)</span>
+                {selectedRowKeys.length === 0 && <span style={{ color: '#bfbfbf', fontSize: 12, marginLeft: 8 }}>(请在表格中先勾选行数据才能选用)</span>}
+              </Radio>
+              <Radio value="query">
+                导出当前检索条件下的所有数据 <span style={{ color: '#52c41a', fontWeight: 'bold' }}>({companyQuery.data?.count || 0} 条)</span>
+              </Radio>
+            </Radio.Group>
+          </div>
 
-          <Divider style={{ margin: '16px 0' }} />
+          <Divider style={{ margin: '12px 0' }} />
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* 2. 导出字段配置 */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <span style={{ fontWeight: 600, color: '#333' }}>2. 自定义导出字段属性：</span>
+              
+              {/* 字段勾选辅助按钮组 */}
+              <Space size="small">
+                <Button size="small" type="link" onClick={() => applyPresetTemplate('all')}>全选</Button>
+                <Button size="small" type="link" onClick={() => setExportFields([])}>清空</Button>
+                <Button size="small" type="link" onClick={handleInvertSelectFields}>反选</Button>
+              </Space>
+            </div>
+
+            {/* 预设快捷模板选择 */}
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 13, color: '#8c8c8c' }}>预设配置模版：</span>
+              <Space>
+                <Button size="small" style={{ borderRadius: 12 }} onClick={() => applyPresetTemplate('basic')}>仅基本信息</Button>
+                <Button size="small" style={{ borderRadius: 12 }} onClick={() => applyPresetTemplate('contact')}>仅联系方式</Button>
+                <Button size="small" style={{ borderRadius: 12 }} onClick={() => applyPresetTemplate('all')}>导出全部字段</Button>
+              </Space>
+            </div>
+            
+            <Checkbox.Group 
+              value={exportFields} 
+              onChange={(checkedValues) => setExportFields(checkedValues as string[])}
+              style={{ width: '100%' }}
+            >
+              <Row gutter={[12, 12]} style={{ maxHeight: 200, overflowY: 'auto', padding: '4px 0' }}>
+                {EXPORT_FIELDS_OPTIONS.map((opt) => (
+                  <Col span={6} key={opt.value}>
+                    <Checkbox value={opt.value}>{opt.label}</Checkbox>
+                  </Col>
+                ))}
+              </Row>
+            </Checkbox.Group>
+          </div>
+
+          <Divider style={{ margin: '12px 0' }} />
+
+          {/* 3. 级联数据配置 */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
             <div>
-              <span style={{ fontWeight: 500, display: 'block' }}>是否同时导出该企业关联的标准目录</span>
-              <span style={{ fontSize: 12, color: '#8c8c8c' }}>开启后，将在导出的 Excel 末尾自动追加该公司关联的所有“标准目录”列表</span>
+              <span style={{ fontWeight: 600, display: 'block', color: '#333' }}>3. 级联数据选项：是否同时导出企业关联的标准目录</span>
+              <span style={{ fontSize: 12, color: '#8c8c8c' }}>启用后，将在 Excel 数据末尾自动生成“关联标准目录”列平铺显示所有关联标准信息</span>
             </div>
             <Switch 
               checked={includeStandards} 

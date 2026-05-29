@@ -2,22 +2,48 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/api/client';
 import { message } from 'antd';
 
-export interface CompanyLead {
+export interface Attachment {
+  id: number;
+  file: string;
+  filename: string;
+  size: number;
+  file_url: string;
+  created_at: string;
+}
+
+export interface FollowUp {
+  id: number;
+  lead: number;
+  content: string;
+  created_at: string;
+  creator: number;
+  creator_name: string;
+}
+
+export interface Lead {
   id?: number;
-  company: number;
-  company_name?: string;
-  company_credit_code?: string;
-  source: 'wechat_mp' | 'wechat_video' | 'referral' | 'active_inquiry' | 'other';
+  source: 'wechat' | 'phone' | 'visit' | 'other';
   source_display?: string;
+  req_type: 'data_correction' | 'business_cooperation' | 'general_inquiry';
+  req_type_display?: string;
+  status: 'pending' | 'following' | 'solved' | 'closed';
+  status_display?: string;
+  assignee: number | null;
+  assignee_name?: string;
+  enterprise: number | null;
+  enterprise_name?: string;
+  enterprise_credit_code?: string;
   contact_name: string;
   contact_phone: string;
   contact_wechat: string;
-  status: 'pending' | 'contacted' | 'interested' | 'vip_signed' | 'failed';
-  status_display?: string;
-  memo: string;
+  followups?: FollowUp[];
+  attachments?: Attachment[];
   created_at?: string;
   updated_at?: string;
 }
+
+// 保持向前兼容的别名
+export type CompanyLead = Lead;
 
 export interface LeadListParams {
   page?: number;
@@ -31,12 +57,12 @@ export const useCompanyLeads = () => {
 
   // 1. Client Lead Creation Mutation (POST to /client/search/leads/)
   const createLeadMutation = useMutation({
-    mutationFn: async (leadData: Partial<CompanyLead>) => {
-      const { data } = await apiClient.post<CompanyLead>('/client/search/leads/', leadData);
+    mutationFn: async (leadData: Partial<Lead>) => {
+      const { data } = await apiClient.post<Lead>('/client/search/leads/', leadData);
       return data;
     },
     onSuccess: () => {
-      message.success('意向线索建档成功！运营团队将第一时间跟进处理。');
+      message.success('意向线索提交成功！运营团队将第一时间跟进处理。');
       queryClient.invalidateQueries({ queryKey: ['admin_leads'] });
     },
     onError: (err: any) => {
@@ -50,7 +76,7 @@ export const useCompanyLeads = () => {
     return useQuery({
       queryKey: ['admin_leads', params],
       queryFn: async () => {
-        const { data } = await apiClient.get<{ results: CompanyLead[]; count: number }>('/admin/companies/leads/', {
+        const { data } = await apiClient.get<{ results: Lead[]; count: number }>('/admin/companies/leads/', {
           params
         });
         return data;
@@ -58,10 +84,27 @@ export const useCompanyLeads = () => {
     });
   };
 
-  // 3. Admin Lead Update Mutation (PUT to /admin/companies/leads/:id/)
+  // 3. Admin Lead Creation Mutation (POST to /admin/companies/leads/)
+  const createAdminLeadMutation = useMutation({
+    mutationFn: async (leadData: FormData) => {
+      const { data } = await apiClient.post<Lead>('/admin/companies/leads/', leadData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return data;
+    },
+    onSuccess: () => {
+      message.success('意向线索新建成功！');
+      queryClient.invalidateQueries({ queryKey: ['admin_leads'] });
+    },
+    onError: (err: any) => {
+      message.error(err.response?.data?.detail || '新建线索失败，请重试！');
+    }
+  });
+
+  // 4. Admin Lead Update Mutation (PUT/PATCH to /admin/companies/leads/:id/)
   const updateLeadMutation = useMutation({
-    mutationFn: async ({ id, ...leadData }: { id: number } & Partial<CompanyLead>) => {
-      const { data } = await apiClient.put<CompanyLead>(`/admin/companies/leads/${id}/`, leadData);
+    mutationFn: async ({ id, ...leadData }: { id: number } & Partial<Lead>) => {
+      const { data } = await apiClient.patch<Lead>(`/admin/companies/leads/${id}/`, leadData);
       return data;
     },
     onSuccess: () => {
@@ -73,7 +116,7 @@ export const useCompanyLeads = () => {
     }
   });
 
-  // 4. Admin Lead Delete Mutation (DELETE /admin/companies/leads/:id/)
+  // 5. Admin Lead Delete Mutation (DELETE /admin/companies/leads/:id/)
   const deleteLeadMutation = useMutation({
     mutationFn: async (id: number) => {
       await apiClient.delete(`/admin/companies/leads/${id}/`);
@@ -88,10 +131,30 @@ export const useCompanyLeads = () => {
     }
   });
 
+  // 6. Admin Add FollowUp & Upload Attachments (POST to /admin/companies/leads/:id/followup/)
+  const addFollowUpMutation = useMutation({
+    mutationFn: async ({ leadId, formData }: { leadId: number; formData: FormData }) => {
+      const { data } = await apiClient.post<Lead>(`/admin/companies/leads/${leadId}/followup/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      return data;
+    },
+    onSuccess: () => {
+      message.success('跟进记录与附件提交成功！');
+      queryClient.invalidateQueries({ queryKey: ['admin_leads'] });
+    },
+    onError: (err: any) => {
+      message.error(err.response?.data?.detail || '跟进提交失败，请重试！');
+    }
+  });
+
   return {
     createLeadMutation,
     useAdminLeads,
+    createAdminLeadMutation,
     updateLeadMutation,
-    deleteLeadMutation
+    deleteLeadMutation,
+    addFollowUpMutation
   };
 };
+

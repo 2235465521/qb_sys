@@ -12,8 +12,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
 
-from companies.models import Company, CompanyLead
-from companies.serializers import CompanySerializer, CompanyListSerializer, CompanyLeadSerializer
+from companies.models import Company, Lead, FollowUp, Attachment
+from companies.serializers import CompanySerializer, CompanyListSerializer, LeadSerializer, FollowUpSerializer, AttachmentSerializer
 from companies import services
 
 
@@ -93,70 +93,93 @@ class CompanyImportTemplateView(APIView):
 
 class CompanyExportView(APIView):
     """
-    GET/POST /api/admin/companies/export/ — 高级定制导出 Excel
-    支持参数：
-      - fields: 列名数组，按需导出字段
+    GET/POST /api/admin/companies/export/ — 高级定制数据导出 Excel
+    支持 POST 请求参数：
+      - export_scope: 导出范围选择 ("selected" 或 "query")
+      - ids: 如果是 "selected"，传选中的企业 ID 列表
+      - filters: 如果是 "query"，传当前筛选条件字典 (keyword, province_id, city_id, district_id, status)
+      - selected_fields: 列名数组，按需导出字段
       - include_standards: 是否连带导出关联的标准目录
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_export_params(self, request):
-        if request.method == 'POST':
-            data = request.data or {}
-            fields = data.get('fields', [])
-            include_standards = data.get('include_standards', False)
-            keyword = data.get('keyword', '')
-            province_id = data.get('province_id')
-            city_id = data.get('city_id')
-            district_id = data.get('district_id')
-            status = data.get('status', 'active')
+    def post(self, request):
+        data = request.data or {}
+        export_scope = data.get('export_scope', 'query')
+        selected_fields = data.get('selected_fields', [])
+        include_standards = data.get('include_standards', False)
+
+        if export_scope == 'selected':
+            ids = data.get('ids', [])
+            if not ids:
+                return Response({'error': '未提供选中的企业ID列表'}, status=status.HTTP_400_BAD_REQUEST)
+            qs = Company.objects.filter(id__in=ids, is_deleted=False)
         else:
-            params = request.query_params
-            fields_str = params.get('fields', '')
-            fields = [f.strip() for f in fields_str.split(',') if f.strip()] if fields_str else []
-            include_standards = params.get('include_standards', 'false').lower() == 'true'
-            keyword = params.get('keyword', '')
-            province_id = params.get('province_id')
-            city_id = params.get('city_id')
-            district_id = params.get('district_id')
-            status = params.get('status', 'active')
+            filters = data.get('filters', {})
+            qs = services.search_companies(
+                keyword=filters.get('keyword', ''),
+                province_id=filters.get('province_id'),
+                city_id=filters.get('city_id'),
+                district_id=filters.get('district_id'),
+                status=filters.get('status', 'active')
+            )
 
-        return fields, include_standards, keyword, province_id, city_id, district_id, status
+        if not qs.exists():
+            return Response({'error': '当前导出的数据范围为空，没有找到任何符合条件的企业数据。'}, status=status.HTTP_400_BAD_REQUEST)
 
-    def handle_export(self, request):
-        fields, include_standards, keyword, province_id, city_id, district_id, status = self.get_export_params(request)
-
-        # 检索符合条件的企业列表
-        qs = services.search_companies(
-            keyword=keyword,
-            province_id=province_id,
-            city_id=city_id,
-            district_id=district_id,
-            status=status
-        )
-
-        # 调用高级导出服务
-        excel_bytes = services.export_companies_to_excel_advanced(
-            queryset=qs,
-            fields=fields,
-            include_standards=include_standards
-        )
+        try:
+            excel_bytes = services.export_companies_to_excel_advanced(
+                queryset=qs,
+                fields=selected_fields,
+                include_standards=include_standards
+            )
+        except Exception as e:
+            return Response({'error': f'生成 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         response = HttpResponse(
             excel_bytes,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
         )
-        # 兼容中文文件名下载
         from urllib.parse import quote
-        filename = "企业库高级导出.xlsx"
+        filename = "企业高级定制数据导出.xlsx"
         response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
         return response
 
     def get(self, request):
-        return self.handle_export(request)
+        """兼容 GET 请求，回退至 query 检索范围下的普通或定制导出"""
+        params = request.query_params
+        fields_str = params.get('fields', '')
+        selected_fields = [f.strip() for f in fields_str.split(',') if f.strip()] if fields_str else []
+        include_standards = params.get('include_standards', 'false').lower() == 'true'
+        
+        qs = services.search_companies(
+            keyword=params.get('keyword', ''),
+            province_id=params.get('province_id'),
+            city_id=params.get('city_id'),
+            district_id=params.get('district_id'),
+            status=params.get('status', 'active')
+        )
 
-    def post(self, request):
-        return self.handle_export(request)
+        if not qs.exists():
+            return Response({'error': '未找到符合条件的企业数据'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            excel_bytes = services.export_companies_to_excel_advanced(
+                queryset=qs,
+                fields=selected_fields,
+                include_standards=include_standards
+            )
+        except Exception as e:
+            return Response({'error': f'生成 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(
+            excel_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        from urllib.parse import quote
+        filename = "企业高级定制数据导出.xlsx"
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return response
 
 
 class AdminDashboardStatsView(APIView):
@@ -241,18 +264,21 @@ class AdminDashboardStatsView(APIView):
 
 from rest_framework import viewsets
 from rest_framework.filters import SearchFilter
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-class AdminCompanyLeadViewSet(viewsets.ModelViewSet):
+class AdminLeadViewSet(viewsets.ModelViewSet):
     """
     后台意向客户销售线索管理 (CRM)
     提供 List / Retrieve / Create / Update / Delete
     支持根据企业名称、联系人等做模糊查询，以及根据渠道和跟进状态的过滤
     """
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = CompanyLeadSerializer
-    queryset = CompanyLead.objects.all().select_related('company')
+    serializer_class = LeadSerializer
+    queryset = Lead.objects.all().select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments')
     filter_backends = [SearchFilter]
-    search_fields = ['company__name', 'contact_name', 'contact_phone', 'contact_wechat']
+    search_fields = ['enterprise__name', 'contact_name', 'contact_phone', 'contact_wechat']
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -263,4 +289,128 @@ class AdminCompanyLeadViewSet(viewsets.ModelViewSet):
         if source_param:
             queryset = queryset.filter(source=source_param)
         return queryset
+
+    def perform_create(self, serializer):
+        lead = serializer.save()
+        # 处理新建线索时直接上传的附件
+        files = self.request.FILES.getlist('files')
+        for file in files:
+            Attachment.objects.create(
+                lead=lead,
+                file=file,
+                filename=file.name,
+                size=file.size
+            )
+
+    def perform_update(self, serializer):
+        old_status = serializer.instance.status
+        instance = serializer.save()
+        new_status = instance.status
+        if old_status != new_status:
+            new_display = instance.get_status_display()
+            FollowUp.objects.create(
+                lead=instance,
+                content=f"[系统日志] 负责人将线索状态变更为：{new_display}",
+                creator=self.request.user
+            )
+
+    @action(detail=True, methods=['post'], url_path='followup')
+    def add_followup(self, request, pk=None):
+        lead = self.get_object()
+        content = request.data.get('content', '')
+        files = request.FILES.getlist('files')
+
+        if not content and not files:
+            return Response({'error': '跟进内容或附件不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if content:
+            FollowUp.objects.create(
+                lead=lead,
+                content=content,
+                creator=request.user
+            )
+
+        for file in files:
+            Attachment.objects.create(
+                lead=lead,
+                file=file,
+                filename=file.name,
+                size=file.size
+            )
+
+        serializer = self.get_serializer(lead)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post', 'get'], url_path='export')
+    def export(self, request):
+        if request.method == 'POST':
+            data = request.data or {}
+            export_scope = data.get('export_scope', 'query')
+            selected_fields = data.get('selected_fields', [])
+
+            if export_scope == 'selected':
+                ids = data.get('ids', [])
+                if not ids:
+                    return Response({'error': '未提供选中的线索ID列表'}, status=status.HTTP_400_BAD_REQUEST)
+                qs = Lead.objects.filter(id__in=ids).select_related('assignee', 'enterprise')
+            else:
+                filters = data.get('filters', {})
+                qs = self.get_queryset().prefetch_related(None)
+                status_param = filters.get('status')
+                source_param = filters.get('source')
+                keyword = filters.get('keyword')
+                if status_param:
+                    qs = qs.filter(status=status_param)
+                if source_param:
+                    qs = qs.filter(source=source_param)
+                if keyword:
+                    from django.db.models import Q
+                    qs = qs.filter(
+                        Q(contact_name__icontains=keyword) |
+                        Q(contact_phone__icontains=keyword) |
+                        Q(contact_wechat__icontains=keyword) |
+                        Q(enterprise__name__icontains=keyword)
+                    )
+        else:
+            params = request.query_params
+            fields_str = params.get('fields', '')
+            selected_fields = [f.strip() for f in fields_str.split(',') if f.strip()] if fields_str else []
+
+            qs = self.get_queryset().prefetch_related(None)
+            status_param = params.get('status')
+            source_param = params.get('source')
+            keyword = params.get('keyword')
+            if status_param:
+                qs = qs.filter(status=status_param)
+            if source_param:
+                qs = qs.filter(source=source_param)
+            if keyword:
+                from django.db.models import Q
+                qs = qs.filter(
+                    Q(contact_name__icontains=keyword) |
+                    Q(contact_phone__icontains=keyword) |
+                    Q(contact_wechat__icontains=keyword) |
+                    Q(enterprise__name__icontains=keyword)
+                )
+
+        if not qs.exists():
+            return Response({'error': '当前导出的数据范围为空，没有找到任何符合条件的线索数据。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            excel_bytes = services.export_leads_to_excel_advanced(
+                queryset=qs,
+                fields=selected_fields
+            )
+        except Exception as e:
+            return Response({'error': f'生成 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(
+            excel_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        from urllib.parse import quote
+        filename = "线索高级定制数据导出.xlsx"
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return response
+
 

@@ -10,7 +10,7 @@ from companies.views.admin_views import (
     CompanyImportTemplateView,
     CompanyExportView,
     AdminDashboardStatsView,
-    AdminCompanyLeadViewSet,
+    AdminLeadViewSet,
 )
 
 urlpatterns = [
@@ -20,6 +20,9 @@ urlpatterns = [
     path('import/template/', CompanyImportTemplateView.as_view(), name='admin-company-import-template'),
     path('export/', CompanyExportView.as_view(), name='admin-company-export'),
     path('dashboard/stats/', AdminDashboardStatsView.as_view(), name='admin-dashboard-stats'),
-    path('leads/', AdminCompanyLeadViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-lead-list'),
-    path('leads/<int:pk>/', AdminCompanyLeadViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='admin-lead-detail'),
+    path('leads/', AdminLeadViewSet.as_view({'get': 'list', 'post': 'create'}), name='admin-lead-list'),
+    path('leads/<int:pk>/', AdminLeadViewSet.as_view({'get': 'retrieve', 'put': 'update', 'patch': 'partial_update', 'delete': 'destroy'}), name='admin-lead-detail'),
+    path('leads/<int:pk>/followup/', AdminLeadViewSet.as_view({'post': 'add_followup'}), name='admin-lead-followup'),
+    path('leads/export/', AdminLeadViewSet.as_view({'get': 'export', 'post': 'export'}), name='admin-lead-export'),
 ]
+

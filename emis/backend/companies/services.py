@@ -590,3 +590,83 @@ def export_companies_to_excel_advanced(queryset, fields=None, include_standards=
     wb.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def export_leads_to_excel_advanced(queryset, fields=None) -> bytes:
+    """
+    高级线索导出服务，支持前端传递列名数组动态选择列。
+    """
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    import io
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "线索数据导出"
+
+    # 表头样式
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    # 完整字段到导出列与数据的映射表
+    FIELD_MAPPING = {
+        'source': ('来源', lambda c: c.get_source_display()),
+        'req_type': ('诉求类型', lambda c: c.get_req_type_display()),
+        'status': ('跟进状态', lambda c: c.get_status_display()),
+        'assignee': ('负责人', lambda c: c.assignee.username if c.assignee else ''),
+        'enterprise': ('关联企业', lambda c: c.enterprise.name if c.enterprise else ''),
+        'contact_name': ('联系人姓名', lambda c: c.contact_name),
+        'contact_phone': ('联系电话', lambda c: c.contact_phone),
+        'contact_wechat': ('联系微信', lambda c: c.contact_wechat),
+        'created_at': ('建立时间', lambda c: c.created_at.strftime('%Y-%m-%d %H:%M') if c.created_at else ''),
+        'updated_at': ('更新时间', lambda c: c.updated_at.strftime('%Y-%m-%d %H:%M') if c.updated_at else ''),
+    }
+
+    # 默认导出所有字段
+    if not fields or len(fields) == 0:
+        fields = list(FIELD_MAPPING.keys())
+
+    # 筛选匹配 of target fields
+    headers = []
+    active_fields = []
+    for f in fields:
+        if f in FIELD_MAPPING:
+            headers.append(FIELD_MAPPING[f][0])
+            active_fields.append(f)
+
+    # 写入表头
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+
+    # 写入数据行
+    for row_idx, lead in enumerate(queryset, 2):
+        for col_idx, field_code in enumerate(active_fields, 1):
+            val = FIELD_MAPPING[field_code][1](lead)
+            ws.cell(row=row_idx, column=col_idx, value=val)
+
+    # 自动列宽
+    for col in ws.columns:
+        max_len = 0
+        for cell in col:
+            val_str = str(cell.value or '')
+            lines = val_str.split('\n')
+            for line in lines:
+                import unicodedata
+                line_len = 0
+                for char in line:
+                    if unicodedata.east_asian_width(char) in ('F', 'W', 'A'):
+                        line_len += 2
+                    else:
+                        line_len += 1
+                max_len = max(max_len, line_len)
+        ws.column_dimensions[col[0].column_letter].width = min(max(max_len + 4, 12), 60)
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+

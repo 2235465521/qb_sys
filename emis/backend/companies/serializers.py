@@ -3,7 +3,7 @@ companies — 序列化器
 """
 
 from rest_framework import serializers
-from .models import Company, Province, City, District, CompanyLead
+from .models import Company, Province, City, District
 
 
 class ProvinceSerializer(serializers.ModelSerializer):
@@ -82,21 +82,58 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
 
 
-class CompanyLeadSerializer(serializers.ModelSerializer):
-    """B2B 意向销售线索序列化器"""
-    company_name = serializers.CharField(source='company.name', read_only=True, default='')
-    company_credit_code = serializers.CharField(source='company.credit_code', read_only=True, default='')
-    source_display = serializers.CharField(source='get_source_display', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+from .models import Company, Province, City, District, Lead, FollowUp, Attachment
+
+
+class AttachmentSerializer(serializers.ModelSerializer):
+    """线索附件序列化器"""
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
-        model = CompanyLead
+        model = Attachment
+        fields = ['id', 'file', 'filename', 'size', 'file_url', 'created_at']
+        read_only_fields = ['id', 'filename', 'size', 'created_at']
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
+
+
+class FollowUpSerializer(serializers.ModelSerializer):
+    """线索跟进动态时间轴序列化器"""
+    creator_name = serializers.CharField(source='creator.username', read_only=True, default='')
+
+    class Meta:
+        model = FollowUp
+        fields = ['id', 'lead', 'content', 'created_at', 'creator', 'creator_name']
+        read_only_fields = ['id', 'created_at', 'creator']
+
+
+class LeadSerializer(serializers.ModelSerializer):
+    """线索合并序列化器（包含跟进记录和附件）"""
+    enterprise_name = serializers.CharField(source='enterprise.name', read_only=True, default='')
+    enterprise_credit_code = serializers.CharField(source='enterprise.credit_code', read_only=True, default='')
+    assignee_name = serializers.CharField(source='assignee.username', read_only=True, default='')
+    
+    source_display = serializers.CharField(source='get_source_display', read_only=True)
+    req_type_display = serializers.CharField(source='get_req_type_display', read_only=True)
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    
+    followups = FollowUpSerializer(many=True, read_only=True)
+    attachments = AttachmentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Lead
         fields = [
-            'id', 'company', 'company_name', 'company_credit_code',
-            'source', 'source_display',
+            'id', 'source', 'source_display', 'req_type', 'req_type_display',
+            'status', 'status_display', 'assignee', 'assignee_name',
+            'enterprise', 'enterprise_name', 'enterprise_credit_code',
             'contact_name', 'contact_phone', 'contact_wechat',
-            'status', 'status_display', 'memo',
-            'created_at', 'updated_at',
+            'followups', 'attachments', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 

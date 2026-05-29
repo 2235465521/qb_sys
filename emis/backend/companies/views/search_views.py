@@ -10,8 +10,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.pagination import PageNumberPagination
 
-from companies.models import Company, CompanyLead
-from companies.serializers import CompanyListSerializer, CompanyDetailSerializer, CompanyLeadSerializer
+from companies.models import Company, Lead
+from companies.serializers import CompanyListSerializer, CompanyDetailSerializer, LeadSerializer
 from standards.serializers import StandardListSerializer
 from companies import services
 
@@ -165,6 +165,6 @@ class ClientLeadCreateView(generics.CreateAPIView):
     前台一键建档意向销售线索
     """
     permission_classes = [permissions.IsAuthenticated]
-    serializer_class = CompanyLeadSerializer
-    queryset = CompanyLead.objects.all()
+    serializer_class = LeadSerializer
+    queryset = Lead.objects.all()
 

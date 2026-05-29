@@ -7,6 +7,7 @@ companies App — 企业信息模型
 """
 
 from django.db import models
+from django.conf import settings
 
 
 # ============================================================
@@ -157,40 +158,145 @@ class Company(models.Model):
         return ''.join(parts)
 
 
-class CompanyLead(models.Model):
-    """B2B 意向销售线索"""
+class Lead(models.Model):
+    """
+    Lead 线索模型
+    升级旧版的 B2B CompanyLead 模型，用于管理全生命周期客户商机
+    """
     SOURCE_CHOICES = [
-        ('wechat_mp', '微信公众号'),
-        ('wechat_video', '视频号'),
-        ('referral', '朋友介绍'),
-        ('active_inquiry', '主动咨询'),
+        ('wechat', '视频号/公众号'),
+        ('phone', '电话咨询'),
+        ('visit', '线下拜访'),
         ('other', '其他渠道'),
     ]
 
-    STATUS_CHOICES = [
-        ('pending', '待联系'),
-        ('contacted', '已沟通'),
-        ('interested', '意向会员'),
-        ('vip_signed', '意向签约'),
-        ('failed', '跟进失败'),
+    REQ_TYPE_CHOICES = [
+        ('data_correction', '数据纠错'),
+        ('business_cooperation', '业务合作'),
+        ('general_inquiry', '常规咨询'),
     ]
 
-    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='leads', verbose_name='所属企业')
-    source = models.CharField('来访渠道', max_length=50, choices=SOURCE_CHOICES, default='active_inquiry')
+    STATUS_CHOICES = [
+        ('pending', '待处理'),
+        ('following', '跟进中'),
+        ('solved', '已解决/已成单'),
+        ('closed', '无效关闭'),
+    ]
+
+    source = models.CharField(
+        '来源', 
+        max_length=50, 
+        choices=SOURCE_CHOICES, 
+        default='other'
+    )
+    req_type = models.CharField(
+        '诉求类型', 
+        max_length=50, 
+        choices=REQ_TYPE_CHOICES, 
+        default='general_inquiry'
+    )
+    status = models.CharField(
+        '跟进状态', 
+        max_length=50, 
+        choices=STATUS_CHOICES, 
+        default='pending'
+    )
+    
+    # 分配的系统负责人，级联采用置空处理，保障员工离职数据不丢失
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_leads',
+        verbose_name='负责人'
+    )
+    
+    # 关联企业库主表（非强制必选，常规咨询在成单前可先置空）
+    enterprise = models.ForeignKey(
+        'Company',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='leads',
+        verbose_name='关联企业'
+    )
+
+    # 基础客户人脉字段
     contact_name = models.CharField('联系人姓名', max_length=100, blank=True)
     contact_phone = models.CharField('联系电话', max_length=100, blank=True)
     contact_wechat = models.CharField('联系微信', max_length=100, blank=True)
-    status = models.CharField('跟进状态', max_length=50, choices=STATUS_CHOICES, default='pending')
-    memo = models.TextField('沟通备注备忘录', blank=True)
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+
+    created_at = models.DateTimeField('建立时间', auto_now_add=True)
     updated_at = models.DateTimeField('更新时间', auto_now=True)
 
     class Meta:
-        db_table = 'companies_lead'
-        verbose_name = '意向销售线索'
-        verbose_name_plural = '意向销售线索'
+        db_table = 'companies_lead'  # 保持与原表名一致，方便平滑接管与迁移
+        verbose_name = 'CRM客户线索'
+        verbose_name_plural = 'CRM客户线索'
         ordering = ['-created_at']
 
     def __str__(self):
-        return f"{self.company.name} - {self.get_status_display()}"
+        return f"{self.contact_name or '未知人'} - {self.get_status_display()}"
+
+
+class FollowUp(models.Model):
+    """
+    FollowUp 跟进记录模型
+    支持一条线索追加多条跟进动态时间轴
+    """
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.CASCADE,
+        related_name='followups',
+        verbose_name='关联线索'
+    )
+    content = models.TextField('跟进内容')
+    created_at = models.DateTimeField('跟进时间', auto_now_add=True)
+    
+    # 执行跟进的系统用户
+    creator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='followup_records',
+        verbose_name='跟进人'
+    )
+
+    class Meta:
+        db_table = 'companies_lead_followup'
+        verbose_name = '线索跟进记录'
+        verbose_name_plural = '线索跟进记录'
+        ordering = ['created_at']  # 时间轴顺序列出
+
+    def __str__(self):
+        return f"{self.lead.contact_name} - {self.created_at.strftime('%Y-%m-%d %H:%M')}"
+
+
+class Attachment(models.Model):
+    """
+    Attachment 附件模型
+    用于保存纠错凭证、合规授权书、合同草稿等存证文件
+    """
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.CASCADE,
+        related_name='attachments',
+        verbose_name='关联线索'
+    )
+    # 文件物理上传路径限定，强制隔离命名空间
+    file = models.FileField('附件文件', upload_to='leads/attachments/')
+    filename = models.CharField('原始文件名', max_length=255)
+    size = models.PositiveIntegerField('文件大小(Bytes)', default=0)
+    created_at = models.DateTimeField('上传时间', auto_now_add=True)
+
+    class Meta:
+        db_table = 'companies_lead_attachment'
+        verbose_name = '线索附件'
+        verbose_name_plural = '线索附件'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.filename
 

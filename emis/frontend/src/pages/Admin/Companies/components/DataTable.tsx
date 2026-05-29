@@ -9,6 +9,8 @@ interface DataTableProps {
   data: Company[];
   loading: boolean;
   pagination: any;
+  selectedRowKeys: number[];
+  onSelectionChange: (keys: number[]) => void;
   onEdit: (record: Company) => void;
   onViewDetails: (record: Company) => void;
   onDelete: (id: number) => void;
@@ -78,6 +80,8 @@ const DataTable: React.FC<DataTableProps> = ({
   data,
   loading,
   pagination,
+  selectedRowKeys,
+  onSelectionChange,
   onEdit,
   onViewDetails,
   onDelete,
@@ -179,8 +183,17 @@ const DataTable: React.FC<DataTableProps> = ({
     },
   ];
 
+  // 配置行勾选
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (keys: React.Key[]) => {
+      onSelectionChange(keys as number[]);
+    },
+  };
+
   return (
     <Table
+      rowSelection={rowSelection}
       columns={columns}
       dataSource={data}
       rowKey="id"
