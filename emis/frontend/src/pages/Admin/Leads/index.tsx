@@ -118,12 +118,55 @@ const AdminLeadsPage: React.FC = () => {
     }
   };
 
+  const getPinyinInitials = (str: string): string => {
+    if (!str) return '';
+    const getCharInitial = (char: string): string => {
+      if (/[a-zA-Z0-9]/.test(char)) return char.toLowerCase();
+      const boundaries = [
+        { char: '啊', letter: 'a' },
+        { char: '芭', letter: 'b' },
+        { char: '擦', letter: 'c' },
+        { char: '搭', letter: 'd' },
+        { char: '蛾', letter: 'e' },
+        { char: '发', letter: 'f' },
+        { char: '噶', letter: 'g' },
+        { char: '哈', letter: 'h' },
+        { char: '击', letter: 'j' },
+        { char: '喀', letter: 'k' },
+        { char: '垃', letter: 'l' },
+        { char: '妈', letter: 'm' },
+        { char: '拿', letter: 'n' },
+        { char: '哦', letter: 'o' },
+        { char: '啪', letter: 'p' },
+        { char: '期', letter: 'q' },
+        { char: '然', letter: 'r' },
+        { char: '撒', letter: 's' },
+        { char: '塌', letter: 't' },
+        { char: '挖', letter: 'w' },
+        { char: '昔', letter: 'x' },
+        { char: '压', letter: 'y' },
+        { char: '匝', letter: 'z' }
+      ];
+      for (let i = boundaries.length - 1; i >= 0; i--) {
+        if (char.localeCompare(boundaries[i].char, 'zh') >= 0) {
+          return boundaries[i].letter;
+        }
+      }
+      return '';
+    };
+    return str.split('').map(getCharInitial).join('');
+  };
+
   const handleSaveOption = async (values: any) => {
     try {
+      const generatedValue = editingOption 
+        ? editingOption.value 
+        : getPinyinInitials(values.name.trim());
+
       const payload = {
         option_type: activeConfigTab,
         name: values.name.trim(),
-        value: values.value ? values.value.trim() : values.name.trim(),
+        value: generatedValue,
         is_active: true,
         sort_order: values.sort_order ? parseInt(values.sort_order) : 0
       };
@@ -249,6 +292,11 @@ const AdminLeadsPage: React.FC = () => {
 
   const handleOpenDetails = (lead: Lead) => {
     setSelectedLead(lead);
+    
+    if (lead.enterprise && !companies.some(c => c.id === lead.enterprise)) {
+      setCompanies(prev => [{ id: lead.enterprise, name: lead.enterprise_name }, ...prev]);
+    }
+
     detailsForm.setFieldsValue({
       status: lead.status,
       source: lead.source,
@@ -856,9 +904,18 @@ const AdminLeadsPage: React.FC = () => {
                     </>
                   )}
                 >
-                  {companies.map(c => (
-                    <Option key={c.id} value={c.id}>{c.name}</Option>
-                  ))}
+                  {(() => {
+                    const list = [...companies];
+                    const selectedId = createForm.getFieldValue('enterprise');
+                    if (selectedId && !list.some(c => c.id === selectedId)) {
+                      const matched = list.find(c => c.id === selectedId);
+                      const name = matched ? matched.name : '新置企业';
+                      list.push({ id: selectedId, name });
+                    }
+                    return list.map(c => (
+                      <Option key={c.id} value={c.id}>{c.name}</Option>
+                    ));
+                  })()}
                 </Select>
               </Form.Item>
             </Col>
@@ -1156,9 +1213,17 @@ const AdminLeadsPage: React.FC = () => {
                         </>
                       )}
                     >
-                      {companies.map(c => (
-                        <Option key={c.id} value={c.id}>{c.name}</Option>
-                      ))}
+                      {(() => {
+                        const list = [...companies];
+                        const selectedId = detailsForm.getFieldValue('enterprise') || selectedLead?.enterprise;
+                        if (selectedId && !list.some(c => c.id === selectedId)) {
+                          const name = selectedLead?.enterprise_name || '已设企业';
+                          list.push({ id: selectedId, name });
+                        }
+                        return list.map(c => (
+                          <Option key={c.id} value={c.id}>{c.name}</Option>
+                        ));
+                      })()}
                     </Select>
                   </Form.Item>
 
@@ -1504,13 +1569,6 @@ const AdminLeadsPage: React.FC = () => {
               <Input placeholder="选项名称 (如: 展会咨询)" />
             </Form.Item>
             <Form.Item
-              name="value"
-              style={{ width: 180, marginBottom: 8 }}
-              help="英文标识或留空同名称"
-            >
-              <Input placeholder="键值标识 (如: exhibition)" />
-            </Form.Item>
-            <Form.Item
               name="sort_order"
               style={{ width: 90, marginBottom: 8 }}
             >
@@ -1546,12 +1604,6 @@ const AdminLeadsPage: React.FC = () => {
               title: '显示名称',
               dataIndex: 'name',
               key: 'name',
-            },
-            {
-              title: '键值标识',
-              dataIndex: 'value',
-              key: 'value',
-              render: (v) => <code style={{ fontSize: 11, background: '#f5f5f5', padding: '2px 4px', borderRadius: 4 }}>{v}</code>
             },
             {
               title: '排序',

@@ -144,46 +144,39 @@ const TrendDashboard: React.FC = () => {
   const rawData = regionalQuery.data || [];
   const sortedData = [...rawData].sort((a, b) => b.count - a.count);
   const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
+  const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
 
   const regionalOption = {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
-    legend: { 
-      type: 'scroll', // 启用滚动条控制
-      orient: 'vertical',
-      right: '2%',
+    title: {
+      text: totalCount.toLocaleString(),
+      subtext: '总计',
+      left: 'center',
       top: 'center',
-      icon: 'circle',
-      textStyle: { fontSize: 11 },
-      pageIconSize: 10,
-      pageTextStyle: { fontSize: 9 }
+      textAlign: 'center',
+      textVerticalAlign: 'middle',
+      textStyle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#1677ff'
+      },
+      subtextStyle: {
+        fontSize: 11,
+        color: '#8c8c8c'
+      }
     },
+    tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
+    legend: { show: false },
     series: [
       {
         name: '分布区域',
         type: 'pie',
-        radius: ['45%', '70%'],
-        center: ['35%', '50%'], // 偏左显示，为右侧滚动条图例留出空间
-        minAngle: 6, // 强制最小扇区角度，避免超小占比扇区挤在一起
+        radius: ['55%', '75%'],
+        center: ['50%', '50%'],
+        minAngle: 6,
         avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 6, borderColor: '#fff', borderWidth: 2 },
-        label: { 
-          show: true, 
-          position: 'outside',
-          formatter: (params: any) => {
-            // 只有占比大于等于 3% 的地区才在外侧显示文字标签，防止 30 多个省份的标签线条交叉重叠
-            if (params.percent < 3) {
-              return '';
-            }
-            return `${params.name}\n${params.value}项 (${params.percent.toFixed(1)}%)`;
-          },
-          fontSize: 10
-        },
-        labelLine: { 
-          show: true, 
-          length: 8, 
-          length2: 6,
-          smooth: true
-        },
+        itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 1 },
+        label: { show: false },
+        labelLine: { show: false },
         data: chartData
       }
     ]
@@ -356,7 +349,89 @@ ${regionDetail}
                     <Spin />
                   </div>
                 ) : regionalQuery.data && regionalQuery.data.length > 0 ? (
-                  <ReactECharts option={regionalOption} style={{ height: 220 }} />
+                  <div style={{ display: 'flex', alignItems: 'center', height: 220, gap: '16px' }}>
+                    <style>{`
+                      .custom-scrollbar::-webkit-scrollbar {
+                        width: 5px;
+                      }
+                      .custom-scrollbar::-webkit-scrollbar-track {
+                        background: transparent;
+                      }
+                      .custom-scrollbar::-webkit-scrollbar-thumb {
+                        background-color: #bfbfbf;
+                        border-radius: 3px;
+                      }
+                      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+                        background-color: #8c8c8c;
+                      }
+                    `}</style>
+                    <div style={{ flex: 1.2, height: '100%' }}>
+                      <ReactECharts option={regionalOption} style={{ height: '100%', width: '100%' }} />
+                    </div>
+                    <div style={{ 
+                      flex: 0.8, 
+                      height: '100%', 
+                      background: '#fafafa', 
+                      borderRadius: 8, 
+                      padding: '12px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      minWidth: 0
+                    }}>
+                      <div style={{ 
+                        fontSize: 12, 
+                        fontWeight: 600, 
+                        color: '#595959', 
+                        marginBottom: 8,
+                        flexShrink: 0
+                      }}>
+                        区域明细 ({sortedData.length})
+                      </div>
+                      <div style={{ 
+                        flex: 1, 
+                        overflowY: 'auto',
+                        paddingRight: '4px'
+                      }} className="custom-scrollbar">
+                        {sortedData.map((item, index) => {
+                          const percent = totalCount > 0 ? ((item.count / totalCount) * 100).toFixed(1) : '0.0';
+                          const colors = ['#1890ff', '#2f54eb', '#722ed1', '#eb2f96', '#52c41a', '#13c2c2', '#fa8c16', '#fadb14', '#fa541c', '#f5222d'];
+                          const dotColor = colors[index % colors.length];
+                          return (
+                            <div 
+                              key={item.province}
+                              style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'space-between',
+                                fontSize: 11,
+                                padding: '4px 0',
+                                borderBottom: '1px solid #f0f0f0'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                <span style={{ 
+                                  width: 6, 
+                                  height: 6, 
+                                  borderRadius: '50%', 
+                                  backgroundColor: dotColor,
+                                  flexShrink: 0 
+                                }} />
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {item.province}
+                                </span>
+                              </div>
+                              <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+                                <span style={{ color: '#8c8c8c' }}>{item.count.toLocaleString()}</span>
+                                <span style={{ fontWeight: 'bold', color: '#1677ff', width: '38px', textAlign: 'right' }}>
+                                  {percent}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div style={{ height: 220, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                     <Empty description={`暂无『${selectedKeyword}』的区域分布数据`} />
