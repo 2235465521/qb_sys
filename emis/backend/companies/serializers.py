@@ -82,7 +82,14 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
 
 
-from .models import Company, Province, City, District, Lead, FollowUp, Attachment
+from .models import Company, Province, City, District, Lead, FollowUp, Attachment, LeadOption
+
+
+class LeadOptionSerializer(serializers.ModelSerializer):
+    """线索自定义配置参数序列化器"""
+    class Meta:
+        model = LeadOption
+        fields = ['id', 'option_type', 'name', 'value', 'is_active', 'sort_order']
 
 
 class AttachmentSerializer(serializers.ModelSerializer):
@@ -125,11 +132,14 @@ class LeadSerializer(serializers.ModelSerializer):
     """线索合并序列化器（包含跟进记录和附件）"""
     enterprise_name = serializers.CharField(source='enterprise.name', read_only=True, default='')
     enterprise_credit_code = serializers.CharField(source='enterprise.credit_code', read_only=True, default='')
-    assignee_name = serializers.CharField(source='assignee.username', read_only=True, default='')
     
-    source_display = serializers.CharField(source='get_source_display', read_only=True)
-    req_type_display = serializers.CharField(source='get_req_type_display', read_only=True)
-    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    # 负责人为字符串字段
+    assignee = serializers.CharField(required=False, allow_blank=True, allow_null=True, default='')
+    assignee_name = serializers.CharField(source='assignee', read_only=True, default='')
+    
+    source_display = serializers.SerializerMethodField()
+    req_type_display = serializers.SerializerMethodField()
+    status_display = serializers.SerializerMethodField()
     
     followups = FollowUpSerializer(many=True, read_only=True)
     attachments = AttachmentSerializer(many=True, read_only=True)
@@ -144,6 +154,38 @@ class LeadSerializer(serializers.ModelSerializer):
             'followups', 'attachments', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def get_option_label(self, option_type, value):
+        if not value:
+            return ''
+        
+        # 使用实例级缓存，避免序列化列表时的 N+1 查询问题
+        if not hasattr(self, '_options_map'):
+            options = LeadOption.objects.filter(is_active=True)
+            self._options_map = {}
+            for opt in options:
+                self._options_map[(opt.option_type, opt.value)] = opt.name
+                
+        label = self._options_map.get((option_type, value))
+        if label:
+            return label
+            
+        # 降级退回至硬编码默认配置值
+        defaults = {
+            'source': dict(Lead.DEFAULT_SOURCE_CHOICES),
+            'req_type': dict(Lead.DEFAULT_REQ_TYPE_CHOICES),
+            'status': dict(Lead.DEFAULT_STATUS_CHOICES),
+        }
+        return defaults.get(option_type, {}).get(value, value)
+
+    def get_source_display(self, obj):
+        return self.get_option_label('source', obj.source)
+
+    def get_req_type_display(self, obj):
+        return self.get_option_label('req_type', obj.req_type)
+
+    def get_status_display(self, obj):
+        return self.get_option_label('status', obj.status)
 
 
 # 后台管理使用 Detail 序列化器

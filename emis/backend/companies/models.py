@@ -163,20 +163,20 @@ class Lead(models.Model):
     Lead 线索模型
     升级旧版的 B2B CompanyLead 模型，用于管理全生命周期客户商机
     """
-    SOURCE_CHOICES = [
+    DEFAULT_SOURCE_CHOICES = [
         ('wechat', '视频号/公众号'),
         ('phone', '电话咨询'),
         ('visit', '线下拜访'),
         ('other', '其他渠道'),
     ]
 
-    REQ_TYPE_CHOICES = [
+    DEFAULT_REQ_TYPE_CHOICES = [
         ('data_correction', '数据纠错'),
         ('business_cooperation', '业务合作'),
         ('general_inquiry', '常规咨询'),
     ]
 
-    STATUS_CHOICES = [
+    DEFAULT_STATUS_CHOICES = [
         ('pending', '待处理'),
         ('following', '跟进中'),
         ('solved', '已解决/已成单'),
@@ -186,30 +186,25 @@ class Lead(models.Model):
     source = models.CharField(
         '来源', 
         max_length=50, 
-        choices=SOURCE_CHOICES, 
         default='other'
     )
     req_type = models.CharField(
         '诉求类型', 
         max_length=50, 
-        choices=REQ_TYPE_CHOICES, 
         default='general_inquiry'
     )
     status = models.CharField(
         '跟进状态', 
         max_length=50, 
-        choices=STATUS_CHOICES, 
         default='pending'
     )
     
-    # 分配的系统负责人，级联采用置空处理，保障员工离职数据不丢失
-    assignee = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
+    # 负责人现在存储为字符串，以支持非系统注册用户作为指派负责人
+    assignee = models.CharField(
+        '负责人',
+        max_length=100,
         blank=True,
-        related_name='assigned_leads',
-        verbose_name='负责人'
+        null=True
     )
     
     # 关联企业库主表（非强制必选，常规咨询在成单前可先置空）
@@ -235,6 +230,32 @@ class Lead(models.Model):
         verbose_name = 'CRM客户线索'
         verbose_name_plural = 'CRM客户线索'
         ordering = ['-created_at']
+
+    def get_source_display(self):
+        return self._get_option_label('source', self.source)
+
+    def get_req_type_display(self):
+        return self._get_option_label('req_type', self.req_type)
+
+    def get_status_display(self):
+        return self._get_option_label('status', self.status)
+
+    def _get_option_label(self, option_type, value):
+        if not value:
+            return ''
+        try:
+            opt = LeadOption.objects.filter(option_type=option_type, value=value, is_active=True).first()
+            if opt:
+                return opt.name
+        except Exception:
+            pass
+        # Fallback to hardcoded defaults
+        defaults = {
+            'source': dict(self.DEFAULT_SOURCE_CHOICES),
+            'req_type': dict(self.DEFAULT_REQ_TYPE_CHOICES),
+            'status': dict(self.DEFAULT_STATUS_CHOICES),
+        }
+        return defaults.get(option_type, {}).get(value, value)
 
     def __str__(self):
         return f"{self.contact_name or '未知人'} - {self.get_status_display()}"
@@ -299,4 +320,28 @@ class Attachment(models.Model):
 
     def __str__(self):
         return self.filename
+
+
+class LeadOption(models.Model):
+    OPTION_TYPES = [
+        ('req_type', '诉求类型'),
+        ('source', '渠道来源'),
+        ('status', '跟进状态'),
+        ('assignee', '负责人'),
+    ]
+    option_type = models.CharField('配置项类型', max_length=20, choices=OPTION_TYPES)
+    name = models.CharField('配置项名称/值', max_length=100)
+    value = models.CharField('对应键值(英文码/名称值)', max_length=100)
+    is_active = models.BooleanField('是否启用', default=True)
+    sort_order = models.IntegerField('排序', default=0)
+
+    class Meta:
+        db_table = 'companies_lead_option'
+        verbose_name = '线索自定义配置项'
+        verbose_name_plural = '线索自定义配置项'
+        unique_together = ('option_type', 'value')
+        ordering = ['option_type', 'sort_order', 'name']
+
+    def __str__(self):
+        return f"{self.get_option_type_display()} - {self.name} ({self.value})"
 

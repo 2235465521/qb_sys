@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Card, Table, Tag, Input, Select, Button, Space, Modal, Form, 
   Popconfirm, Drawer, Row, Col, Timeline, Upload, 
-  Radio, Checkbox, Divider, Typography, Avatar, Badge, Image, Tooltip, message
+  Radio, Checkbox, Divider, Typography, Avatar, Badge, Image, Tooltip, message,
+  Tabs
 } from 'antd';
 import { 
   SearchOutlined, UserOutlined, PhoneOutlined, WechatOutlined, 
@@ -58,6 +59,92 @@ const AdminLeadsPage: React.FC = () => {
   const [txtModalTitle, setTxtModalTitle] = useState('');
   const [txtModalContent, setTxtModalContent] = useState('');
 
+  // Dynamic CRM config options state
+  const [options, setOptions] = useState<any[]>([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
+  const [configForm] = Form.useForm();
+  const [editingOption, setEditingOption] = useState<any | null>(null);
+  const [activeConfigTab, setActiveConfigTab] = useState<'req_type' | 'source' | 'assignee' | 'status'>('req_type');
+
+  // Helpers to get current active options with fallback
+  const getReqTypeOptions = () => {
+    const active = options.filter(o => o.option_type === 'req_type' && o.is_active);
+    if (active.length > 0) return active;
+    return [
+      { value: 'general_inquiry', name: '常规咨询' },
+      { value: 'data_correction', name: '数据纠错' },
+      { value: 'business_cooperation', name: '业务合作' },
+    ];
+  };
+
+  const getSourceOptions = () => {
+    const active = options.filter(o => o.option_type === 'source' && o.is_active);
+    if (active.length > 0) return active;
+    return [
+      { value: 'wechat', name: '公众号/视频号' },
+      { value: 'phone', name: '电话咨询' },
+      { value: 'visit', name: '线下拜访' },
+      { value: 'other', name: '其他渠道' },
+    ];
+  };
+
+  const getStatusOptions = () => {
+    const active = options.filter(o => o.option_type === 'status' && o.is_active);
+    if (active.length > 0) return active;
+    return [
+      { value: 'pending', name: '待处理' },
+      { value: 'following', name: '跟进中' },
+      { value: 'solved', name: '已解决/已成单' },
+      { value: 'closed', name: '无效关闭' },
+    ];
+  };
+
+  const getAssigneeOptions = () => {
+    const active = options.filter(o => o.option_type === 'assignee' && o.is_active);
+    if (active.length > 0) return active;
+    return users.map(u => ({ value: u.username, name: u.real_name || u.username }));
+  };
+
+  const fetchOptions = async () => {
+    setOptionsLoading(true);
+    try {
+      const response = await apiClient.get('/admin/companies/leads/options/');
+      setOptions(response.data.results || response.data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOptionsLoading(false);
+    }
+  };
+
+  const handleSaveOption = async (values: any) => {
+    try {
+      const payload = {
+        option_type: activeConfigTab,
+        name: values.name.trim(),
+        value: values.value ? values.value.trim() : values.name.trim(),
+        is_active: true,
+        sort_order: values.sort_order ? parseInt(values.sort_order) : 0
+      };
+
+      if (editingOption) {
+        await apiClient.put(`/admin/companies/leads/options/${editingOption.id}/`, payload);
+        message.success('更新配置成功');
+      } else {
+        await apiClient.post('/admin/companies/leads/options/', payload);
+        message.success('新增配置成功');
+      }
+      
+      configForm.resetFields();
+      setEditingOption(null);
+      fetchOptions();
+    } catch (err) {
+      console.error(err);
+      message.error('操作失败，可能标识键值重复');
+    }
+  };
+
   const { 
     useAdminLeads, 
     createAdminLeadMutation, 
@@ -100,6 +187,7 @@ const AdminLeadsPage: React.FC = () => {
   useEffect(() => {
     fetchUsers();
     searchCompanies('');
+    fetchOptions();
   }, []);
 
   const handleCompanySearch = (val: string) => {
@@ -573,6 +661,16 @@ const AdminLeadsPage: React.FC = () => {
         </div>
         <Space size={12}>
           <Button 
+            icon={<SettingOutlined />}
+            onClick={() => {
+              setConfigModalOpen(true);
+              fetchOptions();
+            }}
+            style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#ffffff', fontWeight: 500 }}
+          >
+            参数配置
+          </Button>
+          <Button 
             type="primary" 
             icon={<PlusOutlined />}
             onClick={() => {
@@ -620,10 +718,9 @@ const AdminLeadsPage: React.FC = () => {
               style={{ width: 140 }}
             >
               <Option value="">所有渠道</Option>
-              <Option value="wechat">公众号/视频号</Option>
-              <Option value="phone">电话咨询</Option>
-              <Option value="visit">线下拜访</Option>
-              <Option value="other">其他</Option>
+              {getSourceOptions().map(o => (
+                <Option key={o.value} value={o.value}>{o.name}</Option>
+              ))}
             </Select>
           </Space>
 
@@ -635,10 +732,9 @@ const AdminLeadsPage: React.FC = () => {
               style={{ width: 130 }}
             >
               <Option value="">所有状态</Option>
-              <Option value="pending">待处理</Option>
-              <Option value="following">跟进中</Option>
-              <Option value="solved">已解决/已成单</Option>
-              <Option value="closed">无效关闭</Option>
+              {getStatusOptions().map(o => (
+                <Option key={o.value} value={o.value}>{o.name}</Option>
+              ))}
             </Select>
           </Space>
         </Space>
@@ -697,10 +793,9 @@ const AdminLeadsPage: React.FC = () => {
                 rules={[{ required: true, message: '请选择渠道' }]}
               >
                 <Select>
-                  <Option value="wechat">公众号/视频号</Option>
-                  <Option value="phone">电话咨询</Option>
-                  <Option value="visit">线下拜访</Option>
-                  <Option value="other">其他渠道</Option>
+                  {getSourceOptions().map(o => (
+                    <Option key={o.value} value={o.value}>{o.name}</Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -711,9 +806,9 @@ const AdminLeadsPage: React.FC = () => {
                 rules={[{ required: true, message: '请选择诉求类型' }]}
               >
                 <Select>
-                  <Option value="general_inquiry">常规咨询</Option>
-                  <Option value="data_correction">数据纠错</Option>
-                  <Option value="business_cooperation">业务合作</Option>
+                  {getReqTypeOptions().map(o => (
+                    <Option key={o.value} value={o.value}>{o.name}</Option>
+                  ))}
                 </Select>
               </Form.Item>
             </Col>
@@ -722,9 +817,9 @@ const AdminLeadsPage: React.FC = () => {
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item name="assignee" label="指派负责人">
-                <Select placeholder="搜索指派负责人" allowClear>
-                  {users.map(u => (
-                    <Option key={u.id} value={u.id}>{u.real_name || u.username}</Option>
+                <Select placeholder="搜索指派负责人" allowClear showSearch filterOption={(input, option) => (option?.children as any || '').toLowerCase().includes(input.toLowerCase())}>
+                  {getAssigneeOptions().map(o => (
+                    <Option key={o.value} value={o.value}>{o.name}</Option>
                   ))}
                 </Select>
               </Form.Item>
@@ -1000,35 +1095,33 @@ const AdminLeadsPage: React.FC = () => {
                 >
                   <Form.Item name="status" label="跟进状态" rules={[{ required: true }]}>
                     <Select>
-                      <Option value="pending">待处理</Option>
-                      <Option value="following">跟进中</Option>
-                      <Option value="solved">已解决/已成单</Option>
-                      <Option value="closed">无效关闭</Option>
+                      {getStatusOptions().map(o => (
+                        <Option key={o.value} value={o.value}>{o.name}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
 
                   <Form.Item name="assignee" label="指派负责人">
-                    <Select placeholder="指派跟进人员" allowClear>
-                      {users.map(u => (
-                        <Option key={u.id} value={u.id}>{u.real_name || u.username}</Option>
+                    <Select placeholder="指派跟进人员" allowClear showSearch filterOption={(input, option) => (option?.children as any || '').toLowerCase().includes(input.toLowerCase())}>
+                      {getAssigneeOptions().map(o => (
+                        <Option key={o.value} value={o.value}>{o.name}</Option>
                       ))}
                     </Select>
                   </Form.Item>
 
                   <Form.Item name="req_type" label="客户诉求类型">
                     <Select>
-                      <Option value="general_inquiry">常规咨询</Option>
-                      <Option value="data_correction">数据纠错</Option>
-                      <Option value="business_cooperation">业务合作</Option>
+                      {getReqTypeOptions().map(o => (
+                        <Option key={o.value} value={o.value}>{o.name}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
 
                   <Form.Item name="source" label="客户渠道来源">
                     <Select>
-                      <Option value="wechat">公众号/视频号</Option>
-                      <Option value="phone">电话咨询</Option>
-                      <Option value="visit">线下拜访</Option>
-                      <Option value="other">其他渠道</Option>
+                      {getSourceOptions().map(o => (
+                        <Option key={o.value} value={o.value}>{o.name}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
 
@@ -1353,6 +1446,189 @@ const AdminLeadsPage: React.FC = () => {
           </Row>
         )}
       </Drawer>
+
+      {/* Parameter Settings Modal */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600 }}>
+            <SettingOutlined style={{ color: '#1890ff' }} />
+            <span>线索参数与配置管理</span>
+          </div>
+        }
+        open={configModalOpen}
+        onCancel={() => {
+          setConfigModalOpen(false);
+          configForm.resetFields();
+          setEditingOption(null);
+        }}
+        footer={null}
+        width={720}
+        bodyStyle={{ padding: '12px 24px 24px 24px' }}
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
+          在这里自定义设置线索客户的渠道来源、诉求类型、跟进状态，以及自定义指派负责人名单（无需在系统注册亦可指派跟进）。
+        </Typography.Paragraph>
+
+        <Tabs 
+          activeKey={activeConfigTab} 
+          onChange={(key: any) => {
+            setActiveConfigTab(key);
+            configForm.resetFields();
+            setEditingOption(null);
+          }}
+          type="card"
+          items={[
+            { key: 'req_type', label: '诉求类型' },
+            { key: 'source', label: '渠道来源' },
+            { key: 'assignee', label: '当前负责人' },
+            { key: 'status', label: '跟进状态/进度' },
+          ]}
+        />
+
+        {/* Edit / Add Form */}
+        <div style={{ background: '#fcfcfc', border: '1px solid #f0f0f0', borderRadius: 8, padding: 16, marginTop: 16, marginBottom: 16 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 12, color: '#333' }}>
+            {editingOption ? '编辑参数选项' : '新增参数选项'}
+          </div>
+          <Form
+            form={configForm}
+            layout="inline"
+            onFinish={handleSaveOption}
+            initialValues={{ is_active: true, sort_order: 0 }}
+          >
+            <Form.Item
+              name="name"
+              rules={[{ required: true, message: '请输入名称' }]}
+              style={{ width: 180, marginBottom: 8 }}
+            >
+              <Input placeholder="选项名称 (如: 展会咨询)" />
+            </Form.Item>
+            <Form.Item
+              name="value"
+              style={{ width: 180, marginBottom: 8 }}
+              help="英文标识或留空同名称"
+            >
+              <Input placeholder="键值标识 (如: exhibition)" />
+            </Form.Item>
+            <Form.Item
+              name="sort_order"
+              style={{ width: 90, marginBottom: 8 }}
+            >
+              <Input placeholder="排序 (0)" type="number" />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 8 }}>
+              <Space>
+                <Button type="primary" htmlType="submit">
+                  {editingOption ? '保存' : '添加'}
+                </Button>
+                {editingOption && (
+                  <Button onClick={() => {
+                    setEditingOption(null);
+                    configForm.resetFields();
+                  }}>
+                    取消
+                  </Button>
+                )}
+              </Space>
+            </Form.Item>
+          </Form>
+        </div>
+
+        {/* Options Table */}
+        <Table
+          size="small"
+          loading={optionsLoading}
+          dataSource={options.filter(o => o.option_type === activeConfigTab)}
+          rowKey="id"
+          pagination={false}
+          columns={[
+            {
+              title: '显示名称',
+              dataIndex: 'name',
+              key: 'name',
+            },
+            {
+              title: '键值标识',
+              dataIndex: 'value',
+              key: 'value',
+              render: (v) => <code style={{ fontSize: 11, background: '#f5f5f5', padding: '2px 4px', borderRadius: 4 }}>{v}</code>
+            },
+            {
+              title: '排序',
+              dataIndex: 'sort_order',
+              key: 'sort_order',
+              width: 80,
+            },
+            {
+              title: '状态',
+              dataIndex: 'is_active',
+              key: 'is_active',
+              width: 100,
+              render: (active, record) => (
+                <Badge 
+                  status={active ? 'success' : 'default'} 
+                  text={active ? '启用' : '禁用'} 
+                  style={{ cursor: 'pointer' }}
+                  onClick={async () => {
+                    try {
+                      await apiClient.patch(`/admin/companies/leads/options/${record.id}/`, {
+                        is_active: !active
+                      });
+                      message.success('状态更新成功');
+                      fetchOptions();
+                    } catch (e) {
+                      message.error('更新状态失败');
+                    }
+                  }}
+                />
+              )
+            },
+            {
+              title: '操作',
+              key: 'actions',
+              width: 120,
+              render: (_, record) => (
+                <Space size={12}>
+                  <Button 
+                    type="link" 
+                    size="small" 
+                    style={{ padding: 0 }}
+                    onClick={() => {
+                      setEditingOption(record);
+                      configForm.setFieldsValue({
+                        name: record.name,
+                        value: record.value,
+                        sort_order: record.sort_order,
+                      });
+                    }}
+                  >
+                    编辑
+                  </Button>
+                  <Popconfirm
+                    title="确定要删除此选项吗？可能导致使用该选项的线索无法正确展示该选项名称。"
+                    onConfirm={async () => {
+                      try {
+                        await apiClient.delete(`/admin/companies/leads/options/${record.id}/`);
+                        message.success('删除成功');
+                        fetchOptions();
+                      } catch (e) {
+                        message.error('删除失败');
+                      }
+                    }}
+                    okText="确定"
+                    cancelText="取消"
+                  >
+                    <Button type="link" size="small" danger style={{ padding: 0 }}>
+                      删除
+                    </Button>
+                  </Popconfirm>
+                </Space>
+              )
+            }
+          ]}
+          scroll={{ y: 240 }}
+        />
+      </Modal>
     </div>
   );
 };

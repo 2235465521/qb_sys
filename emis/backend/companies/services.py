@@ -609,12 +609,29 @@ def export_leads_to_excel_advanced(queryset, fields=None) -> bytes:
     header_font = Font(color='FFFFFF', bold=True)
     header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
+    from companies.models import LeadOption, Lead
+    # 一次性加载配置映射对照，避免每行查询一次数据库引发 N+1
+    options_map = {(opt.option_type, opt.value): opt.name for opt in LeadOption.objects.filter(is_active=True)}
+    defaults = {
+        'source': dict(Lead.DEFAULT_SOURCE_CHOICES),
+        'req_type': dict(Lead.DEFAULT_REQ_TYPE_CHOICES),
+        'status': dict(Lead.DEFAULT_STATUS_CHOICES),
+    }
+
+    def get_display(option_type, value):
+        if not value:
+            return ''
+        name = options_map.get((option_type, value))
+        if name:
+            return name
+        return defaults.get(option_type, {}).get(value, value)
+
     # 完整字段到导出列与数据的映射表
     FIELD_MAPPING = {
-        'source': ('来源', lambda c: c.get_source_display()),
-        'req_type': ('诉求类型', lambda c: c.get_req_type_display()),
-        'status': ('跟进状态', lambda c: c.get_status_display()),
-        'assignee': ('负责人', lambda c: c.assignee.username if c.assignee else ''),
+        'source': ('来源', lambda c: get_display('source', c.source)),
+        'req_type': ('诉求类型', lambda c: get_display('req_type', c.req_type)),
+        'status': ('跟进状态', lambda c: get_display('status', c.status)),
+        'assignee': ('负责人', lambda c: c.assignee or ''),
         'enterprise': ('关联企业', lambda c: c.enterprise.name if c.enterprise else ''),
         'contact_name': ('联系人姓名', lambda c: c.contact_name),
         'contact_phone': ('联系电话', lambda c: c.contact_phone),

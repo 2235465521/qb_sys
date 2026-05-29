@@ -12,8 +12,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser
 
-from companies.models import Company, Lead, FollowUp, Attachment
-from companies.serializers import CompanySerializer, CompanyListSerializer, LeadSerializer, FollowUpSerializer, AttachmentSerializer
+from companies.models import Company, Lead, FollowUp, Attachment, LeadOption
+from companies.serializers import (
+    CompanySerializer, CompanyListSerializer, LeadSerializer, 
+    FollowUpSerializer, AttachmentSerializer, LeadOptionSerializer
+)
 from companies import services
 
 
@@ -335,7 +338,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LeadSerializer
-    queryset = Lead.objects.all().select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments')
+    queryset = Lead.objects.all().select_related('enterprise').prefetch_related('followups', 'attachments')
     filter_backends = [SearchFilter]
     search_fields = ['enterprise__name', 'contact_name', 'contact_phone', 'contact_wechat']
     parser_classes = [JSONParser, MultiPartParser, FormParser]
@@ -399,7 +402,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             )
 
         # Re-fetch lead with fresh prefetch to load the newly created follow-ups and attachments
-        lead = Lead.objects.select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
+        lead = Lead.objects.select_related('enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
         serializer = self.get_serializer(lead)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -419,7 +422,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             return Response({'error': '附件不存在或不属于当前线索'}, status=status.HTTP_404_NOT_FOUND)
 
         # Re-fetch lead with fresh prefetch to load the updated attachments
-        lead = Lead.objects.select_related('assignee', 'enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
+        lead = Lead.objects.select_related('enterprise').prefetch_related('followups', 'attachments').get(pk=lead.pk)
         serializer = self.get_serializer(lead)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -434,7 +437,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
                 ids = data.get('ids', [])
                 if not ids:
                     return Response({'error': '未提供选中的线索ID列表'}, status=status.HTTP_400_BAD_REQUEST)
-                qs = Lead.objects.filter(id__in=ids).select_related('assignee', 'enterprise')
+                qs = Lead.objects.filter(id__in=ids).select_related('enterprise')
             else:
                 filters = data.get('filters', {})
                 qs = self.get_queryset().prefetch_related(None)
@@ -509,6 +512,25 @@ class AdminAttachmentViewSet(viewsets.ModelViewSet):
         if instance.file:
             instance.file.delete(save=False)
         instance.delete()
+
+
+class AdminLeadOptionViewSet(viewsets.ModelViewSet):
+    """
+    后台线索自定义配置参数管理
+    GET /api/admin/companies/leads/options/
+    POST /api/admin/companies/leads/options/
+    PUT/DELETE /api/admin/companies/leads/options/{id}/
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    serializer_class = LeadOptionSerializer
+    queryset = LeadOption.objects.all()
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        option_type = self.request.query_params.get('option_type')
+        if option_type:
+            queryset = queryset.filter(option_type=option_type)
+        return queryset.order_by('option_type', 'sort_order', 'id')
 
 
 

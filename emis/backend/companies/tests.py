@@ -35,7 +35,7 @@ class LeadAPITests(APITestCase):
             contact_name="小张",
             contact_phone="13800000000",
             enterprise=self.company,
-            assignee=self.user
+            assignee=self.user.username
         )
 
     def test_lead_list_and_detail(self):
@@ -156,7 +156,7 @@ class LeadAPITests(APITestCase):
                 contact_name=f'联系人_{i}',
                 contact_phone=f'1380000{i:04d}',
                 enterprise=self.company,
-                assignee=self.user
+                assignee=self.user.username
             ) for i in range(500)
         ]
         Lead.objects.bulk_create(leads)
