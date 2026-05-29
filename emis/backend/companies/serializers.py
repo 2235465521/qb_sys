@@ -96,12 +96,18 @@ class AttachmentSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         if obj.file:
+            from django.conf import settings
+            backend_url = getattr(settings, 'BACKEND_URL', '')
+            # 如果在 settings 里明确配置了非本地的 BACKEND_URL，优先使用它，防止 Nginx 反代理丢端口
+            if backend_url and '127.0.0.1' not in backend_url and 'localhost' not in backend_url:
+                return f"{backend_url.rstrip('/')}{obj.file.url}"
+
             request = self.context.get('request')
             if request:
                 return request.build_absolute_uri(obj.file.url)
-            from django.conf import settings
-            backend_url = getattr(settings, 'BACKEND_URL', 'http://127.0.0.1:8000')
-            return f"{backend_url.rstrip('/')}{obj.file.url}"
+
+            fallback = backend_url or 'http://127.0.0.1:8000'
+            return f"{fallback.rstrip('/')}{obj.file.url}"
         return None
 
 
