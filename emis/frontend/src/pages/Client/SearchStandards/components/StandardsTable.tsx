@@ -22,9 +22,21 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
 
+  const formatUrlForSafety = (url: string) => {
+    if (!url) return '';
+    if (url.startsWith('/')) {
+      return url;
+    }
+    if (window.location.protocol === 'https:' && url.startsWith('http://')) {
+      return url.replace(/^http:\/\//i, 'https://');
+    }
+    return url;
+  };
+
   const handleDownload = (record: Standard) => {
     if (record.pdf_url) {
-      window.open(record.pdf_url, '_blank');
+      const safeUrl = formatUrlForSafety(record.pdf_url);
+      window.open(safeUrl, '_blank');
       message.success(`开始下载: ${record.standard_no}`);
     } else {
       message.warning('该标准暂未上传关联 PDF 文件');
@@ -34,7 +46,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
   const handlePreview = (record: Standard) => {
     if (record.pdf_url) {
       setPreviewTitle(record.standard_no);
-      setPreviewUrl(record.pdf_url);
+      setPreviewUrl(formatUrlForSafety(record.pdf_url));
       setPreviewVisible(true);
     } else {
       message.warning('该标准暂未上传关联 PDF 文件');

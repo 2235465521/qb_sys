@@ -390,3 +390,207 @@ def align_disk_files_task(self):
         raise self.retry(exc=e, countdown=5, max_retries=2)
 
 
+@shared_task(bind=True, name='standards.import_standards_and_references')
+def import_standards_and_references_task(self, file_path: str, task_token: str):
+    """
+    异步解耦导入任务：解析企业标准与规范性引用混合表，并利用事务完成拆分写入
+    """
+    import os
+    import pandas as pd
+    from django.core.cache import cache
+    from django.db import transaction
+    from django.db.models import F
+    from django.utils import timezone
+    from companies.models import Company
+    from standards.models import Standard, NormativeReference
+    from standards.services import generate_clean_id, scan_and_align_pdf_assets
+
+    # 1. 初始化任务状态缓存
+    cache.set(f'import_task_{task_token}', {
+        'status': 'running',
+        'progress': 0,
+        'success_count': 0,
+        'failed_count': 0,
+        'errors': []
+    }, timeout=86400)
+
+    errors = []
+    success_count = 0
+
+    try:
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"暂存的导入文件未找到: {file_path}")
+
+        df = pd.read_excel(file_path)
+        total_rows = len(df)
+
+        if total_rows == 0:
+            raise ValueError("Excel 数据为空")
+
+        # 归一化表头匹配
+        headers_mapping = {
+            'std_no': ['企标编号*', '企标编号', '标准编号*', '标准编号', '企标号'],
+            'std_title': ['企标名称*', '企标名称', '标准名称*', '标准名称', '企标名'],
+            'company_name': ['起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称'],
+            'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码'],
+            'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '被引用标准号*', '被引用标准号', '引用的标准号'],
+            'latest_no': ['最新标准号', '最新被引用标准号']
+        }
+
+        # 映射实际列名
+        actual_cols = {}
+        for key, aliases in headers_mapping.items():
+            for alias in aliases:
+                if alias in df.columns:
+                    actual_cols[key] = alias
+                    break
+
+        # 检查必要列是否具备
+        required_keys = ['std_no', 'std_title', 'company_name', 'credit_code', 'cited_no']
+        missing_cols = [k for k in required_keys if k not in actual_cols]
+        if missing_cols:
+            raise ValueError(f"Excel 格式不匹配，缺失核心必要列，未匹配键: {missing_cols}")
+
+        col_std_no = actual_cols['std_no']
+        col_std_title = actual_cols['std_title']
+        col_company_name = actual_cols['company_name']
+        col_credit_code = actual_cols['credit_code']
+        col_cited_no = actual_cols['cited_no']
+        col_latest_no = actual_cols.get('latest_no')
+
+        # 2. 循环遍历各行
+        for idx, row in df.iterrows():
+            row_idx = idx + 2  # Excel 行号以 2 开始
+
+            # 每处理 5% 更新一次进度以避免过频的缓存操作
+            current_progress = int((idx + 1) / total_rows * 95)  # 留 5% 给后置处理
+            if idx % max(1, int(total_rows / 20)) == 0:
+                cache.set(f'import_task_{task_token}', {
+                    'status': 'running',
+                    'progress': current_progress,
+                    'success_count': success_count,
+                    'failed_count': len(errors),
+                    'errors': errors
+                }, timeout=86400)
+
+            # 获取当前行字段
+            std_no = str(row.get(col_std_no, '')).strip() if pd.notna(row.get(col_std_no)) else ''
+            std_title = str(row.get(col_std_title, '')).strip() if pd.notna(row.get(col_std_title)) else ''
+            company_name = str(row.get(col_company_name, '')).strip() if pd.notna(row.get(col_company_name)) else ''
+            credit_code = str(row.get(col_credit_code, '')).strip() if pd.notna(row.get(col_credit_code)) else ''
+            cited_no = str(row.get(col_cited_no, '')).strip() if pd.notna(row.get(col_cited_no)) else ''
+            latest_no = str(row.get(col_latest_no, '')) if col_latest_no and pd.notna(row.get(col_latest_no)) else ''
+            latest_no = latest_no.strip()
+
+            # 数据完整性必填校验
+            if not std_no or std_no == 'nan':
+                errors.append({'row': row_idx, 'reason': "企标编号不能为空"})
+                continue
+            if not std_title or std_title == 'nan':
+                errors.append({'row': row_idx, 'reason': "企标名称不能为空"})
+                continue
+            if not company_name or company_name == 'nan':
+                errors.append({'row': row_idx, 'reason': "起草单位不能为空"})
+                continue
+            if not credit_code or credit_code == 'nan':
+                errors.append({'row': row_idx, 'reason': "统一社会信用代码不能为空"})
+                continue
+            if not cited_no or cited_no == 'nan':
+                errors.append({'row': row_idx, 'reason': "引用的国标/行标编号不能为空"})
+                continue
+
+            # 使用行级数据库事务（原子性写入主表+子表）
+            try:
+                with transaction.atomic():
+                    # A. 查找或建档起草企业
+                    company, _ = Company.objects.get_or_create(
+                        credit_code=credit_code,
+                        defaults={
+                            'name': company_name,
+                            'status': 'active'
+                        }
+                    )
+
+                    # B. 查找或建档企业标准主表
+                    clean_id = generate_clean_id(std_no)
+                    standard, created_std = Standard.objects.get_or_create(
+                        standard_no=std_no,
+                        defaults={
+                            'clean_id': clean_id,
+                            'title': std_title,
+                            'company': company,
+                            'type': 'enterprise',
+                            'is_parsed': 'references_parsed'
+                        }
+                    )
+
+                    if not created_std:
+                        # 联动更新主表状态为“已完成引用解析”
+                        if standard.is_parsed == 'unparsed':
+                            standard.is_parsed = 'references_parsed'
+                            standard.save(update_fields=['is_parsed'])
+
+                    # C. 对齐系统中已有的被引标准
+                    cited_std = Standard.objects.filter(standard_no=cited_no).first()
+
+                    # D. 写入关联引用记录明细
+                    ref, created_ref = NormativeReference.objects.get_or_create(
+                        source_standard=standard,
+                        cited_standard_no=cited_no,
+                        defaults={
+                            'cited_standard': cited_std,
+                            'latest_standard_no': latest_no or cited_no
+                        }
+                    )
+
+                    if created_ref:
+                        # 累加被引统计计数
+                        if cited_std:
+                            Standard.objects.filter(pk=cited_std.pk).update(citation_count=F('citation_count') + 1)
+                    else:
+                        # 如已存在则安全更新最新标准号
+                        if latest_no and ref.latest_standard_no != latest_no:
+                            ref.latest_standard_no = latest_no
+                            ref.save(update_fields=['latest_standard_no'])
+
+                success_count += 1
+
+            except Exception as row_err:
+                errors.append({'row': row_idx, 'reason': f"数据库写入失败: {str(row_err)}"})
+
+        # 3. 后置扫盘 PDF 对齐
+        try:
+            scan_and_align_pdf_assets()
+        except Exception:
+            pass
+
+        # 4. 成功完结更新缓存
+        cache.set(f'import_task_{task_token}', {
+            'status': 'done',
+            'progress': 100,
+            'success_count': success_count,
+            'failed_count': len(errors),
+            'errors': errors
+        }, timeout=86400)
+
+        # 5. 清理临时上传的 Excel
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+    except Exception as e:
+        cache.set(f'import_task_{task_token}', {
+            'status': 'failed',
+            'progress': 100,
+            'error': str(e),
+            'success_count': success_count,
+            'failed_count': len(errors),
+            'errors': errors
+        }, timeout=86400)
+        
+        if os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+
+

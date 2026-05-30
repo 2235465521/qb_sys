@@ -144,3 +144,128 @@ class StandardIndicatorImportView(APIView):
         except Exception as e:
             return Response({'error': f'解析 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+class StandardReferenceImportView(APIView):
+    """
+    POST /api/admin/standards/import-references/ — 上传 Excel 批量导入企标规范性引用明细，支持严格的容错校验
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not file_obj.name.endswith(('.xlsx', '.xls')):
+            return Response({'error': '仅支持 .xlsx 或 .xls 格式的文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        result = services.import_references_from_excel_v2(file_obj)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class StandardReferenceImportTemplateView(APIView):
+    """
+    GET /api/admin/standards/import-references/template/ — 下载引用目录 Excel 导入模板
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.http import HttpResponse
+        from urllib.parse import quote
+        try:
+            excel_bytes, filename = services.generate_reference_import_template_v2()
+            response = HttpResponse(
+                excel_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            return response
+        except Exception as e:
+            return Response({'error': f'生成模板失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class StandardMixedImportView(APIView):
+    """
+    POST /api/admin/standards/import-mixed/
+    接收混合 Excel，存入临时目录，开启 Celery 异步拆分与事务入库
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        import uuid
+        import os
+        from django.conf import settings
+        from standards.tasks import import_standards_and_references_task
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not file_obj.name.endswith(('.xlsx', '.xls')):
+            return Response({'error': '仅支持 .xlsx 或 .xls 格式的文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 保存为临时文件
+        task_token = str(uuid.uuid4())
+        temp_dir = settings.MEDIA_ROOT / 'temp_uploads'
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        file_path = temp_dir / f'{task_token}.xlsx'
+
+        try:
+            with open(file_path, 'wb') as f:
+                for chunk in file_obj.chunks():
+                    f.write(chunk)
+        except Exception as e:
+            return Response({'error': f'文件写入临时盘失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # 分发 Celery 异步任务
+        import_standards_and_references_task.delay(str(file_path), task_token)
+
+        return Response({
+            'task_id': task_token,
+            'message': '文件上传成功，异步入库任务已提交后台处理'
+        }, status=status.HTTP_202_ACCEPTED)
+
+
+class StandardMixedImportStatusView(APIView):
+    """
+    GET /api/admin/standards/import-mixed/status/
+    根据 task_id 查询 Celery 任务进度与行级校验结果报告
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.core.cache import cache
+        task_id = request.query_params.get('task_id')
+        if not task_id:
+            return Response({'error': '缺失 task_id 参数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        task_info = cache.get(f'import_task_{task_id}')
+        if not task_info:
+            return Response({'status': 'pending', 'message': '任务在队列中排队等待'}, status=status.HTTP_200_OK)
+
+        return Response(task_info, status=status.HTTP_200_OK)
+
+
+class StandardMixedImportTemplateView(APIView):
+    """
+    GET /api/admin/standards/import-mixed/template/
+    下载企业标准基础信息与引用关系混合导入模板
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        from django.http import HttpResponse
+        from urllib.parse import quote
+        try:
+            excel_bytes, filename = services.generate_mixed_import_template_v2()
+            response = HttpResponse(
+                excel_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            return response
+        except Exception as e:
+            return Response({'error': f'生成模板失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

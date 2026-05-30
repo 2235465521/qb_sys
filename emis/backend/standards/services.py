@@ -12,6 +12,7 @@ import re
 import io
 import zipfile
 import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 from django.db import transaction
 from django.db.models import F, Q
 
@@ -852,3 +853,176 @@ def import_standards_by_type(file_obj, std_type: str) -> dict:
     result['success'] = len(standards_to_create)
     result['skipped'] = skipped_count
     return result
+
+
+def generate_reference_import_template_v2() -> tuple:
+    """
+    动态生成规范性引用导入 Excel 模板，返回 (excel_bytes, filename)
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '规范性引用导入模板'
+    
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    headers = ['企标编号*', '引用的国标/行标编号*', '被引用标准名称', '最新标准号']
+    filename = "企标规范性引用导入模板.xlsx"
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+        ws.column_dimensions[cell.column_letter].width = 25
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue(), filename
+
+
+def import_references_from_excel_v2(file_obj) -> dict:
+    """
+    后台导入企标规范性引用，包含严格的行级数据校验
+    对正确的数据执行入库，并收集所有错误反馈给前端
+    """
+    import pandas as pd
+    from django.db import transaction
+    from django.db.models import F
+    from standards.models import Standard, NormativeReference
+    
+    result = {
+        'success_count': 0,
+        'errors': []
+    }
+    
+    try:
+        df = pd.read_excel(file_obj)
+    except Exception as e:
+        result['errors'].append({'row': 0, 'error': f'文件解析失败: {str(e)}'})
+        return result
+        
+    if df.empty:
+        result['errors'].append({'row': 0, 'error': 'Excel 文件内容为空'})
+        return result
+        
+    # 必要表头校验
+    expected_headers = ['企标编号*', '引用的国标/行标编号*']
+    for header in expected_headers:
+        if header not in df.columns:
+            clean_header = header.replace('*', '')
+            found = False
+            for col in df.columns:
+                if clean_header in str(col):
+                    df.rename(columns={col: header}, inplace=True)
+                    found = True
+                    break
+            if not found:
+                result['errors'].append({'row': 1, 'error': f"Excel 模板格式错误，缺失必要列: '{header}'"})
+                return result
+
+    # 1. 缓存加载全部输入企标，防止 N+1 查询挂起
+    source_nos = df['企标编号*'].dropna().astype(str).str.strip().unique().tolist()
+    standard_map = {
+        std.standard_no: std
+        for std in Standard.objects.filter(standard_no__in=source_nos, type='enterprise')
+    }
+    
+    # 2. 缓存已存在的国/行标以便匹配
+    cited_nos = df['引用的国标/行标编号*'].dropna().astype(str).str.strip().unique().tolist()
+    cited_std_map = {
+        std.standard_no: std
+        for std in Standard.objects.filter(standard_no__in=cited_nos)
+    }
+
+    # 3. 逐行处理及校验
+    with transaction.atomic():
+        for idx, row in df.iterrows():
+            row_idx = idx + 2  # Excel 实际数据从第 2 行开始
+            
+            source_no = str(row.get('企标编号*', '')).strip() if pd.notna(row.get('企标编号*', '')) else ''
+            cited_no = str(row.get('引用的国标/行标编号*', '')).strip() if pd.notna(row.get('引用的国标/行标编号*', '')) else ''
+            latest_no = str(row.get('最新标准号', '')).strip() if pd.notna(row.get('最新标准号', '')) else ''
+            
+            # A. 必填字段格式校验
+            if not source_no or source_no == 'nan':
+                result['errors'].append({'row': row_idx, 'error': "必填列 '企标编号*' 为空"})
+                continue
+            if not cited_no or cited_no == 'nan':
+                result['errors'].append({'row': row_idx, 'error': "必填列 '引用的国标/行标编号*' 为空"})
+                continue
+                
+            # B. 主体存在性校验
+            standard = standard_map.get(source_no)
+            if not standard:
+                result['errors'].append({
+                    'row': row_idx, 
+                    'error': f"企标编号 '{source_no}' 在系统企标库中未找到，请确保已一键导入该企标主表"
+                })
+                continue
+                
+            # C. 关联引用的国行标
+            cited_std = cited_std_map.get(cited_no)
+            
+            try:
+                ref, created = NormativeReference.objects.get_or_create(
+                    source_standard=standard,
+                    cited_standard_no=cited_no,
+                    defaults={
+                        'cited_standard': cited_std,
+                        'latest_standard_no': latest_no or cited_no
+                    }
+                )
+                if created:
+                    result['success_count'] += 1
+                    # 联动更新企标的解析状态为 references_parsed
+                    if standard.is_parsed == 'unparsed':
+                        standard.is_parsed = 'references_parsed'
+                        standard.save(update_fields=['is_parsed'])
+                    # 联动增加国行标被引用计数
+                    if cited_std:
+                        Standard.objects.filter(pk=cited_std.pk).update(citation_count=F('citation_count') + 1)
+                else:
+                    if latest_no and ref.latest_standard_no != latest_no:
+                        ref.latest_standard_no = latest_no
+                        ref.save(update_fields=['latest_standard_no'])
+            except Exception as e:
+                result['errors'].append({'row': row_idx, 'error': f"数据保存入库失败: {str(e)}"})
+
+    # 后置扫盘匹配对齐 PDF
+    try:
+        scan_and_align_pdf_assets()
+    except Exception:
+        pass
+        
+    return result
+
+
+def generate_mixed_import_template_v2() -> tuple:
+    """
+    动态生成企标与规范引用混合导入模板 Excel，返回 (excel_bytes, filename)
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '企标与引用混合导入模板'
+    
+    header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    headers = ['企标编号*', '企标名称*', '起草单位*', '统一社会信用代码*', '引用的国标/行标编号*', '最新标准号']
+    filename = "企业标准与引用关系混合导入模板.xlsx"
+
+    for col, header in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=header)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = header_align
+        ws.column_dimensions[cell.column_letter].width = 25
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue(), filename

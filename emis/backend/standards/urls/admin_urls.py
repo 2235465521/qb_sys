@@ -8,7 +8,12 @@ from standards.views.admin_views import (
     StandardAdminDetailView,
     StandardImportView,
     StandardImportTemplateView,
-    StandardIndicatorImportView
+    StandardIndicatorImportView,
+    StandardReferenceImportView,
+    StandardReferenceImportTemplateView,
+    StandardMixedImportView,
+    StandardMixedImportStatusView,
+    StandardMixedImportTemplateView
 )
 
 urlpatterns = [
@@ -17,5 +22,10 @@ urlpatterns = [
     path('import/', StandardImportView.as_view(), name='admin-standard-import'),
     path('import/template/', StandardImportTemplateView.as_view(), name='admin-standard-import-template'),
     path('import-indicators/', StandardIndicatorImportView.as_view(), name='admin-standard-import-indicators'),
+    path('import-references/', StandardReferenceImportView.as_view(), name='admin-standard-import-references'),
+    path('import-references/template/', StandardReferenceImportTemplateView.as_view(), name='admin-standard-import-references-template'),
+    path('import-mixed/', StandardMixedImportView.as_view(), name='admin-standard-import-mixed'),
+    path('import-mixed/status/', StandardMixedImportStatusView.as_view(), name='admin-standard-import-mixed-status'),
+    path('import-mixed/template/', StandardMixedImportTemplateView.as_view(), name='admin-standard-import-mixed-template'),
 ]
 

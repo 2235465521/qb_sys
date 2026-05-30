@@ -218,11 +218,12 @@ class StandardDownloadView(APIView):
         filename = os.path.basename(file_path)
 
         try:
-            content_disposition = f"attachment; filename*=UTF-8''{quote(filename)}"
+            content_disposition = f"inline; filename*=UTF-8''{quote(filename)}"
         except Exception:
-            content_disposition = f"attachment; filename={quote(filename)}"
+            content_disposition = f"inline; filename={quote(filename)}"
 
         response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
+        response['Content-Type'] = 'application/pdf'
         response['Content-Disposition'] = content_disposition
         return response
 

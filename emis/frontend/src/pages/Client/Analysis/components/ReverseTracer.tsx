@@ -48,8 +48,8 @@ const ReverseTracer: React.FC = () => {
     fetchStandards();
   }, [searchParams]);
 
-  const handleSearch = () => {
-    setSearchParams({ page: 1, keyword: keyword.trim() });
+  const handleSearch = (value: string) => {
+    setSearchParams({ page: 1, keyword: value.trim() });
     setSelectedStandard(null); // 搜索时回到列表模式
   };
 
@@ -100,13 +100,24 @@ const ReverseTracer: React.FC = () => {
       ellipsis: true,
     },
     {
-      title: '起草企业',
+      title: '起草单位',
       dataIndex: ['company_detail', 'name'],
       key: 'company_name',
       ellipsis: true,
       render: (text: string) => text ? (
-        <Tooltip title={text}>
-          <Tag color="cyan" style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <Tooltip title={text} placement="topLeft">
+          <Tag 
+            color="cyan" 
+            style={{ 
+              borderRadius: 4, 
+              maxWidth: '100%', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              display: 'inline-block',
+              verticalAlign: 'middle'
+            }}
+          >
             {text}
           </Tag>
         </Tooltip>
@@ -163,7 +174,6 @@ const ReverseTracer: React.FC = () => {
           enterButton="搜索过滤"
           allowClear
           size="large"
-          loading={loading}
           style={{ borderRadius: 8 }}
         />
       </div>
