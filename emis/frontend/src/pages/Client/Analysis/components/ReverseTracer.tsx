@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { Card, Input, Button, Tag, Space, Typography, Alert, Divider, Drawer, Form, Select, Table, Pagination } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Card, Input, Button, Tag, Space, Typography, Alert, Divider, Drawer, Form, Select, Table, Pagination, Tooltip, message } from 'antd';
 import { SearchOutlined, BankOutlined, EnvironmentOutlined, UserOutlined, CheckCircleOutlined, InfoCircleOutlined, CustomerServiceOutlined, PhoneOutlined, WechatOutlined, ArrowLeftOutlined, EyeOutlined } from '@ant-design/icons';
-import { useClientStandardSearch } from '@/hooks/useClientStandardSearch';
 import { useCompanyLeads } from '@/hooks/useCompanyLeads';
-import type { Standard } from '@/types';
+import type { Standard, PaginatedResponse } from '@/types';
+import apiClient from '@/api/client';
 
 const { Text, Paragraph } = Typography;
 const { Option } = Select;
@@ -17,14 +17,36 @@ const ReverseTracer: React.FC = () => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [form] = Form.useForm();
 
-  // 获取已解析的企业标准
-  const { data, isLoading, isFetching } = useClientStandardSearch({
-    page: searchParams.page,
-    keyword: searchParams.keyword,
-    type: 'enterprise', // 企标反向溯源定位
-  });
+  // 本地管理数据加载状态和数据池，并在 finally 块中释放 loading，防止首次进入 Infinite Loading 转圈圈
+  const [standards, setStandards] = useState<Standard[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(false);
 
   const { createLeadMutation } = useCompanyLeads();
+
+  const fetchStandards = async () => {
+    setLoading(true);
+    try {
+      const { data } = await apiClient.get<PaginatedResponse<Standard>>('/client/standards/', {
+        params: {
+          page: searchParams.page,
+          keyword: searchParams.keyword,
+          type: 'enterprise',
+        }
+      });
+      setStandards(data.results || []);
+      setTotalCount(data.count || 0);
+    } catch (err: any) {
+      console.error(err);
+      message.error('获取企标反向溯源列表数据失败');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStandards();
+  }, [searchParams]);
 
   const handleSearch = () => {
     setSearchParams({ page: 1, keyword: keyword.trim() });
@@ -56,7 +78,7 @@ const ReverseTracer: React.FC = () => {
       setDrawerOpen(false);
       form.resetFields();
     } catch (err) {
-      // 错误自动在 mutation onSuccess/onError 呈现
+      // 错误已自动在 mutation onError 呈现
     }
   };
 
@@ -81,26 +103,28 @@ const ReverseTracer: React.FC = () => {
       title: '起草企业',
       dataIndex: ['company_detail', 'name'],
       key: 'company_name',
-      render: (text: string) => text ? <Tag color="cyan" style={{ borderRadius: 4 }}>{text}</Tag> : '--',
+      ellipsis: true,
+      render: (text: string) => text ? (
+        <Tooltip title={text}>
+          <Tag color="cyan" style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {text}
+          </Tag>
+        </Tooltip>
+      ) : '--',
     },
     {
       title: '操作',
       key: 'action',
-      width: 110,
+      width: 80,
       render: (_: any, record: Standard) => (
-        <Button
-          type="primary"
-          size="small"
-          icon={<EyeOutlined />}
-          onClick={() => setSelectedStandard(record)}
-          style={{
-            borderRadius: 4,
-            background: 'linear-gradient(135deg, #13c2c2 0%, #0097a7 100%)',
-            borderColor: '#13c2c2',
-          }}
-        >
-          详情制定
-        </Button>
+        <Tooltip title="查看详情">
+          <Button
+            type="text"
+            icon={<EyeOutlined />}
+            onClick={() => setSelectedStandard(record)}
+            style={{ color: '#0097a7' }}
+          />
+        </Tooltip>
       ),
     },
   ];
@@ -118,38 +142,30 @@ const ReverseTracer: React.FC = () => {
         borderRadius: 16,
         boxShadow: '0 6px 20px rgba(0,0,0,0.04)',
         border: '1px solid #f0f0f0',
-        background: '#fff'
+        background: '#fff',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column'
       }}
+      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
     >
       <Paragraph style={{ color: '#666', fontSize: 13, marginBottom: 16 }}>
         支持录入企业标准号（如 Q/XMBL）或企标名称，系统将智能提取其背后的起草企业，精准回显企业画像与打标状态，助您在第一时间提供高质量增值服务。
       </Paragraph>
 
-      {/* 搜索控制栏 */}
-      <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-        <Input
+      {/* 搜索控制栏 (使用 Input.Search 修复搜索过滤失效) */}
+      <div style={{ marginBottom: 20 }}>
+        <Input.Search
           placeholder="请输入企标编号 / 企标名称模糊检索..."
           value={keyword}
           onChange={(e) => setKeyword(e.target.value)}
-          onPressEnter={handleSearch}
+          onSearch={handleSearch}
+          enterButton="搜索过滤"
           allowClear
           size="large"
-          prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+          loading={loading}
           style={{ borderRadius: 8 }}
         />
-        <Button
-          type="primary"
-          onClick={handleSearch}
-          size="large"
-          loading={isFetching}
-          style={{
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, #13c2c2 0%, #0097a7 100%)',
-            borderColor: '#13c2c2',
-          }}
-        >
-          搜索过滤
-        </Button>
       </div>
 
       <Divider style={{ margin: '16px 0' }} />
@@ -268,25 +284,25 @@ const ReverseTracer: React.FC = () => {
         </div>
       ) : (
         /* 列表表格模式 */
-        <div>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <Table
             columns={columns}
-            dataSource={data?.results || []}
+            dataSource={standards}
             rowKey="id"
-            loading={isLoading}
+            loading={loading}
             pagination={false}
             bordered
             size="small"
             style={{ borderRadius: 8, overflow: 'hidden' }}
           />
 
-          {data && data.count > 0 && (
+          {totalCount > 0 && (
             <div style={{ marginTop: 16, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 8 }}>
-              <Text type="secondary" style={{ fontSize: 12 }}>共计 {data.count} 条企标归属记录</Text>
+              <Text type="secondary" style={{ fontSize: 12 }}>共计 {totalCount} 条企标归属记录</Text>
               <Pagination
                 current={searchParams.page}
                 pageSize={10}
-                total={data.count}
+                total={totalCount}
                 onChange={handlePageChange}
                 showSizeChanger={false}
                 showQuickJumper

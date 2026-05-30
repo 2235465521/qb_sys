@@ -149,7 +149,11 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
         boxShadow: "0 6px 20px rgba(0,0,0,0.04)",
         border: "1px solid #f0f0f0",
         background: "#fff",
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column'
       }}
+      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
     >
       <Table
         dataSource={mappedData}

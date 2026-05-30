@@ -94,6 +94,13 @@ export interface Standard {
   pdf_url?: string | null
   all_chain?: number[]
   created_at: string
+  normative_references?: NormativeReference[]
+}
+
+export interface NormativeReference {
+  id: number
+  cited_standard_no: string
+  latest_standard_no: string
 }
 
 // ── 会员 ─────────────────────────────────────────────────

@@ -13,7 +13,7 @@ export interface BackgroundTask {
 
 interface TaskContextType {
   tasks: BackgroundTask[];
-  dispatchTask: (token: string, name: string) => void;
+  dispatchTask: (token: string, name: string, isCelery?: boolean) => void;
   clearDoneTasks: () => void;
   cancelTask: (token: string) => void;
 }
@@ -24,48 +24,86 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const intervalsRef = useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
-  const dispatchTask = (token: string, name: string) => {
+  const dispatchTask = (token: string, name: string, isCelery?: boolean) => {
     setTasks(prev => [...prev, { id: token, name, status: 'running', progress: 10 }]);
 
     const intervalId = setInterval(async () => {
       try {
-        const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(
-          `/client/standards/pack/${token}/status/`
-        );
+        const url = isCelery
+          ? `/client/standards/pack-tasks/${token}/`
+          : `/client/standards/pack/${token}/status/`;
 
-        if (res.data.status === 'running') {
-          setTasks(prev => prev.map(t => 
-            t.id === token ? { ...t, progress: 60 } : t
-          ));
-        } else if (res.data.status === 'done') {
+        const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(url);
+
+        let mappedStatus: 'running' | 'done' | 'failed' = 'running';
+        let downloadUrl = res.data.download_url;
+        let error = res.data.error;
+
+        if (isCelery) {
+          const celeryStatus = res.data.status;
+          if (celeryStatus === 'SUCCESS') {
+            mappedStatus = 'done';
+          } else if (celeryStatus === 'FAILURE' || celeryStatus === 'REVOKED') {
+            mappedStatus = 'failed';
+            error = res.data.error || '打包任务失败或被撤销';
+          } else {
+            mappedStatus = 'running';
+            setTasks(prev => prev.map(t => {
+              if (t.id === token) {
+                const nextProgress = t.progress < 90 ? t.progress + 10 : t.progress;
+                return { ...t, progress: nextProgress };
+              }
+              return t;
+            }));
+            return;
+          }
+        } else {
+          const stdStatus = res.data.status;
+          if (stdStatus === 'done') {
+            mappedStatus = 'done';
+          } else if (stdStatus === 'failed') {
+            mappedStatus = 'failed';
+          } else {
+            mappedStatus = 'running';
+            setTasks(prev => prev.map(t => {
+              if (t.id === token) {
+                const nextProgress = t.progress < 90 ? t.progress + 10 : t.progress;
+                return { ...t, progress: nextProgress };
+              }
+              return t;
+            }));
+            return;
+          }
+        }
+
+        if (mappedStatus === 'done') {
           clearInterval(intervalsRef.current[token]);
           setTasks(prev => prev.map(t => 
-            t.id === token ? { ...t, status: 'done', progress: 100, downloadUrl: res.data.download_url } : t
+            t.id === token ? { ...t, status: 'done', progress: 100, downloadUrl } : t
           ));
 
           notification.success({
             message: '打包任务完成',
             description: `${name} 已就绪。`,
             btn: (
-              <a href={res.data.download_url} target="_blank" rel="noreferrer">
+              <a href={downloadUrl} target="_blank" rel="noreferrer">
                 点击下载
               </a>
             ),
             duration: 0,
           });
           
-          // Optionally auto download
-          if (res.data.download_url) {
-            window.open(res.data.download_url, '_blank');
+          if (downloadUrl) {
+            window.open(downloadUrl, '_blank');
           }
-        } else if (res.data.status === 'failed') {
+        } else if (mappedStatus === 'failed') {
           clearInterval(intervalsRef.current[token]);
           setTasks(prev => prev.map(t => 
-            t.id === token ? { ...t, status: 'failed', error: res.data.error } : t
+            t.id === token ? { ...t, status: 'failed', error } : t
           ));
           notification.error({
             message: '打包任务失败',
-            description: res.data.error || '发生了未知错误',
+            description: error || '发生了未知错误',
           });
         }
       } catch (err) {
@@ -74,7 +112,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           t.id === token ? { ...t, status: 'failed', error: '网络错误' } : t
         ));
       }
-    }, 1500);
+    }, 2000);
 
     intervalsRef.current[token] = intervalId;
   };

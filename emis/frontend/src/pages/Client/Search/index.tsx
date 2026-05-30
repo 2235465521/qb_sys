@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Progress, Spin, Badge, Radio } from 'antd';
+import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Badge, Radio } from 'antd';
 import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined } from '@ant-design/icons';
 import LbsSearchBar from './components/LbsSearchBar';
 import StandardDrawer from './components/StandardDrawer';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Company, CompanySearchParams } from '@/types';
 import apiClient from '@/api/client';
+import { useTaskContext } from '@/store/TaskContext';
 
 const { Text, Title } = Typography;
 
@@ -23,10 +24,7 @@ const CompanySearchPage: React.FC = () => {
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [exportMode, setExportMode] = useState<'selected' | 'filtered'>('filtered');
 
-  // 打包进度状态
-  const [packing, setPacking] = useState(false);
-  const [packProgress, setPackProgress] = useState<number>(0);
-  const [packStatusText, setPackStatusText] = useState<string>('');
+  const { dispatchTask } = useTaskContext();
 
   const { useCompanySearch } = useSearchData();
   const { data: result, isLoading, isFetching } = useCompanySearch(params);
@@ -84,43 +82,6 @@ const CompanySearchPage: React.FC = () => {
     setExportModalVisible(true);
   };
 
-  // 轮询打包状态接口
-  const pollTaskStatus = (taskId: string) => {
-    let timer: any = null;
-    const checkStatus = async () => {
-      try {
-        const { data } = await apiClient.get<{ status: string; download_url?: string; error?: string }>(
-          `/client/standards/pack-tasks/${taskId}/`
-        );
-        
-        if (data.status === 'SUCCESS') {
-          setPacking(false);
-          setPackProgress(100);
-          message.success('打包完成！正在为您下载...');
-          if (data.download_url) {
-            window.open(data.download_url, '_blank');
-          }
-          setSelectedEnterprises([]); // 下载完清空购物车
-          clearInterval(timer);
-        } else if (data.status === 'FAILURE') {
-          setPacking(false);
-          message.error(data.error || '打包失败，所选企业名下可能无可下载企标');
-          clearInterval(timer);
-        } else {
-          // 模拟进度平滑增长至 90%
-          setPackProgress(prev => (prev < 90 ? prev + 10 : prev));
-          setPackStatusText('Celery 异步任务执行中，PDF 打包处理中...');
-        }
-      } catch (err: any) {
-        setPacking(false);
-        message.error('查询打包任务进度失败，请刷新页面查看');
-        clearInterval(timer);
-      }
-    };
-    timer = setInterval(checkStatus, 2000);
-    checkStatus(); // 启动后立即轮询一次
-  };
-
   // 确认并启动打包任务
   const confirmExport = () => {
     setExportModalVisible(false);
@@ -134,10 +95,6 @@ const CompanySearchPage: React.FC = () => {
       message.warning('当前检索条件下无可打包企业');
       return;
     }
-
-    setPacking(true);
-    setPackProgress(5);
-    setPackStatusText('正在分发打包任务至 Celery...');
 
     try {
       const payload: any = {
@@ -153,11 +110,13 @@ const CompanySearchPage: React.FC = () => {
 
       const { data } = await apiClient.post<{ task_id: string }>('/client/standards/pack-enterprises/', payload);
       
-      setPackProgress(20);
-      setPackStatusText('异步打包任务已启动，正在写入 ZIP 目录...');
-      pollTaskStatus(data.task_id);
+      message.success('已成功提交后台打包任务！您可在右上角任务中心查看进度');
+      dispatchTask(data.task_id, '企业企标批量下载', true);
+      
+      if (mode === 'selected') {
+        setSelectedEnterprises([]); // 提交后清空选中
+      }
     } catch (err: any) {
-      setPacking(false);
       const errMsg = err.response?.data?.error || '分发任务请求失败，请稍后重试';
       message.error(errMsg);
     }
@@ -463,28 +422,6 @@ const CompanySearchPage: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 打包进度 Loading 弹窗 */}
-      <Modal
-        open={packing}
-        closable={false}
-        maskClosable={false}
-        footer={null}
-        width={400}
-        bodyStyle={{ padding: '24px 24px 12px 24px', textAlign: 'center' }}
-      >
-        <div style={{ marginBottom: 16 }}>
-          <Spin size="large" />
-        </div>
-        <Title level={5} style={{ marginTop: 0, marginBottom: 8 }}>{packStatusText}</Title>
-        <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 16 }}>
-          由于后台需要压缩并打包 PDF 标准文件，可能需要 5-15 秒，请不要关闭或刷新本页面...
-        </Text>
-        <Progress 
-          percent={packProgress} 
-          status={packProgress === 100 ? "success" : "active"} 
-          strokeColor={{ '0%': '#13c2c2', '100%': '#0097a7' }} 
-        />
-      </Modal>
     </div>
   );
 };

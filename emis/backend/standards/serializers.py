@@ -7,6 +7,12 @@ from .models import Standard, NormativeReference
 from companies.serializers import CompanyListSerializer
 
 
+class NormativeReferenceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NormativeReference
+        fields = ['id', 'cited_standard_no', 'latest_standard_no']
+
+
 class StandardListSerializer(serializers.ModelSerializer):
     """列表用（精简）"""
     company_name = serializers.CharField(source='company.name', read_only=True, default='')
@@ -14,13 +20,14 @@ class StandardListSerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     pdf_url = serializers.SerializerMethodField()
+    normative_references = NormativeReferenceSerializer(many=True, read_only=True)
 
     class Meta:
         model = Standard
         fields = [
             'id', 'standard_no', 'clean_id', 'type', 'type_display',
             'title', 'company_name', 'company_detail', 'ics', 'ccs', 'is_parsed', 'citation_count',
-            'status', 'status_display', 'created_at', 'pdf_url',
+            'status', 'status_display', 'created_at', 'pdf_url', 'normative_references',
         ]
 
     def get_pdf_url(self, obj):

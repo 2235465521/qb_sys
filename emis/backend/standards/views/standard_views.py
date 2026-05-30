@@ -28,7 +28,7 @@ class StandardListView(generics.ListAPIView):
 
     def get_queryset(self):
         params = self.request.query_params
-        qs = Standard.objects.select_related('company')
+        qs = Standard.objects.select_related('company').prefetch_related('normative_references')
 
         if params.get('type'):
             qs = qs.filter(type=params['type'])
@@ -224,4 +224,56 @@ class StandardDownloadView(APIView):
 
         response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
         response['Content-Disposition'] = content_disposition
+        return response
+
+
+import openpyxl
+import io
+
+class ExportStandardReferencesView(APIView):
+    """
+    GET /api/client/standards/<int:pk>/export-references/
+    将某个标准关联的规范性引用标准列表导出为 Excel 文件
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            standard = Standard.objects.get(pk=pk)
+        except Standard.DoesNotExist:
+            return Response({'error': '标准不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        references = standard.normative_references.all()
+        
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "规范性引用标准目录"
+        
+        # 写入标题行
+        ws.append(["序号", "被引用标准号", "最新标准号"])
+        
+        # 写入数据行
+        for idx, ref in enumerate(references):
+            ws.append([
+                idx + 1,
+                ref.cited_standard_no,
+                ref.latest_standard_no or "暂无最新标准"
+            ])
+            
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        
+        # 中文文件名防乱码
+        filename = f"{standard.standard_no}_规范性引用标准.xlsx"
+        try:
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        except Exception:
+            response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+            
         return response

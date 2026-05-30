@@ -16,12 +16,16 @@ const SearchStandardsPage: React.FC = () => {
   // 自定义打包弹窗状态
   const [customPackVisible, setCustomPackVisible] = useState(false);
 
+  // 选中的标准行ID
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+
   const { dispatchTask } = useTaskContext();
 
   const { data, isLoading, isFetching } = useClientStandardSearch(params);
 
   const handleSearch = (keyword: string) => {
     setParams({ keyword, page: 1 });
+    setSelectedRowKeys([]); // 搜索条件改变清空勾选
   };
 
   const handlePageChange = (newPage: number) => {
@@ -29,6 +33,26 @@ const SearchStandardsPage: React.FC = () => {
       ...params,
       page: newPage,
     });
+    // 翻页不清空勾选，以支持跨页勾选
+  };
+
+  // 批量下载已选标准
+  const handleBatchDownload = async () => {
+    if (selectedRowKeys.length === 0) return;
+    
+    try {
+      const { data: response } = await apiClient.post<{ token: string; count: number }>('/client/standards/pack/', {
+        standard_ids: selectedRowKeys.map(k => Number(k))
+      });
+      const { token, count } = response;
+      
+      message.success(`已锁定 ${count} 个选定标准，打包任务已提交至后台处理，您可继续浏览其他页面...`);
+      dispatchTask(token, '批量下载已选标准');
+      setSelectedRowKeys([]); // 清空选择
+    } catch (err: any) {
+      const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
+      message.error(errMsg);
+    }
   };
 
   // 触发 100 个随机企标批量打包下载
@@ -129,9 +153,48 @@ const SearchStandardsPage: React.FC = () => {
         loading={isFetching}
       />
 
+      {selectedRowKeys.length > 0 && (
+        <div 
+          style={{ 
+            marginBottom: 16, 
+            background: 'linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%)', 
+            border: '1px solid #91d5ff', 
+            padding: '12px 24px', 
+            borderRadius: 12, 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            boxShadow: '0 4px 15px rgba(24,144,255,0.05)'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{ fontSize: 14, fontWeight: 500, color: '#0050b3' }}>
+              已选择 <span style={{ fontSize: 16, fontWeight: 'bold', color: '#1890ff' }}>{selectedRowKeys.length}</span> 个企业标准
+            </span>
+            <Button type="link" size="small" onClick={() => setSelectedRowKeys([])} style={{ padding: 0 }}>
+              取消选择
+            </Button>
+          </div>
+          <Button
+            type="primary"
+            icon={<CloudDownloadOutlined />}
+            onClick={handleBatchDownload}
+            style={{ 
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #1890ff 0%, #0050b3 100%)',
+              borderColor: '#1890ff'
+            }}
+          >
+            批量下载已选标准
+          </Button>
+        </div>
+      )}
+
       <StandardsTable
         data={data?.results || []}
         loading={isLoading}
+        selectedRowKeys={selectedRowKeys}
+        onSelectionChange={setSelectedRowKeys}
       />
 
       {data && data.count > 0 && (
