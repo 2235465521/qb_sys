@@ -60,9 +60,10 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
 
 
 @shared_task(bind=True, name='standards.pack_enterprises_zip')
-def pack_enterprises_zip_task(self, enterprise_ids: list, uuid_str: str):
+def pack_enterprises_zip_task(self, enterprise_ids: list = None, filters: dict = None, export_all: bool = False, uuid_str: str = ""):
     """
-    异步打包选中企业名下的所有 PDF 企标文件。
+    异步打包选中企业或检索条件名下的所有 PDF 企标文件。
+    最大限制 200 家企业。
     目录结构：企业名称/标准号_标准名称.pdf
     """
     import os
@@ -71,6 +72,7 @@ def pack_enterprises_zip_task(self, enterprise_ids: list, uuid_str: str):
     from companies.models import Company
     from standards.models import Standard
     from django.db.models import Q
+    from companies.services import search_companies
 
     # 1. 准备临时导出目录
     export_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
@@ -84,8 +86,51 @@ def pack_enterprises_zip_task(self, enterprise_ids: list, uuid_str: str):
     added_count = 0
     skipped_count = 0
 
-    # 2. 查找选中的企业
-    companies = Company.objects.filter(id__in=enterprise_ids)
+    # 2. 确定目标企业 ID 列表，上限限制 200 家
+    target_ids = []
+    if export_all and filters:
+        lat = filters.get('lat')
+        lng = filters.get('lng')
+        radius_km = filters.get('radius_km')
+        
+        center_lat = float(lat) if lat else None
+        center_lng = float(lng) if lng else None
+        radius = float(radius_km) if radius_km else None
+
+        try:
+            province_id = int(filters.get('province_id')) if filters.get('province_id') else None
+        except (ValueError, TypeError):
+            province_id = None
+        try:
+            city_id = int(filters.get('city_id')) if filters.get('city_id') else None
+        except (ValueError, TypeError):
+            city_id = None
+        try:
+            district_id = int(filters.get('district_id')) if filters.get('district_id') else None
+        except (ValueError, TypeError):
+            district_id = None
+
+        qs = search_companies(
+            keyword=filters.get('keyword', ''),
+            province_id=province_id,
+            city_id=city_id,
+            district_id=district_id,
+            center_lat=center_lat,
+            center_lng=center_lng,
+            radius_km=radius,
+            ics=filters.get('ics', ''),
+            ccs=filters.get('ccs', ''),
+            standard_logic=filters.get('standard_logic', 'OR'),
+        )
+        target_ids = list(qs.values_list('id', flat=True)[:200])
+    elif enterprise_ids:
+        target_ids = enterprise_ids[:200]
+
+    if not target_ids:
+        raise ValueError("没有找到符合条件的企业记录或企业列表为空")
+
+    # 3. 查找目标企业并进行打包
+    companies = Company.objects.filter(id__in=target_ids)
 
     with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
         for company in companies:
@@ -157,6 +202,7 @@ def pack_enterprises_zip_task(self, enterprise_ids: list, uuid_str: str):
         raise ValueError("所选企业下未找到任何可供打包的标准 PDF 文件")
 
     return f"exports/{zip_filename}"
+
 
 
 

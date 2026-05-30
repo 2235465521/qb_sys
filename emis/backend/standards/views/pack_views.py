@@ -270,25 +270,27 @@ class RandomPackRequestView(APIView):
 class EnterprisePackRequestView(APIView):
     """
     POST /api/client/standards/pack-enterprises/
-    批量打包指定企业名下的所有 PDF 企标文件
-
-    Body: { "enterprise_ids": [1, 2, 3] }
-    Returns: { "task_id": "xxx", "status": "PENDING" }
+    支持两种模式批量打包所有 PDF 企标文件：
+      1. 传入已勾选企业 ID 列表 {"enterprise_ids": [1, 2, ...]}
+      2. 传入当前检索条件全选导出 {"export_all": true, "filters": {...}}
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
+        export_all = request.data.get('export_all', False)
         enterprise_ids = request.data.get('enterprise_ids', [])
-        if not enterprise_ids or not isinstance(enterprise_ids, list):
+        filters = request.data.get('filters', {})
+
+        if not export_all and not enterprise_ids:
             return Response(
-                {'error': 'enterprise_ids 不能为空且必须为列表'},
+                {'error': 'enterprise_ids 不能为空，或必须指定检索过滤条件开展全选导出'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
-        # 限制单次打包企业数
-        if len(enterprise_ids) > 100:
+
+        # 模式一企业数限制为 200 家（前端限制 200，后端双重校验限制）
+        if not export_all and len(enterprise_ids) > 200:
             return Response(
-                {'error': '单次打包最多选择 100 家企业'},
+                {'error': '单次打包最多选择 200 家企业'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -298,7 +300,12 @@ class EnterprisePackRequestView(APIView):
 
         # 调度 Celery 异步打包任务
         from standards.tasks import pack_enterprises_zip_task
-        task = pack_enterprises_zip_task.delay(enterprise_ids=enterprise_ids, uuid_str=uuid_str)
+        task = pack_enterprises_zip_task.delay(
+            enterprise_ids=enterprise_ids,
+            filters=filters,
+            export_all=export_all,
+            uuid_str=uuid_str
+        )
 
         return Response({
             'task_id': task.id,

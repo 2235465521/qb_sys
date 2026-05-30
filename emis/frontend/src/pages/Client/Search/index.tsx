@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Progress, Spin, Badge } from 'antd';
+import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Progress, Spin, Badge, Radio } from 'antd';
 import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined } from '@ant-design/icons';
 import LbsSearchBar from './components/LbsSearchBar';
 import StandardDrawer from './components/StandardDrawer';
@@ -19,6 +19,10 @@ const CompanySearchPage: React.FC = () => {
   // 购物车弹窗显隐
   const [cartVisible, setCartVisible] = useState(false);
   
+  // 导出模式配置弹窗
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [exportMode, setExportMode] = useState<'selected' | 'filtered'>('filtered');
+
   // 打包进度状态
   const [packing, setPacking] = useState(false);
   const [packProgress, setPackProgress] = useState<number>(0);
@@ -74,6 +78,12 @@ const CompanySearchPage: React.FC = () => {
     }
   };
 
+  // 打开打包范围选择弹窗
+  const handleOpenExportModal = () => {
+    setExportMode(selectedEnterprises.length > 0 ? 'selected' : 'filtered');
+    setExportModalVisible(true);
+  };
+
   // 轮询打包状态接口
   const pollTaskStatus = (taskId: string) => {
     let timer: any = null;
@@ -111,18 +121,37 @@ const CompanySearchPage: React.FC = () => {
     checkStatus(); // 启动后立即轮询一次
   };
 
+  // 确认并启动打包任务
+  const confirmExport = () => {
+    setExportModalVisible(false);
+    handlePackSelectedCompanies(exportMode);
+  };
+
   // 打包所选企业企标
-  const handlePackSelectedCompanies = async () => {
-    if (selectedEnterprises.length === 0) return;
+  const handlePackSelectedCompanies = async (mode: 'selected' | 'filtered') => {
+    if (mode === 'selected' && selectedEnterprises.length === 0) return;
+    if (mode === 'filtered' && (!result || result.count === 0)) {
+      message.warning('当前检索条件下无可打包企业');
+      return;
+    }
 
     setPacking(true);
     setPackProgress(5);
     setPackStatusText('正在分发打包任务至 Celery...');
 
     try {
-      const { data } = await apiClient.post<{ task_id: string }>('/client/standards/pack-enterprises/', {
-        enterprise_ids: selectedEnterprises.map(c => c.id),
-      });
+      const payload: any = {
+        export_all: mode === 'filtered'
+      };
+
+      if (mode === 'selected') {
+        payload.enterprise_ids = selectedEnterprises.map(c => c.id);
+      } else {
+        const { page, ...filters } = params;
+        payload.filters = filters;
+      }
+
+      const { data } = await apiClient.post<{ task_id: string }>('/client/standards/pack-enterprises/', payload);
       
       setPackProgress(20);
       setPackStatusText('异步打包任务已启动，正在写入 ZIP 目录...');
@@ -161,6 +190,21 @@ const CompanySearchPage: React.FC = () => {
                 本页全选
               </Checkbox>
             )}
+          </Space>
+          <Space>
+            <Button
+              type="primary"
+              icon={<CloudDownloadOutlined />}
+              onClick={handleOpenExportModal}
+              style={{
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, #13c2c2 0%, #0097a7 100%)',
+                borderColor: '#13c2c2',
+                boxShadow: '0 2px 8px rgba(0, 151, 167, 0.15)'
+              }}
+            >
+              打包下载企标 PDF
+            </Button>
           </Space>
         </div>
       )}
@@ -300,7 +344,7 @@ const CompanySearchPage: React.FC = () => {
             icon={<CloudDownloadOutlined />}
             onClick={() => {
               setCartVisible(false);
-              handlePackSelectedCompanies();
+              handleOpenExportModal();
             }}
             disabled={selectedEnterprises.length === 0}
             style={{
@@ -347,6 +391,75 @@ const CompanySearchPage: React.FC = () => {
               )}
             />
           )}
+        </div>
+      </Modal>
+
+      {/* 导出模式选择弹窗 */}
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600 }}>
+            <CloudDownloadOutlined style={{ color: '#1890ff' }} />
+            <span>打包导出 PDF 企标范围选择</span>
+          </div>
+        }
+        open={exportModalVisible}
+        onCancel={() => setExportModalVisible(false)}
+        width={480}
+        footer={[
+          <Button key="cancel" onClick={() => setExportModalVisible(false)} style={{ borderRadius: 16 }}>
+            取消
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            onClick={confirmExport}
+            style={{
+              borderRadius: 16,
+              background: 'linear-gradient(135deg, #1890ff 0%, #0050b3 100%)',
+              borderColor: '#1890ff'
+            }}
+          >
+            开始打包
+          </Button>
+        ]}
+      >
+        <div style={{ padding: '12px 0 12px 0' }}>
+          <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 20 }}>
+            请选择您要导出的 PDF 文件打包范围，后端异步打包单次最多支持 200 家企业。
+          </Text>
+          <Radio.Group 
+            value={exportMode} 
+            onChange={(e) => setExportMode(e.target.value)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 16, width: '100%' }}
+          >
+            <Radio 
+              value="selected" 
+              disabled={selectedEnterprises.length === 0}
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 500, fontSize: 14 }}>
+                  模式一：仅打包已勾选的企业 (共 <span style={{ color: '#13c2c2', fontWeight: 'bold' }}>{selectedEnterprises.length}</span> 家)
+                </span>
+                <span style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                  仅打包您在购物车或列表中手动勾选的企业文件
+                </span>
+              </div>
+            </Radio>
+            <Radio 
+              value="filtered"
+              style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                <span style={{ fontWeight: 500, fontSize: 14 }}>
+                  模式二：按当前检索条件全选导出 (当前匹配 <span style={{ color: '#1890ff', fontWeight: 'bold' }}>{result?.count || 0}</span> 家)
+                </span>
+                <span style={{ fontSize: 12, color: '#8c8c8c', marginTop: 4 }}>
+                  按照您当前的地区、关键词等过滤条件打包（上限截取前 200 家企业）
+                </span>
+              </div>
+            </Radio>
+          </Radio.Group>
         </div>
       </Modal>
 
