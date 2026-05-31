@@ -13,6 +13,7 @@ import {
   LogoutOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import BrandLogo from '@/components/BrandLogo';
 
 const { Header, Sider, Content } = Layout;
 
@@ -84,8 +85,27 @@ const MainLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ boxShadow: '2px 0 8px 0 rgba(29,33,41,.05)' }}>
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: collapsed ? 12 : 18, color: '#1677ff' }}>
-          {collapsed ? 'EMIS' : '企业管理系统'}
+        <div style={{ 
+          height: 64, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: 8,
+          borderBottom: '1px solid #f0f0f0',
+          background: '#fff'
+        }}>
+          <BrandLogo width={collapsed ? 28 : 32} height={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <span style={{ 
+              fontWeight: 800, 
+              fontSize: 16, 
+              color: '#141414', 
+              letterSpacing: '0.5px',
+              fontFamily: '"Outfit", sans-serif' 
+            }}>
+              ESIM SYSTEM
+            </span>
+          )}
         </div>
         <Menu
           theme="light"

@@ -27,7 +27,7 @@ class StandardListSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'standard_no', 'clean_id', 'type', 'type_display',
             'title', 'company_name', 'company_detail', 'ics', 'ccs', 'is_parsed', 'citation_count',
-            'status', 'status_display', 'created_at', 'pdf_url', 'normative_references',
+            'status', 'status_display', 'publish_date', 'created_at', 'pdf_url', 'normative_references',
         ]
 
     def get_pdf_url(self, obj):

@@ -5,12 +5,12 @@ import {
   MenuUnfoldOutlined,
   LogoutOutlined,
   UserOutlined,
-  CloudServerOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 import { adminMenuItems } from './AdminMenuConfig';
+import BrandLogo from '@/components/BrandLogo';
 
 const { Header, Sider, Content } = Layout;
 
@@ -33,8 +33,27 @@ const AdminLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="dark" style={{ boxShadow: '2px 0 8px 0 rgba(0,0,0,.15)' }}>
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: collapsed ? 12 : 20, color: '#fff', background: '#002140' }}>
-          {collapsed ? <CloudServerOutlined /> : 'EMIS 管理后台'}
+        <div style={{ 
+          height: 64, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: 8,
+          background: '#001529',
+          borderBottom: '1px solid rgba(255,255,255,0.05)'
+        }}>
+          <BrandLogo width={collapsed ? 28 : 32} height={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <span style={{ 
+              fontWeight: 800, 
+              fontSize: 16, 
+              color: '#ffffff', 
+              letterSpacing: '0.5px',
+              fontFamily: '"Outfit", sans-serif' 
+            }}>
+              ESIM SYSTEM
+            </span>
+          )}
         </div>
         <Menu
           theme="dark"

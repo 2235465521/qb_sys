@@ -1,9 +1,10 @@
 import React from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
-import { UserOutlined, LockOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
+import BrandLogo from '@/components/BrandLogo';
 
 const { Title, Text } = Typography;
 
@@ -53,34 +54,69 @@ const LoginPage: React.FC = () => {
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center',
-      background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
+      background: 'radial-gradient(circle at center, #0e1e14 0%, #050806 100%)',
+      backgroundImage: 'radial-gradient(circle at center, rgba(16, 32, 22, 0.9) 0%, rgba(5, 8, 6, 0.98) 100%), linear-gradient(rgba(82, 196, 26, 0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(82, 196, 26, 0.015) 1px, transparent 1px)',
+      backgroundSize: '100% 100%, 30px 30px, 30px 30px',
       overflow: 'hidden',
       position: 'relative'
     }}>
-      {/* 背景装饰球 */}
-      <div style={{ position: 'absolute', width: 400, height: 400, background: 'rgba(255,255,255,0.1)', borderRadius: '50%', top: -100, right: -100 }} />
-      <div style={{ position: 'absolute', width: 300, height: 300, background: 'rgba(255,255,255,0.05)', borderRadius: '50%', bottom: -50, left: -50 }} />
+      {/* Glow effects to blend with dark technology theme */}
+      <div style={{ position: 'absolute', width: 600, height: 600, background: 'radial-gradient(circle, rgba(82,196,26,0.1) 0%, transparent 70%)', borderRadius: '50%', top: -200, right: -200, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: 500, height: 500, background: 'radial-gradient(circle, rgba(82,196,26,0.06) 0%, transparent 70%)', borderRadius: '50%', bottom: -150, left: -150, pointerEvents: 'none' }} />
 
       <Card 
         bordered={false}
         style={{ 
-          width: 400, 
-          borderRadius: 16, 
-          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          backdropFilter: 'blur(10px)',
-          background: 'rgba(255, 255, 255, 0.95)'
+          width: 440, 
+          borderRadius: 20, 
+          boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
+          backdropFilter: 'blur(16px)',
+          background: 'rgba(15, 18, 16, 0.85)',
+          border: '1px solid rgba(82, 196, 26, 0.15)'
         }}
       >
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          {/* Brand Logo Container */}
           <div style={{ 
-            width: 64, height: 64, background: '#1890ff', borderRadius: 12, 
+            width: 72, height: 72, background: 'rgba(82,196,26,0.1)', borderRadius: 16, 
             display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
-            marginBottom: 16, boxShadow: '0 4px 12px rgba(24,144,255,0.3)'
+            marginBottom: 16, border: '1px solid rgba(82,196,26,0.2)',
+            boxShadow: '0 4px 20px rgba(82,196,26,0.15)'
           }}>
-            <SafetyCertificateOutlined style={{ fontSize: 32, color: '#fff' }} />
+            <BrandLogo width={48} height={48} />
           </div>
-          <Title level={3} style={{ margin: 0 }}>EMIS 企业管理系统</Title>
-          <Text type="secondary">Enterprise Management Information System</Text>
+
+          {/* Typography Headers */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+            <span style={{ 
+              fontSize: 12, 
+              color: '#52c41a', 
+              fontWeight: 'bold', 
+              letterSpacing: 3, 
+              textTransform: 'uppercase',
+              opacity: 0.95
+            }}>
+              MIND ZONE
+            </span>
+            <Title level={2} style={{ 
+              margin: '4px 0 8px 0', 
+              color: '#ffffff', 
+              fontWeight: 800, 
+              letterSpacing: '1px',
+              fontFamily: '"Outfit", "Inter", sans-serif',
+              textShadow: '0 2px 10px rgba(82, 196, 26, 0.25)'
+            }}>
+              ESIM SYSTEM
+            </Title>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, display: 'block', fontWeight: 500 }}>
+                Data-driven Enterprise Standard Management
+              </Text>
+              <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, display: 'block', fontStyle: 'italic' }}>
+                Excellence Through Optimization
+              </Text>
+            </div>
+          </div>
         </div>
 
         <Form
@@ -93,28 +129,58 @@ const LoginPage: React.FC = () => {
             name="username"
             rules={[{ required: true, message: '请输入用户名' }]}
           >
-            <Input prefix={<UserOutlined />} placeholder="用户名 / 管理员账号" />
+            <Input 
+              prefix={<UserOutlined style={{ color: '#52c41a' }} />} 
+              placeholder="用户名 / 管理员账号" 
+              style={{ 
+                background: 'rgba(255,255,255,0.05)', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                color: '#fff',
+                borderRadius: 8
+              }}
+            />
           </Form.Item>
 
           <Form.Item
             name="password"
             rules={[{ required: true, message: '请输入密码' }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder="密码" />
+            <Input.Password 
+              prefix={<LockOutlined style={{ color: '#52c41a' }} />} 
+              placeholder="密码" 
+              style={{ 
+                background: 'rgba(255,255,255,0.05)', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                color: '#fff',
+                borderRadius: 8
+              }}
+            />
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, borderRadius: 8 }}>
+            <Button 
+              type="primary" 
+              htmlType="submit" 
+              block 
+              loading={loading} 
+              style={{ 
+                height: 45, 
+                borderRadius: 8, 
+                backgroundColor: '#52c41a', 
+                borderColor: '#52c41a',
+                boxShadow: '0 4px 12px rgba(82,196,26,0.3)',
+                fontWeight: 'bold'
+              }}
+            >
               立即登录
             </Button>
           </Form.Item>
           
           <div style={{ textAlign: 'center' }}>
             <Space size="large">
-              <Text type="secondary" style={{ fontSize: 12, cursor: 'pointer' }}>忘记密码？</Text>
+              <Text style={{ fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.45)' }}>忘记密码？</Text>
               <Text 
-                type="secondary" 
-                style={{ fontSize: 12, cursor: 'pointer', color: '#1890ff' }}
+                style={{ fontSize: 12, cursor: 'pointer', color: '#52c41a', fontWeight: 'bold' }}
                 onClick={() => navigate('/register')}
               >
                 申请账号

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Table, Tag, Button, Space, message, Modal, Row, Col, Card, Empty } from 'antd';
+import { Table, Tag, Button, Space, message, Modal, Row, Col, Card, Empty, Tooltip } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -33,10 +33,24 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
     return url;
   };
 
+  const appendQueryParam = (url: string, key: string, value: string) => {
+    if (!url) return '';
+    const separator = url.includes('?') ? '&' : '?';
+    return `${url}${separator}${key}=${value}`;
+  };
+
   const handleDownload = (record: Standard) => {
     if (record.pdf_url) {
-      const safeUrl = formatUrlForSafety(record.pdf_url);
-      window.open(safeUrl, '_blank');
+      const downloadUrl = appendQueryParam(record.pdf_url, 'mode', 'download');
+      const safeUrl = formatUrlForSafety(downloadUrl);
+      
+      const link = document.createElement('a');
+      link.href = safeUrl;
+      link.setAttribute('download', `${record.standard_no}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      
       message.success(`开始下载: ${record.standard_no}`);
     } else {
       message.warning('该标准暂未上传关联 PDF 文件');
@@ -45,8 +59,9 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
 
   const handlePreview = (record: Standard) => {
     if (record.pdf_url) {
+      const previewUrl = appendQueryParam(record.pdf_url, 'mode', 'preview');
       setPreviewTitle(record.standard_no);
-      setPreviewUrl(formatUrlForSafety(record.pdf_url));
+      setPreviewUrl(formatUrlForSafety(previewUrl));
       setPreviewVisible(true);
     } else {
       message.warning('该标准暂未上传关联 PDF 文件');
@@ -115,37 +130,35 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
     },
     {
       title: '发布时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-      render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm'),
+      dataIndex: 'publish_date',
+      key: 'publish_date',
+      render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
     },
     {
       title: '操作',
       key: 'action',
+      width: 120,
+      fixed: 'right' as const,
       render: (_: any, record: Standard) => (
         <Space size="middle">
-          <Button
-            type="primary"
-            ghost
-            icon={<EyeOutlined />}
-            size="small"
-            disabled={!record.pdf_url}
-            onClick={() => handlePreview(record)}
-            style={{ borderRadius: 4 }}
-          >
-            预览
-          </Button>
-          <Button
-            type="primary"
-            ghost
-            icon={<DownloadOutlined />}
-            size="small"
-            disabled={!record.pdf_url}
-            onClick={() => handleDownload(record)}
-            style={{ borderRadius: 4 }}
-          >
-            下载标准
-          </Button>
+          <Tooltip title={record.pdf_url ? '预览' : '无文件可预览'}>
+            <Button
+              type="text"
+              icon={<EyeOutlined />}
+              disabled={!record.pdf_url}
+              onClick={() => handlePreview(record)}
+              style={{ color: record.pdf_url ? '#1677ff' : undefined }}
+            />
+          </Tooltip>
+          <Tooltip title={record.pdf_url ? '下载' : '无文件可下载'}>
+            <Button
+              type="text"
+              icon={<DownloadOutlined />}
+              disabled={!record.pdf_url}
+              onClick={() => handleDownload(record)}
+              style={{ color: record.pdf_url ? '#52c41a' : undefined }}
+            />
+          </Tooltip>
         </Space>
       ),
     },

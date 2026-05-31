@@ -17,6 +17,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Badge, Popover, List, Progress } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useTaskContext } from '@/store/TaskContext';
+import BrandLogo from '@/components/BrandLogo';
 
 const { Header, Sider, Content } = Layout;
 
@@ -102,8 +103,27 @@ const ClientLayout: React.FC = () => {
   return (
     <Layout style={{ minHeight: '100vh' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
-        <div style={{ height: 64, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: collapsed ? 12 : 20, color: '#1677ff' }}>
-          {collapsed ? 'EMIS' : '应用搜索'}
+        <div style={{ 
+          height: 64, 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          gap: 8,
+          borderBottom: '1px solid #f0f0f0',
+          background: '#fff'
+        }}>
+          <BrandLogo width={collapsed ? 28 : 32} height={collapsed ? 28 : 32} />
+          {!collapsed && (
+            <span style={{ 
+              fontWeight: 800, 
+              fontSize: 16, 
+              color: '#141414', 
+              letterSpacing: '0.5px',
+              fontFamily: '"Outfit", sans-serif' 
+            }}>
+              ESIM SYSTEM
+            </span>
+          )}
         </div>
         <Menu
           theme="light"

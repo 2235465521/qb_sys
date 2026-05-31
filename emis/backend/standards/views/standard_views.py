@@ -217,10 +217,13 @@ class StandardDownloadView(APIView):
         # 6. 直接流式返回 PDF（兼容中文路径，规避 Nginx X-Accel-Redirect 中文乱码问题）
         filename = os.path.basename(file_path)
 
+        mode = request.query_params.get('mode', 'download')
+        disp_type = 'inline' if mode == 'preview' else 'attachment'
+
         try:
-            content_disposition = f"inline; filename*=UTF-8''{quote(filename)}"
+            content_disposition = f"{disp_type}; filename*=UTF-8''{quote(filename)}"
         except Exception:
-            content_disposition = f"inline; filename={quote(filename)}"
+            content_disposition = f"{disp_type}; filename={quote(filename)}"
 
         response = FileResponse(open(file_path, 'rb'), content_type='application/pdf')
         response['Content-Type'] = 'application/pdf'
