@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Table, Tag, Button, Space, message, Modal, Row, Col, Card, Empty, Tooltip } from 'antd';
+import { Table, Tag, Button, Space, message, Modal, Empty, Tooltip, Drawer, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -21,6 +21,8 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
+  const [drawerVisible, setDrawerVisible] = useState(false);
+  const [selectedStandard, setSelectedStandard] = useState<Standard | null>(null);
 
   const formatUrlForSafety = (url: string) => {
     if (!url) return '';
@@ -93,10 +95,16 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       title: '标准编号',
       dataIndex: 'standard_no',
       key: 'standard_no',
-      render: (text: string) => (
-        <span style={{ fontWeight: 'bold', color: '#1677ff', fontFamily: 'Courier New, monospace' }}>
+      render: (text: string, record: Standard) => (
+        <Typography.Link
+          style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace' }}
+          onClick={() => {
+            setSelectedStandard(record);
+            setDrawerVisible(true);
+          }}
+        >
           {text}
-        </span>
+        </Typography.Link>
       ),
     },
     {
@@ -199,50 +207,32 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
     const refData = record.normative_references || [];
 
     return (
-      <div style={{ padding: '12px 16px', background: '#f5f7fa', borderRadius: 8 }}>
-        <Row gutter={24}>
-          <Col span={14}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h4 style={{ margin: 0, color: '#006064', fontSize: 14, fontWeight: 'bold' }}>
-                规范性引用标准目录 ({refData.length})
-              </h4>
-              <Button
-                type="primary"
-                ghost
-                size="small"
-                icon={<FileExcelOutlined />}
-                disabled={refData.length === 0}
-                onClick={() => handleExportReferences(record)}
-                style={{ borderRadius: 4 }}
-              >
-                导出引用目录 (Excel)
-              </Button>
-            </div>
-            <Table
-              columns={subColumns}
-              dataSource={refData}
-              rowKey="id"
-              pagination={false}
-              size="small"
-              bordered
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该标准暂无规范性引用标准数据" /> }}
-            />
-          </Col>
-          <Col span={10}>
-            <Card
-              title={<span style={{ color: '#006064', fontSize: 14, fontWeight: 'bold' }}>详细指标查看</span>}
-              size="small"
-              bordered
-              style={{ height: '100%', borderRadius: 8, background: '#fff' }}
-            >
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="指标深度解析与查看功能正在研发中，敬请期待..."
-                style={{ margin: '20px 0' }}
-              />
-            </Card>
-          </Col>
-        </Row>
+      <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h4 style={{ margin: 0, color: '#006064', fontSize: 14, fontWeight: 'bold' }}>
+            规范性引用标准目录 ({refData.length})
+          </h4>
+          <Button
+            type="primary"
+            ghost
+            size="small"
+            icon={<FileExcelOutlined />}
+            disabled={refData.length === 0}
+            onClick={() => handleExportReferences(record)}
+            style={{ borderRadius: 4 }}
+          >
+            导出引用目录 (Excel)
+          </Button>
+        </div>
+        <Table
+          columns={subColumns}
+          dataSource={refData}
+          rowKey="id"
+          pagination={false}
+          size="small"
+          bordered
+          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该标准暂无规范性引用标准数据" /> }}
+        />
       </div>
     );
   };
@@ -311,6 +301,38 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
           </div>
         )}
       </Modal>
+
+      {/* 详细指标 Drawer */}
+      <Drawer
+        title={
+          <span style={{ color: '#006064', fontWeight: 'bold', fontSize: 16 }}>
+            详细指标 - {selectedStandard?.standard_no || ''}
+          </span>
+        }
+        placement="right"
+        width={600}
+        onClose={() => {
+          setDrawerVisible(false);
+          setSelectedStandard(null);
+        }}
+        open={drawerVisible}
+        destroyOnClose
+      >
+        <div style={{ 
+          height: '100%', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          justifyContent: 'center', 
+          alignItems: 'center',
+          padding: 24
+        }}>
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="指标深度解析与查看功能正在研发中，敬请期待..."
+            style={{ margin: '20px 0' }}
+          />
+        </div>
+      </Drawer>
     </>
   );
 };
