@@ -129,12 +129,13 @@ from django.http import FileResponse, Http404
 from django.conf import settings
 
 from rest_framework import permissions
-
-from django.http import HttpResponse, Http404
 from rest_framework_simplejwt.tokens import AccessToken
 from users.models import AdminUser
 from urllib.parse import quote
+from django.utils.decorators import method_decorator
+from django.views.decorators.clickjacking import xframe_options_exempt
 
+@method_decorator(xframe_options_exempt, name='dispatch')
 class StandardDownloadView(APIView):
     """
     GET /api/client/standards/{pk}/download/
