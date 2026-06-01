@@ -5,7 +5,7 @@ import ReactECharts from 'echarts-for-react';
 import apiClient from '@/api/client';
 import type { Standard, PaginatedResponse } from '@/types';
 
-const { Title, Paragraph, Text } = Typography;
+const { Text } = Typography;
 
 interface GraphNode {
   id: string;
@@ -43,7 +43,7 @@ const StandardGraphPage: React.FC = () => {
   // 联想输入选择器状态
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<any>(null);
 
   // 挂载时加载默认首个企标作为展示数据
   useEffect(() => {
