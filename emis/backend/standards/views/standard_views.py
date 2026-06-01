@@ -17,10 +17,11 @@ class StandardListView(generics.ListAPIView):
     """
     GET /api/client/standards/
     支持参数：
-      type       — enterprise/group/national
-      is_parsed  — true/false（模块二解析状态筛选）
-      company_id — 企业 ID
-      keyword    — 标准号/名称关键词
+      type        — enterprise/group/national
+      is_parsed   — true/false（模块二解析状态筛选）
+      company_id  — 企业 ID
+      keyword     — 标准号/名称关键词
+      search_mode — title/full_text (检索模式，默认为 title)
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = StandardListSerializer
@@ -42,7 +43,14 @@ class StandardListView(generics.ListAPIView):
         if params.get('keyword'):
             from django.db.models import Q
             kw = params['keyword']
-            qs = qs.filter(Q(standard_no__icontains=kw) | Q(title__icontains=kw))
+            if params.get('search_mode') == 'full_text':
+                from standards.models import StandardContent
+                matching_std_ids = StandardContent.objects.filter(
+                    content__icontains=kw
+                ).values_list('standard_id', flat=True).distinct()
+                qs = qs.filter(id__in=matching_std_ids)
+            else:
+                qs = qs.filter(Q(standard_no__icontains=kw) | Q(title__icontains=kw))
 
         return qs.order_by('-created_at')
 
@@ -63,15 +71,95 @@ class StandardListView(generics.ListAPIView):
             pass
 
         # 缓存未命中，查询并序列化
-        response = super().list(request, *args, **kwargs)
+        queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            self.attach_snippets(page, params.get('keyword'), params.get('search_mode'))
+            serializer = self.get_serializer(page, many=True)
+            response_data = self.get_paginated_response(serializer.data).data
+        else:
+            queryset = list(queryset)
+            self.attach_snippets(queryset, params.get('keyword'), params.get('search_mode'))
+            serializer = self.get_serializer(queryset, many=True)
+            response_data = serializer.data
 
         # 写入缓存（300 秒过期）
         try:
-            cache.set(cache_key, json.dumps(response.data), timeout=300)
+            cache.set(cache_key, json.dumps(response_data), timeout=300)
         except Exception:
             pass
 
-        return response
+        return Response(response_data)
+
+    def attach_snippets(self, standards, keyword, search_mode):
+        if not keyword or not standards or search_mode != 'full_text':
+            return
+
+        from standards.models import StandardContent
+        std_ids = [std.id for std in standards]
+
+        # 查询匹配关键词的所有页面文本，按 standard_id 和 page_number 排序
+        contents = StandardContent.objects.filter(
+            standard_id__in=std_ids,
+            content__icontains=keyword
+        ).order_by('standard_id', 'page_number')
+
+        # 分组保留第一个匹配页面的内容
+        std_content_map = {}
+        for c in contents:
+            if c.standard_id not in std_content_map:
+                std_content_map[c.standard_id] = c
+
+        for std in standards:
+            sc = std_content_map.get(std.id)
+            if sc:
+                std.snippet = self.generate_snippet_text(sc.content, keyword, sc.page_number)
+            else:
+                std.snippet = ""
+
+    def generate_snippet_text(self, content, keyword, page_number):
+        import re
+        if not content or not keyword:
+            return ""
+
+        # 不区分大小写匹配关键字
+        match = re.search(re.escape(keyword), content, re.IGNORECASE)
+        if not match:
+            return content[:80] + "..." if len(content) > 80 else content
+
+        start, end = match.start(), match.end()
+        total_len = len(content)
+        context_len = 70  # 片段字符长度
+
+        # 在匹配词两边分配长度
+        left_len = max(0, (context_len - len(keyword)) // 2)
+        right_len = context_len - len(keyword) - left_len
+
+        # 计算切片边界
+        start_idx = max(0, start - left_len)
+        end_idx = min(total_len, end + right_len)
+
+        # 边界校正
+        if start_idx == 0:
+            end_idx = min(total_len, context_len)
+        if end_idx == total_len:
+            start_idx = max(0, total_len - context_len)
+
+        snippet_raw = content[start_idx:end_idx]
+
+        # 添加省略号
+        prefix = "..." if start_idx > 0 else ""
+        suffix = "..." if end_idx < total_len else ""
+
+        # 替换高亮匹配项（保留原有大小写）
+        def replace_func(m):
+            return f'<mark style="color:red;">{m.group(0)}</mark>'
+
+        highlighted = re.sub(re.escape(keyword), replace_func, snippet_raw, flags=re.IGNORECASE)
+
+        return f"第 {page_number} 页: {prefix}{highlighted}{suffix}"
+
 
 
 class StandardDetailView(generics.RetrieveAPIView):
@@ -282,3 +370,86 @@ class ExportStandardReferencesView(APIView):
             response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
             
         return response
+
+
+class StandardGraphView(APIView):
+    """
+    GET /api/client/standards/<int:pk>/graph/
+    获取当前企业标准的引用关系知识图谱数据 (ECharts Graph 结构)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            standard = Standard.objects.get(pk=pk)
+        except Standard.DoesNotExist:
+            return Response({'error': '标准不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        from standards.models import NormativeReference
+        references = NormativeReference.objects.filter(source_standard=standard).select_related('cited_standard')
+
+        # 1. 中心企标节点
+        nodes = [{
+            "id": f"std_{standard.id}",
+            "name": f"{standard.standard_no} (中心企标)",
+            "symbolSize": 60,
+            "category": 0,
+            "title": standard.title,
+            "type_display": standard.get_type_display(),
+            "status_display": standard.get_status_display(),
+            "company_name": standard.company.name if standard.company else ""
+        }]
+
+        links = []
+        seen_nodes = {f"std_{standard.id}"}
+
+        # 2. 级联遍历引用子表
+        for ref in references:
+            if ref.cited_standard:
+                node_id = f"std_{ref.cited_standard.id}"
+                node_name = ref.cited_standard.standard_no
+                title = ref.cited_standard.title
+                status_display = ref.cited_standard.get_status_display()
+                type_display = ref.cited_standard.get_type_display()
+                company_name = ref.cited_standard.company.name if ref.cited_standard.company else ""
+            else:
+                node_id = f"no_{ref.cited_standard_no}"
+                node_name = ref.cited_standard_no
+                title = ""
+                status_display = "未知"
+                type_display = "国家标准" if (node_name.startswith("GB") or node_name.startswith("GB/T")) else "行业/其他标准"
+                company_name = ""
+
+            if node_id not in seen_nodes:
+                seen_nodes.add(node_id)
+                nodes.append({
+                    "id": node_id,
+                    "name": node_name,
+                    "symbolSize": 40,
+                    "category": 1,
+                    "title": title,
+                    "type_display": type_display,
+                    "status_display": status_display,
+                    "company_name": company_name,
+                    "latest_standard_no": ref.latest_standard_no or ""
+                })
+
+            links.append({
+                "source": f"std_{standard.id}",
+                "target": node_id,
+                "label": {
+                    "show": True,
+                    "formatter": "规范性引用"
+                }
+            })
+
+        response_data = {
+            "nodes": nodes,
+            "links": links,
+            "categories": [
+                {"name": "中心企标"},
+                {"name": "引用标准"}
+            ]
+        }
+        return Response(response_data, status=status.HTTP_200_OK)
+

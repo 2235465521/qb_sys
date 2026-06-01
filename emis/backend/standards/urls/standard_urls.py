@@ -3,13 +3,15 @@ standards.urls.standard_urls — 标准路由（模块一）
 """
 
 from django.urls import path
-from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView, ExportStandardReferencesView
+from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView, ExportStandardReferencesView, StandardGraphView
 from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView
 
 urlpatterns = [
     path('', StandardListView.as_view(), name='client-standard-list'),
     path('<int:pk>/', StandardDetailView.as_view(), name='client-standard-detail'),
+    path('<int:pk>/graph/', StandardGraphView.as_view(), name='client-standard-graph'),
     path('<int:pk>/export-references/', ExportStandardReferencesView.as_view(), name='client-standard-export-references'),
+
     path('<int:pk>/download/', StandardDownloadView.as_view(), name='client-standard-download'),
     path('pack/', PackRequestView.as_view(), name='client-standard-pack'),
     path('pack/<str:token>/status/', PackStatusView.as_view(), name='client-standard-pack-status'),

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Table, Tag, Button, Space, message, Modal, Empty, Tooltip, Drawer, Typography } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
@@ -10,6 +10,8 @@ interface StandardsTableProps {
   loading: boolean;
   selectedRowKeys: React.Key[];
   onSelectionChange: (keys: React.Key[]) => void;
+  keyword?: string;
+  searchMode?: 'title' | 'full_text';
 }
 
 const StandardsTable: React.FC<StandardsTableProps> = ({
@@ -17,12 +19,24 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
   loading,
   selectedRowKeys,
   onSelectionChange,
+  keyword,
+  searchMode,
 }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [selectedStandard, setSelectedStandard] = useState<Standard | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+
+  useEffect(() => {
+    if (searchMode === 'full_text' && keyword && data) {
+      const keysWithSnippet = data.filter(item => !!item.snippet).map(item => item.id);
+      setExpandedKeys(keysWithSnippet);
+    } else {
+      setExpandedKeys([]);
+    }
+  }, [data, searchMode, keyword]);
 
   const formatUrlForSafety = (url: string) => {
     if (!url) return '';
@@ -61,7 +75,12 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
 
   const handlePreview = (record: Standard) => {
     if (record.pdf_url) {
-      const previewUrl = appendQueryParam(record.pdf_url, 'mode', 'preview');
+      let previewUrl = appendQueryParam(record.pdf_url, 'mode', 'preview');
+      if (searchMode === 'full_text' && keyword) {
+        // 传递 ?search=keyword 给预览器以支持后端提取定位，同时加上原生 #search 锚点
+        previewUrl = appendQueryParam(previewUrl, 'search', keyword);
+        previewUrl = `${previewUrl}#search=${encodeURIComponent(keyword)}`;
+      }
       setPreviewTitle(record.standard_no);
       setPreviewUrl(formatUrlForSafety(previewUrl));
       setPreviewVisible(true);
@@ -208,6 +227,22 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
 
     return (
       <div style={{ padding: '16px 20px', background: '#f8fafc', borderRadius: 8 }}>
+        {record.snippet && (
+          <div style={{
+            marginBottom: 16,
+            padding: '12px 16px',
+            background: '#fff',
+            borderLeft: '4px solid #00bcd4',
+            borderRadius: '0 8px 8px 0',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+          }}>
+            <h4 style={{ margin: '0 0 6px 0', color: '#00838f', fontSize: 13, fontWeight: 'bold' }}>全文检索匹配摘要：</h4>
+            <div
+              style={{ fontSize: 14, color: '#333', lineHeight: '1.6' }}
+              dangerouslySetInnerHTML={{ __html: record.snippet }}
+            />
+          </div>
+        )}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h4 style={{ margin: 0, color: '#006064', fontSize: 14, fontWeight: 'bold' }}>
             规范性引用标准目录 ({refData.length})
@@ -257,6 +292,8 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
         expandable={{
           expandedRowRender,
           rowExpandable: () => true,
+          expandedRowKeys: expandedKeys,
+          onExpandedRowsChange: (keys) => setExpandedKeys(keys as React.Key[]),
         }}
         style={{
           background: '#fff',

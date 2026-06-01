@@ -10,6 +10,7 @@ import {
   UserOutlined,
   FileTextOutlined,
   RadarChartOutlined,
+  ClusterOutlined,
 } from '@ant-design/icons';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -41,6 +42,11 @@ const ClientLayout: React.FC = () => {
       key: '/client/standards',
       icon: <FileTextOutlined />,
       label: '搜索企标',
+    },
+    {
+      key: '/client/graph',
+      icon: <ClusterOutlined />,
+      label: '标准知识图谱',
     },
     {
       key: '/client/analysis',

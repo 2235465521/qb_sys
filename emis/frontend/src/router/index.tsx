@@ -21,6 +21,7 @@ import ReferenceAnalysis from '@/pages/Client/Analysis';
 import MemberCenter from '@/pages/Client/Members';
 import SearchStandardsPage from '@/pages/Client/SearchStandards';
 import TrendDashboard from '@/pages/Client/Trends';
+import StandardGraphPage from '@/pages/Client/StandardGraph';
 
 export const router = createBrowserRouter([
   {
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
       { path: '', element: <Navigate to="search" replace /> },
       { path: 'search', element: <CompanySearch /> },
       { path: 'standards', element: <SearchStandardsPage /> },
+      { path: 'graph', element: <StandardGraphPage /> },
       { path: 'analysis', element: <ReferenceAnalysis /> },
       { path: 'trends', element: <TrendDashboard /> },
       { path: 'members', element: <MemberCenter /> },

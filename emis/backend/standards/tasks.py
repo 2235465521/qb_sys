@@ -342,6 +342,7 @@ def align_disk_files_task(self):
         
         success_count = 0
         updates = []
+        updated_ids = []
 
         for std in standards:
             if not std.clean_id:
@@ -362,16 +363,22 @@ def align_disk_files_task(self):
                 if std.pdf_file.name != relative_path:
                     std.pdf_file.name = relative_path
                     updates.append(std)
+                    updated_ids.append(std.id)
                 success_count += 1
                 
             # 优化2：每积攒 1000 条记录执行一次批量更新，极大减少数据库 I/O 压力
             if len(updates) >= 1000:
                 Standard.objects.bulk_update(updates, ['pdf_file'])
+                for std_id in updated_ids:
+                    parse_standard_pdf_task.delay(std_id)
                 updates = []
+                updated_ids = []
 
         # 将剩余未满 1000 条的记录更新掉
         if updates:
             Standard.objects.bulk_update(updates, ['pdf_file'])
+            for std_id in updated_ids:
+                parse_standard_pdf_task.delay(std_id)
 
         # 2. 写入成功结果
         cache.set('scan_pdf_sync_task', {
@@ -592,5 +599,96 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                 os.remove(file_path)
             except OSError:
                 pass
+
+
+@shared_task(bind=True, name='standards.parse_standard_pdf')
+def parse_standard_pdf_task(self, standard_id: int):
+    """
+    异步提取 PDF 文本并批量存入 StandardContent 表
+    """
+    import os
+    from django.conf import settings
+    from django.db import transaction
+    from standards.models import Standard, StandardContent
+
+    try:
+        standard = Standard.objects.get(id=standard_id)
+    except Standard.DoesNotExist:
+        return f"Standard {standard_id} not found."
+
+    # 仅企标才需要全文解析，双重校验
+    if standard.type != 'enterprise':
+        return f"Standard {standard.standard_no} is not an enterprise standard. Skipped."
+
+    shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
+    file_path = None
+
+    # 1. 优先策略：先尝试 disk_filename
+    if standard.disk_filename:
+        norm_disk_filename = standard.disk_filename.replace('\\', '/')
+        disk_file_path = os.path.join(shared_root, norm_disk_filename)
+        if os.path.exists(disk_file_path):
+            file_path = disk_file_path
+
+    # 2. 降级策略：尝试 pdf_file
+    if not file_path and standard.pdf_file:
+        rel_path = standard.pdf_file.name.replace('\\', '/')
+        # 网络共享盘
+        disk_file_path = os.path.join(shared_root, rel_path)
+        if os.path.exists(disk_file_path):
+            file_path = disk_file_path
+        else:
+            # 本地 media 物理目录
+            media_file_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+            if os.path.exists(media_file_path):
+                file_path = media_file_path
+            elif rel_path.startswith('media/'):
+                clean_path = rel_path.replace('media/', '', 1)
+                clean_file_path = os.path.join(settings.MEDIA_ROOT, clean_path)
+                if os.path.exists(clean_file_path):
+                    file_path = clean_file_path
+
+    if not file_path:
+        return f"Standard {standard.standard_no} has no valid PDF file."
+
+    # 3. 提取 PDF 文本内容
+    pages_text = []
+    try:
+        import fitz  # PyMuPDF
+        doc = fitz.open(file_path)
+        for page_num in range(len(doc)):
+            page = doc.load_page(page_num)
+            pages_text.append((page_num + 1, page.get_text()))
+        doc.close()
+    except ImportError:
+        import pdfplumber
+        with pdfplumber.open(file_path) as pdf:
+            for page_num, page in enumerate(pdf.pages):
+                text = page.extract_text() or ""
+                pages_text.append((page_num + 1, text))
+
+    if not pages_text:
+        return f"No text extracted from Standard {standard.standard_no} PDF."
+
+    # 4. 批量保存提取到的内容（使用行级事务）
+    try:
+        with transaction.atomic():
+            # 先删除旧内容
+            StandardContent.objects.filter(standard=standard).delete()
+            
+            # 批量创建新内容
+            content_objects = [
+                StandardContent(
+                    standard=standard,
+                    page_number=pnum,
+                    content=text
+                )
+                for pnum, text in pages_text
+            ]
+            StandardContent.objects.bulk_create(content_objects)
+        return f"Successfully parsed {len(pages_text)} pages for Standard {standard.standard_no}."
+    except Exception as e:
+        raise self.retry(exc=e, countdown=5, max_retries=2)
+
 
 

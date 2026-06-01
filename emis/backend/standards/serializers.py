@@ -21,6 +21,7 @@ class StandardListSerializer(serializers.ModelSerializer):
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     pdf_url = serializers.SerializerMethodField()
     normative_references = NormativeReferenceSerializer(many=True, read_only=True)
+    snippet = serializers.SerializerMethodField()
 
     class Meta:
         model = Standard
@@ -28,6 +29,7 @@ class StandardListSerializer(serializers.ModelSerializer):
             'id', 'standard_no', 'clean_id', 'type', 'type_display',
             'title', 'company_name', 'company_detail', 'ics', 'ccs', 'is_parsed', 'citation_count',
             'status', 'status_display', 'publish_date', 'created_at', 'pdf_url', 'normative_references',
+            'snippet',
         ]
 
     def get_pdf_url(self, obj):
@@ -39,6 +41,10 @@ class StandardListSerializer(serializers.ModelSerializer):
             url = f"/api/client/standards/{obj.id}/download/{token_str}"
             return url
         return None
+
+    def get_snippet(self, obj):
+        return getattr(obj, 'snippet', None)
+
 
 
 class StandardDetailSerializer(serializers.ModelSerializer):

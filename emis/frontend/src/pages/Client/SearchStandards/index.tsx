@@ -11,7 +11,11 @@ import { useTaskContext } from '@/store/TaskContext';
 const { Text } = Typography;
 
 const SearchStandardsPage: React.FC = () => {
-  const [params, setParams] = useState({ page: 1, keyword: '' });
+  const [params, setParams] = useState<{ page: number; keyword: string; search_mode?: 'title' | 'full_text' }>({
+    page: 1,
+    keyword: '',
+    search_mode: 'title'
+  });
 
   // 自定义打包弹窗状态
   const [customPackVisible, setCustomPackVisible] = useState(false);
@@ -23,8 +27,8 @@ const SearchStandardsPage: React.FC = () => {
 
   const { data, isLoading, isFetching } = useClientStandardSearch(params);
 
-  const handleSearch = (keyword: string) => {
-    setParams({ keyword, page: 1 });
+  const handleSearch = (keyword: string, searchMode: 'title' | 'full_text') => {
+    setParams({ keyword, search_mode: searchMode, page: 1 });
     setSelectedRowKeys([]); // 搜索条件改变清空勾选
   };
 
@@ -195,6 +199,8 @@ const SearchStandardsPage: React.FC = () => {
         loading={isLoading}
         selectedRowKeys={selectedRowKeys}
         onSelectionChange={setSelectedRowKeys}
+        keyword={params.keyword}
+        searchMode={params.search_mode}
       />
 
       {data && data.count > 0 && (

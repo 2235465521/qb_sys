@@ -95,6 +95,7 @@ export interface Standard {
   all_chain?: number[]
   created_at: string
   normative_references?: NormativeReference[]
+  snippet?: string
 }
 
 export interface NormativeReference {

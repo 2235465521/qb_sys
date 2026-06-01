@@ -191,3 +191,46 @@ class NormativeReference(models.Model):
 
     def __str__(self):
         return f'{self.source_standard.standard_no} → {self.cited_standard_no}'
+
+
+class StandardContent(models.Model):
+    """
+    企业标准 PDF 页面全文文本内容
+    """
+    standard = models.ForeignKey(
+        Standard,
+        on_delete=models.CASCADE,
+        related_name='contents',
+        verbose_name='关联标准'
+    )
+    page_number = models.PositiveIntegerField('页码')
+    content = models.TextField('页面内容', blank=True)
+
+    class Meta:
+        db_table = 'standards_standard_content'
+        verbose_name = '标准内容'
+        verbose_name_plural = '标准内容列表'
+        unique_together = [('standard', 'page_number')]
+        ordering = ['page_number']
+
+    def __str__(self):
+        return f'{self.standard.standard_no} - P.{self.page_number}'
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+@receiver(post_save, sender=Standard)
+def standard_post_save(sender, instance, created, **kwargs):
+    """
+    当企标记录保存时，如果存在关联文件，则异步触发 PDF 解析任务
+    """
+    # 仅企标才需要全文解析，国标等一般不需要
+    if instance.type != 'enterprise':
+        return
+
+    if instance.pdf_file or instance.disk_filename:
+        # 异步调用 Celery 任务解析 PDF
+        from standards.tasks import parse_standard_pdf_task
+        parse_standard_pdf_task.delay(instance.id)
+

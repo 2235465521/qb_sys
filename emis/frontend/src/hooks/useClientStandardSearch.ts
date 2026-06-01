@@ -6,6 +6,7 @@ export interface ClientStandardSearchParams {
   page?: number;
   keyword?: string;
   type?: string;
+  search_mode?: 'title' | 'full_text';
 }
 
 export const useClientStandardSearch = (params: ClientStandardSearchParams) => {
@@ -22,3 +23,4 @@ export const useClientStandardSearch = (params: ClientStandardSearchParams) => {
     },
   });
 };
+
