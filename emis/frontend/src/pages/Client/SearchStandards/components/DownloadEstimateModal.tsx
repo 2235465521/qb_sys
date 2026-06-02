@@ -118,9 +118,9 @@ const DownloadEstimateModal: React.FC<DownloadEstimateModalProps> = ({
                 description={
                   <div>
                     <Paragraph style={{ margin: 0 }}>
-                      当前检索条件包含：<Text bold>{estimate.company_count}</Text> 家企业，
-                      共有 <Text bold>{estimate.files_count}</Text> 份关联标准，
-                      预估总体积达 <Text bold type="danger">{estimate.estimated_size_mb} MB</Text>。
+                      当前检索条件包含：<Text strong>{estimate.company_count}</Text> 家企业，
+                      共有 <Text strong>{estimate.files_count}</Text> 份关联标准，
+                      预估总体积达 <Text strong type="danger">{estimate.estimated_size_mb} MB</Text>。
                     </Paragraph>
                     <Paragraph style={{ margin: '6px 0 0 0', fontWeight: 'bold', color: '#cf1322' }}>
                       <WarningOutlined /> 当前数据量已超出系统单次打包上线限制（500 份 / 500MB）。为了维护服务器稳定性，已拦截全量打包下载。
@@ -136,9 +136,9 @@ const DownloadEstimateModal: React.FC<DownloadEstimateModalProps> = ({
                 message="容量预估就绪"
                 description={
                   <div>
-                    当前检索条件包含：<Text bold>{estimate.company_count}</Text> 家企业，
-                    共有 <Text bold>{estimate.files_count}</Text> 份关联标准，
-                    预计打包体积约 <Text bold style={{ color: '#00838f' }}>{estimate.estimated_size_mb} MB</Text>。
+                    当前检索条件包含：<Text strong>{estimate.company_count}</Text> 家企业，
+                    共有 <Text strong>{estimate.files_count}</Text> 份关联标准，
+                    预计打包体积约 <Text strong style={{ color: '#00838f' }}>{estimate.estimated_size_mb} MB</Text>。
                   </div>
                 }
                 type="info"

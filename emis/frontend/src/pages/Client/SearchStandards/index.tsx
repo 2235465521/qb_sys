@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button, Pagination, message, Typography } from 'antd';
+import { Button, Pagination, message } from 'antd';
 import { FileTextOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import StandardsTable from './components/StandardsTable';
@@ -8,8 +8,6 @@ import DownloadEstimateModal from './components/DownloadEstimateModal';
 import { useClientStandardSearch } from '@/hooks/useClientStandardSearch';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
-
-const { Text } = Typography;
 
 const SearchStandardsPage: React.FC = () => {
   const [params, setParams] = useState<any>({
