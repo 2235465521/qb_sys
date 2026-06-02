@@ -1,5 +1,6 @@
 import React, { createContext, useContext } from 'react';
-import { useTaskPolling, BackgroundTask } from '@/hooks/useTaskPolling';
+import { useTaskPolling } from '@/hooks/useTaskPolling';
+import type { BackgroundTask } from '@/hooks/useTaskPolling';
 
 export type { BackgroundTask };
 
