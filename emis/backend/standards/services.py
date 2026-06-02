@@ -116,6 +116,12 @@ def parse_normative_reference_excel(file_obj) -> dict:
 
     # 1. 检测是否是 10 列批次导入格式 (通过包含的核心列 '企标号', '公司名称', '企标中引用的标准号')
     if '企标号' in df.columns and '公司名称' in df.columns and '企标中引用的标准号' in df.columns:
+        # 重命名“最新标准号”列变体以支持容错
+        if '最新标准号' not in df.columns:
+            for col in df.columns:
+                if '最新标准号' in str(col) or '最新被引用标准号' in str(col):
+                    df.rename(columns={col: '最新标准号'}, inplace=True)
+                    break
         with transaction.atomic():
             for idx, row in df.iterrows():
                 row_idx = idx + 2  # Excel 行号 1-indexed (加上表头)
@@ -833,6 +839,14 @@ def import_references_from_excel_v2(file_obj) -> dict:
             if not found:
                 result['errors'].append({'row': 1, 'error': f"Excel 模板格式错误，缺失必要列: '{header}'"})
                 return result
+
+    # 识别并重命名“最新标准号”列（防止用户上传的 Excel 包含空格、星号等微小字样差异）
+    latest_header = '最新标准号'
+    if latest_header not in df.columns:
+        for col in df.columns:
+            if '最新标准号' in str(col) or '最新被引用标准号' in str(col):
+                df.rename(columns={col: latest_header}, inplace=True)
+                break
 
     # 1. 缓存加载全部输入企标，防止 N+1 查询挂起
     source_nos = df['企标编号*'].dropna().astype(str).str.strip().unique().tolist()
