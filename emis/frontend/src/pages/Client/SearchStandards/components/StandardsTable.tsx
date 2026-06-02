@@ -130,10 +130,11 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       title: '标准编号',
       dataIndex: 'standard_no',
       key: 'standard_no',
-      width: 160,
+      width: 180,
+      align: 'center' as const,
       render: (text: string, record: Standard) => (
         <Typography.Link
-          style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace' }}
+          style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace', whiteSpace: 'nowrap' }}
           onClick={() => {
             setSelectedStandard(record);
             setDrawerVisible(true);
@@ -144,48 +145,59 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       ),
     },
     {
+      title: '标准名称',
+      dataIndex: 'title',
+      key: 'title',
+      width: '30%',
+      align: 'center' as const,
+      ellipsis: true,
+      render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
+    },
+    {
       title: '企业名称',
       dataIndex: 'company_name',
       key: 'company_name',
       width: '25%',
+      align: 'center' as const,
       ellipsis: true,
-      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag> : '--',
-    },
-    {
-      title: '标准名称',
-      dataIndex: 'title',
-      key: 'title',
-      width: '35%',
-      ellipsis: true,
-      render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
+      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</Tag> : '--',
     },
     {
       title: '标准状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
+      align: 'center' as const,
       render: (status: string, record: any) => {
         if (status === 'active') {
-          return <Tag color="success" style={{ borderRadius: 4 }}>{record.status_display || '现行'}</Tag>;
+          return <Tag color="success" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '现行'}</Tag>;
         }
         if (status === 'deprecated') {
-          return <Tag color="error" style={{ borderRadius: 4 }}>{record.status_display || '已废止'}</Tag>;
+          return <Tag color="error" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '已废止'}</Tag>;
         }
-        return <Tag color="warning" style={{ borderRadius: 4 }}>{record.status_display || '草案'}</Tag>;
+        return <Tag color="warning" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '草案'}</Tag>;
       },
     },
     {
       title: '发布时间',
       dataIndex: 'publish_date',
       key: 'publish_date',
-      render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
+      width: 130,
+      align: 'center' as const,
+      render: (date: string) => (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {date ? dayjs(date).format('YYYY-MM-DD') : '--'}
+        </span>
+      ),
     },
     {
       title: '操作',
       key: 'action',
       width: 120,
+      align: 'center' as const,
       fixed: 'right' as const,
       render: (_: any, record: Standard) => (
-        <Space size="middle">
+        <Space size="middle" style={{ whiteSpace: 'nowrap' }}>
           <Tooltip title={record.pdf_url ? '预览' : '无文件可预览'}>
             <Button
               type="text"
