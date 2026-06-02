@@ -111,7 +111,7 @@ const CompanySearchPage: React.FC = () => {
       const { data } = await apiClient.post<{ task_id: string }>('/client/standards/pack-enterprises/', payload);
       
       message.success('已成功提交后台打包任务！您可在右上角任务中心查看进度');
-      dispatchTask(data.task_id, '企业企标批量下载', true);
+      dispatchTask(data.task_id, '企业企标批量下载', true, '/client/standards/pack-enterprises/', payload);
       
       if (mode === 'selected') {
         setSelectedEnterprises([]); // 提交后清空选中

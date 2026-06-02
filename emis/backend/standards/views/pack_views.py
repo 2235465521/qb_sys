@@ -381,7 +381,11 @@ class PackTaskStatusView(APIView):
                 response_data['download_url'] = settings.MEDIA_URL + relative_url
         elif result.status == 'FAILURE':
             # Celery 异常信息
-            response_data['error'] = str(result.result or result.info or '打包过程中发生未知错误')
+            res_info = result.result or result.info
+            if isinstance(res_info, dict) and 'exc_message' in res_info:
+                response_data['error'] = res_info['exc_message']
+            else:
+                response_data['error'] = str(res_info or '打包过程中发生未知错误')
 
         return Response(response_data)
 

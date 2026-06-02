@@ -54,13 +54,14 @@ const SearchStandardsPage: React.FC = () => {
     if (selectedRowKeys.length === 0) return;
     
     try {
-      const { data: response } = await apiClient.post<{ token: string; count: number }>('/client/standards/pack/', {
+      const payload = {
         standard_ids: selectedRowKeys.map(k => Number(k))
-      });
+      };
+      const { data: response } = await apiClient.post<{ token: string; count: number }>('/client/standards/pack/', payload);
       const { token, count } = response;
       
       message.success(`已锁定 ${count} 个选定标准，打包任务已提交至后台处理，您可继续浏览其他页面...`);
-      dispatchTask(token, '批量下载已选标准');
+      dispatchTask(token, '批量下载已选标准', false, '/client/standards/pack/', payload);
       setSelectedRowKeys([]); // 清空选择
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
@@ -119,7 +120,7 @@ const SearchStandardsPage: React.FC = () => {
         const { token, count } = response;
         
         message.success(`已锁定符合筛选条件的 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
-        dispatchTask(token, '按筛选条件批量打包企标');
+        dispatchTask(token, '按筛选条件批量打包企标', false, '/client/standards/pack/', packParams);
       } catch (err: any) {
         const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
         message.error(errMsg);
@@ -130,11 +131,12 @@ const SearchStandardsPage: React.FC = () => {
   // 触发 100 个随机企标批量打包下载
   const handleRandomPack100 = async () => {
     try {
-      const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', { mode: 'standards' });
+      const payload = { mode: 'standards' };
+      const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', payload);
       const { token, count } = data;
       
       message.success(`已锁定 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
-      dispatchTask(token, '随机下载100个企标');
+      dispatchTask(token, '随机下载100个企标', false, '/client/standards/random-pack/', payload);
 
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
@@ -146,14 +148,15 @@ const SearchStandardsPage: React.FC = () => {
     setCustomPackVisible(false);
 
     try {
-      const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', { 
+      const payload = { 
         mode: 'custom_filter',
         ...packParams
-      });
+      };
+      const { data } = await apiClient.post<{ token: string; count: number }>('/client/standards/random-pack/', payload);
       const { token, count } = data;
       
       message.success(`已锁定 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
-      dispatchTask(token, '自定义选择下载');
+      dispatchTask(token, '自定义选择下载', false, '/client/standards/random-pack/', payload);
 
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';

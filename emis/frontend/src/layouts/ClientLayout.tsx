@@ -71,7 +71,7 @@ const ClientLayout: React.FC = () => {
     navigate('/login');
   };
 
-  const { tasks, clearDoneTasks, cancelTask } = useTaskContext();
+  const { tasks, clearDoneTasks, cancelTask, retryTask } = useTaskContext();
   
   const runningTasks = tasks.filter(t => t.status === 'running');
   
@@ -88,7 +88,7 @@ const ClientLayout: React.FC = () => {
           <List.Item>
             <div style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
-                <span style={{ fontSize: 13 }} title={item.name}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
+                <span style={{ fontSize: 13, fontWeight: 500 }} title={item.name}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
                 <Space size="small">
                   <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
                     {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
@@ -96,9 +96,35 @@ const ClientLayout: React.FC = () => {
                   {item.status === 'running' && (
                     <Button type="link" size="small" style={{ padding: 0, fontSize: 12, color: '#999' }} onClick={() => cancelTask(item.id)}>取消</Button>
                   )}
+                  {item.status === 'failed' && (
+                    <Space size={4}>
+                      <Button 
+                        type="link" 
+                        size="small" 
+                        style={{ padding: 0, fontSize: 12, color: '#1890ff' }} 
+                        onClick={() => retryTask(item.id)}
+                      >
+                        重试
+                      </Button>
+                      <span style={{ color: '#ccc', fontSize: 10 }}>|</span>
+                      <Button 
+                        type="link" 
+                        size="small" 
+                        style={{ padding: 0, fontSize: 12, color: '#ff4d4f' }} 
+                        onClick={() => cancelTask(item.id)}
+                      >
+                        删除
+                      </Button>
+                    </Space>
+                  )}
                 </Space>
               </div>
               <Progress percent={item.progress} status={item.status === 'failed' ? 'exception' : item.status === 'done' ? 'success' : 'active'} size="small" />
+              {item.status === 'failed' && item.error && (
+                <div style={{ fontSize: 11, color: '#ff4d4f', marginTop: 4, wordBreak: 'break-all' }}>
+                  {item.error}
+                </div>
+              )}
             </div>
           </List.Item>
         )}
