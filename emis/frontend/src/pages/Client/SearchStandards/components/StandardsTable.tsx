@@ -130,6 +130,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       title: '标准编号',
       dataIndex: 'standard_no',
       key: 'standard_no',
+      width: 160,
       render: (text: string, record: Standard) => (
         <Typography.Link
           style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace' }}
@@ -143,19 +144,20 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       ),
     },
     {
+      title: '企业名称',
+      dataIndex: 'company_name',
+      key: 'company_name',
+      width: '25%',
+      ellipsis: true,
+      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag> : '--',
+    },
+    {
       title: '标准名称',
       dataIndex: 'title',
       key: 'title',
       width: '35%',
       ellipsis: true,
       render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
-    },
-    {
-      title: '起草单位 / 企业名称',
-      dataIndex: 'company_name',
-      key: 'company_name',
-      ellipsis: true,
-      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag> : '--',
     },
     {
       title: '标准状态',
