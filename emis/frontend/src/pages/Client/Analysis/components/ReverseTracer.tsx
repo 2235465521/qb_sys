@@ -206,8 +206,8 @@ const ReverseTracer: React.FC = () => {
                   <CheckCircleOutlined /> 已完成指标解析
                 </Tag>
               ) : selectedStandard.is_parsed === 'references_parsed' ? (
-                <Tag color="success" style={{ borderRadius: 6, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <CheckCircleOutlined /> 已完成引用解析
+                <Tag color="blue" style={{ borderRadius: 6, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <CheckCircleOutlined /> 已解析 {selectedStandard.normative_references?.length || 0} 条引用
                 </Tag>
               ) : (
                 <Tag color="default" style={{ borderRadius: 6, padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>

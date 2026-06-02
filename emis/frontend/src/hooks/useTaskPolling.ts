@@ -78,7 +78,7 @@ export const useTaskPolling = () => {
           ? `/client/standards/pack-tasks/${token}/`
           : `/client/standards/pack/${token}/status/`;
 
-        const res = await apiClient.get<{ status: string; download_url?: string; error?: string }>(url);
+        const res = await apiClient.get<{ status: string; download_url?: string; error?: string; progress?: number }>(url);
 
         let mappedStatus: 'running' | 'done' | 'failed' = 'running';
         let downloadUrl = res.data.download_url;

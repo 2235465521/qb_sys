@@ -22,6 +22,7 @@ class StandardListSerializer(serializers.ModelSerializer):
     pdf_url = serializers.SerializerMethodField()
     normative_references = NormativeReferenceSerializer(many=True, read_only=True)
     snippet = serializers.SerializerMethodField()
+    is_parsed = serializers.SerializerMethodField()
 
     class Meta:
         model = Standard
@@ -45,6 +46,19 @@ class StandardListSerializer(serializers.ModelSerializer):
     def get_snippet(self, obj):
         return getattr(obj, 'snippet', None)
 
+    def get_is_parsed(self, obj):
+        if obj.is_parsed == 'indicators_parsed':
+            return 'indicators_parsed'
+        if 'normative_references' in getattr(obj, '_prefetched_objects_cache', {}):
+            has_refs = len(obj.normative_references.all()) > 0
+        else:
+            has_refs = obj.normative_references.exists()
+        if has_refs:
+            return 'references_parsed'
+        if obj.is_parsed in ('references_parsed', 'True', '1', True):
+            return 'references_parsed'
+        return 'unparsed'
+
 
 
 class StandardDetailSerializer(serializers.ModelSerializer):
@@ -53,6 +67,7 @@ class StandardDetailSerializer(serializers.ModelSerializer):
     type_display = serializers.CharField(source='get_type_display', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     pdf_url = serializers.SerializerMethodField()
+    is_parsed = serializers.SerializerMethodField()
 
     class Meta:
         model = Standard
@@ -75,3 +90,16 @@ class StandardDetailSerializer(serializers.ModelSerializer):
             url = f"/api/client/standards/{obj.id}/download/{token_str}"
             return url
         return None
+
+    def get_is_parsed(self, obj):
+        if obj.is_parsed == 'indicators_parsed':
+            return 'indicators_parsed'
+        if 'normative_references' in getattr(obj, '_prefetched_objects_cache', {}):
+            has_refs = len(obj.normative_references.all()) > 0
+        else:
+            has_refs = obj.normative_references.exists()
+        if has_refs:
+            return 'references_parsed'
+        if obj.is_parsed in ('references_parsed', 'True', '1', True):
+            return 'references_parsed'
+        return 'unparsed'
