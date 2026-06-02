@@ -314,7 +314,7 @@ def get_citation_ranking(limit: int = 20):
             citation_count=Count('id'),
             latest_no=Max('latest_standard_no')
         )
-        .order_by('-citation_count')[:limit]
+        .order_by('-citation_count', 'cited_standard_no')[:limit]
     )
 
     results = []
