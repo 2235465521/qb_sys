@@ -133,7 +133,7 @@ const ClientLayout: React.FC = () => {
   );
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
         <div style={{ 
           height: 64, 

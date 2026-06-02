@@ -31,7 +31,7 @@ const AdminLayout: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto' }}>
       <Sider trigger={null} collapsible collapsed={collapsed} theme="dark" style={{ boxShadow: '2px 0 8px 0 rgba(0,0,0,.15)' }}>
         <div style={{ 
           height: 64, 

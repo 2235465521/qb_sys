@@ -222,9 +222,9 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
             </Row>
 
             {/* 第三排 - 高级操作按钮与重置按钮 */}
-            <Row gutter={16} style={{ marginTop: 20 }} justify="space-between" align="middle">
-              <Col>
-                <Space size={12}>
+            <Row gutter={[16, 16]} style={{ marginTop: 20 }} justify="space-between" align="middle">
+              <Col xs={24} sm={18} md={20}>
+                <Space size={12} wrap style={{ width: '100%' }}>
                   <Button
                     onClick={onCustomPack}
                     style={{
@@ -255,12 +255,12 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
                   </Button>
                 </Space>
               </Col>
-              <Col>
+              <Col xs={24} sm={6} md={4} style={{ textAlign: 'right' }}>
                 <Button
                   icon={<ReloadOutlined />}
                   onClick={handleReset}
                   size="large"
-                  style={{ borderRadius: 8, color: '#666' }}
+                  style={{ borderRadius: 8, color: '#666', width: '100%' }}
                 >
                   重置
                 </Button>
