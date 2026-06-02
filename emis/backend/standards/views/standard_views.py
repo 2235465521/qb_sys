@@ -53,10 +53,16 @@ class StandardListView(generics.ListAPIView):
 
         # 2. 解析状态细化筛选
         parse_status = params.get('parse_status')
-        if parse_status == 'pending_reference':
-            qs = qs.filter(is_parsed='unparsed')
-        elif parse_status == 'pending_indicator':
-            qs = qs.filter(is_parsed='references_parsed')
+        if parse_status:
+            from django.db.models import Q
+            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+            q_status = Q()
+            if 'pending_reference' in statuses:
+                q_status |= Q(is_parsed='unparsed')
+            if 'pending_indicator' in statuses:
+                q_status |= Q(is_parsed='references_parsed')
+            if q_status:
+                qs = qs.filter(q_status)
 
         if params.get('keyword'):
 
@@ -503,10 +509,16 @@ class StandardDownloadEstimateView(APIView):
 
         # 2. 解析状态筛选
         parse_status = params.get('parse_status')
-        if parse_status == 'pending_reference':
-            qs = qs.filter(is_parsed='unparsed')
-        elif parse_status == 'pending_indicator':
-            qs = qs.filter(is_parsed='references_parsed')
+        if parse_status:
+            from django.db.models import Q
+            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+            q_status = Q()
+            if 'pending_reference' in statuses:
+                q_status |= Q(is_parsed='unparsed')
+            if 'pending_indicator' in statuses:
+                q_status |= Q(is_parsed='references_parsed')
+            if q_status:
+                qs = qs.filter(q_status)
 
         # 3. 关键词 & 检索模式筛选
         keyword = params.get('keyword')
@@ -566,10 +578,16 @@ class ExportStandardListView(APIView):
 
         # 2. 解析状态筛选
         parse_status = params.get('parse_status')
-        if parse_status == 'pending_reference':
-            qs = qs.filter(is_parsed='unparsed')
-        elif parse_status == 'pending_indicator':
-            qs = qs.filter(is_parsed='references_parsed')
+        if parse_status:
+            from django.db.models import Q
+            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+            q_status = Q()
+            if 'pending_reference' in statuses:
+                q_status |= Q(is_parsed='unparsed')
+            if 'pending_indicator' in statuses:
+                q_status |= Q(is_parsed='references_parsed')
+            if q_status:
+                qs = qs.filter(q_status)
 
         # 3. 关键词筛选
         keyword = params.get('keyword')

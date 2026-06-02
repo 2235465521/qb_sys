@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, Row, Col, Radio, Cascader, Select } from 'antd';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Card, Row, Col, Cascader, Select, Checkbox, Space } from 'antd';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import apiClient from '@/api/client';
 import type { Province, City, District } from '@/types';
 
 interface SearchFormProps {
   onSearch: (params: any) => void;
   loading: boolean;
+  onCustomPack: () => void;
+  onRandomPack100: () => void;
 }
 
 interface CascaderOption {
@@ -17,7 +19,7 @@ interface CascaderOption {
   loading?: boolean;
 }
 
-const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
+const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack, onRandomPack100 }) => {
   const [form] = Form.useForm();
   const [expanded, setExpanded] = useState(false);
   const [cascaderOptions, setCascaderOptions] = useState<CascaderOption[]>([]);
@@ -87,8 +89,13 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
     const params: any = {
       keyword: values.keyword || '',
       search_mode: values.search_mode || 'title',
-      parse_status: values.parse_status || 'all',
     };
+
+    if (values.parse_statuses && values.parse_statuses.length > 0) {
+      params.parse_status = values.parse_statuses.join(',');
+    } else {
+      params.parse_status = '';
+    }
 
     if (values.region && values.region.length > 0) {
       params.province_id = values.region[0];
@@ -108,7 +115,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
     onSearch({
       keyword: '',
       search_mode: 'title',
-      parse_status: 'all',
+      parse_status: '',
       province_id: undefined,
       city_id: undefined,
       district_id: undefined,
@@ -132,12 +139,12 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
         form={form}
         layout="horizontal"
         onFinish={handleFinish}
-        initialValues={{ search_mode: 'title', parse_status: 'all' }}
+        initialValues={{ search_mode: 'title', parse_statuses: [] }}
       >
         {/* 第一排 */}
         <Row gutter={16} align="middle">
           {/* 综合检索框 */}
-          <Col xs={24} sm={12} md={13}>
+          <Col xs={24} sm={18} md={20}>
             <Form.Item name="keyword" style={{ marginBottom: 0 }}>
               <Input
                 placeholder="请输入关键词检索企业标准..."
@@ -156,24 +163,8 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
             </Form.Item>
           </Col>
 
-          {/* 解析状态选择 */}
-          <Col xs={24} sm={8} md={7}>
-            <Form.Item name="parse_status" style={{ marginBottom: 0 }}>
-              <Radio.Group
-                optionType="button"
-                buttonStyle="solid"
-                size="large"
-                style={{ width: '100%', display: 'flex', gap: 4 }}
-              >
-                <Radio.Button value="all" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>全部</Radio.Button>
-                <Radio.Button value="pending_reference" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>待引用解析</Radio.Button>
-                <Radio.Button value="pending_indicator" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>待指标解析</Radio.Button>
-              </Radio.Group>
-            </Form.Item>
-          </Col>
-
           {/* 检索与高级触发组 */}
-          <Col xs={24} sm={4} md={4}>
+          <Col xs={24} sm={6} md={4}>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
               <Button
                 type="primary"
@@ -204,32 +195,78 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
           </Col>
         </Row>
 
-        {/* 第二排 - 高级选项 (地域 Cascader) */}
+        {/* 第二排 - 高级选项 (地域 Cascader & 解析状态) */}
         {expanded && (
-          <Row gutter={16} style={{ marginTop: 16 }} align="middle">
-            <Col xs={24} sm={12} md={10}>
-              <Form.Item label="所属地域" name="region" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
-                <Cascader
-                  options={cascaderOptions}
-                  loadData={loadCascaderData}
-                  placeholder="请选择省 / 市 / 区县"
-                  changeOnSelect
+          <>
+            <Row gutter={16} style={{ marginTop: 16 }} align="middle">
+              <Col xs={24} md={10}>
+                <Form.Item label="所属地域" name="region" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                  <Cascader
+                    options={cascaderOptions}
+                    loadData={loadCascaderData}
+                    placeholder="请选择省 / 市 / 区县"
+                    changeOnSelect
+                    size="large"
+                    style={{ width: '100%', borderRadius: 8 }}
+                  />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={14}>
+                <Form.Item label="解析状态" name="parse_statuses" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                  <Checkbox.Group style={{ width: '100%', display: 'flex', gap: 16 }}>
+                    <Checkbox value="pending_reference">待引用解析</Checkbox>
+                    <Checkbox value="pending_indicator">待指标解析</Checkbox>
+                  </Checkbox.Group>
+                </Form.Item>
+              </Col>
+            </Row>
+
+            {/* 第三排 - 高级操作按钮与重置按钮 */}
+            <Row gutter={16} style={{ marginTop: 20 }} justify="space-between" align="middle">
+              <Col>
+                <Space size={12}>
+                  <Button
+                    onClick={onCustomPack}
+                    style={{
+                      borderRadius: 8,
+                      height: 40,
+                      fontWeight: 'bold',
+                      color: '#00838f',
+                      borderColor: '#00838f',
+                      background: 'transparent'
+                    }}
+                  >
+                    自定义选择下载
+                  </Button>
+                  <Button
+                    type="primary"
+                    icon={<CloudDownloadOutlined />}
+                    onClick={onRandomPack100}
+                    style={{
+                      borderRadius: 8,
+                      background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
+                      borderColor: '#00acc1',
+                      fontWeight: 'bold',
+                      height: 40,
+                      boxShadow: '0 4px 12px rgba(0, 131, 143, 0.2)'
+                    }}
+                  >
+                    一键随机下载 100 个企标
+                  </Button>
+                </Space>
+              </Col>
+              <Col>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={handleReset}
                   size="large"
-                  style={{ width: '100%', borderRadius: 8 }}
-                />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} md={4}>
-              <Button
-                icon={<ReloadOutlined />}
-                onClick={handleReset}
-                size="large"
-                style={{ borderRadius: 8, color: '#666' }}
-              >
-                重置
-              </Button>
-            </Col>
-          </Row>
+                  style={{ borderRadius: 8, color: '#666' }}
+                >
+                  重置
+                </Button>
+              </Col>
+            </Row>
+          </>
         )}
       </Form>
     </Card>

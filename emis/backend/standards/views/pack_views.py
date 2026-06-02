@@ -36,10 +36,15 @@ class PackRequestView(APIView):
                 qs = qs.filter(company__district_id=district_id)
 
             parse_status = request.data.get('parse_status')
-            if parse_status == 'pending_reference':
-                qs = qs.filter(is_parsed='unparsed')
-            elif parse_status == 'pending_indicator':
-                qs = qs.filter(is_parsed='references_parsed')
+            if parse_status:
+                statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+                q_status = Q()
+                if 'pending_reference' in statuses:
+                    q_status |= Q(is_parsed='unparsed')
+                if 'pending_indicator' in statuses:
+                    q_status |= Q(is_parsed='references_parsed')
+                if q_status:
+                    qs = qs.filter(q_status)
 
             keyword = request.data.get('keyword')
             search_mode = request.data.get('search_mode', 'title')

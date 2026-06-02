@@ -187,42 +187,13 @@ const SearchStandardsPage: React.FC = () => {
             </p>
           </div>
         </div>
-
-        <div style={{ display: 'flex', gap: 12 }}>
-          <Button
-            onClick={() => setCustomPackVisible(true)}
-            style={{
-              borderRadius: 8,
-              height: 40,
-              fontWeight: 'bold',
-              color: '#00838f',
-              borderColor: '#00838f',
-              background: 'transparent'
-            }}
-          >
-            自定义选择下载
-          </Button>
-          <Button
-            type="primary"
-            icon={<CloudDownloadOutlined />}
-            onClick={handleRandomPack100}
-            style={{
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
-              borderColor: '#00acc1',
-              fontWeight: 'bold',
-              height: 40,
-              boxShadow: '0 4px 12px rgba(0, 131, 143, 0.2)'
-            }}
-          >
-            一键随机下载 100 个企标
-          </Button>
-        </div>
       </div>
 
       <SearchForm
         onSearch={handleSearch}
         loading={isFetching}
+        onCustomPack={() => setCustomPackVisible(true)}
+        onRandomPack100={handleRandomPack100}
       />
 
       {/* 玻璃浮雕质感的操作工具栏 */}
