@@ -104,8 +104,24 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       link.remove();
       window.URL.revokeObjectURL(downloadUrl);
       message.success(`导出引用目录成功: ${record.standard_no}`);
-    } catch (err) {
-      message.error('导出引用目录失败，请稍后重试');
+    } catch (err: any) {
+      const responseData = err.response?.data;
+      if (responseData instanceof Blob) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const errorData = JSON.parse(reader.result as string);
+            message.error(errorData.detail || '导出引用目录失败，请稍后重试');
+          } catch (e) {
+            message.error('导出引用目录失败，请稍后重试');
+          }
+        };
+        reader.readAsText(responseData);
+      } else if (responseData && typeof responseData === 'object' && responseData.detail) {
+        message.error(responseData.detail);
+      } else {
+        message.error('导出引用目录失败，请稍后重试');
+      }
     }
   };
 

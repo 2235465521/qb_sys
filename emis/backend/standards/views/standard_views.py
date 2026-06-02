@@ -238,7 +238,7 @@ class ScanPdfSyncView(APIView):
 
 
 import os
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.conf import settings
 
 from rest_framework import permissions
@@ -357,44 +357,50 @@ class ExportStandardReferencesView(APIView):
 
     def get(self, request, pk):
         try:
-            standard = Standard.objects.get(pk=pk)
-        except Standard.DoesNotExist:
-            return Response({'error': '标准不存在'}, status=status.HTTP_404_NOT_FOUND)
+            try:
+                standard = Standard.objects.get(pk=pk)
+            except Standard.DoesNotExist:
+                return Response({'detail': '标准不存在'}, status=status.HTTP_404_NOT_FOUND)
 
-        references = standard.normative_references.all()
-        
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "规范性引用标准目录"
-        
-        # 写入标题行
-        ws.append(["序号", "被引用标准号", "最新标准号"])
-        
-        # 写入数据行
-        for idx, ref in enumerate(references):
-            ws.append([
-                idx + 1,
-                ref.cited_standard_no,
-                ref.latest_standard_no or "暂无最新标准"
-            ])
+            references = standard.normative_references.all()
             
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-        
-        response = HttpResponse(
-            buffer.getvalue(),
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        
-        # 中文文件名防乱码
-        filename = f"{standard.standard_no}_规范性引用标准.xlsx"
-        try:
-            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
-        except Exception:
-            response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.title = "规范性引用标准目录"
             
-        return response
+            # 写入标题行
+            ws.append(["序号", "被引用标准号", "最新标准号"])
+            
+            # 写入数据行
+            for idx, ref in enumerate(references):
+                # 防止可能为空（null）的关联字段直接调用属性
+                cited_no = ref.cited_standard_no if ref.cited_standard_no is not None else ""
+                latest_no = ref.latest_standard_no if ref.latest_standard_no is not None else ""
+                ws.append([
+                    idx + 1,
+                    cited_no,
+                    latest_no or "暂无最新标准"
+                ])
+                
+            buffer = io.BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            
+            response = HttpResponse(
+                buffer.getvalue(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            
+            # 中文文件名防乱码
+            filename = f"{standard.standard_no}_规范性引用标准.xlsx"
+            try:
+                response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+            except Exception:
+                response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+                
+            return response
+        except Exception as e:
+            return Response({"detail": f"Excel导出失败: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class StandardGraphView(APIView):
