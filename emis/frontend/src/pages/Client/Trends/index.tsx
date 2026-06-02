@@ -146,7 +146,57 @@ const TrendDashboard: React.FC = () => {
   const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
   const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
 
+  // Unified color palette: chartColors for 3D gradients, listColors for list dot matching
+  const chartColors = [
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#69b1ff' }, { offset: 1, color: '#1677ff' }] // 3D Blue
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#95de64' }, { offset: 1, color: '#52c41a' }] // 3D Green
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#ffd591' }, { offset: 1, color: '#fa8c16' }] // 3D Orange
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#ff9c6e' }, { offset: 1, color: '#fa541c' }] // 3D Red-Orange
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#ff85c0' }, { offset: 1, color: '#eb2f96' }] // 3D Pink
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#b37feb' }, { offset: 1, color: '#722ed1' }] // 3D Purple
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#85a5ff' }, { offset: 1, color: '#2f54eb' }] // 3D Indigo
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#5cdbd3' }, { offset: 1, color: '#13c2c2' }] // 3D Cyan
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#ffec3d' }, { offset: 1, color: '#fadb14' }] // 3D Yellow
+    },
+    {
+      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
+      colorStops: [{ offset: 0, color: '#ff7875' }, { offset: 1, color: '#f5222d' }] // 3D Red
+    }
+  ];
+
+  const listColors = [
+    '#1677ff', '#52c41a', '#fa8c16', '#fa541c', '#eb2f96',
+    '#722ed1', '#2f54eb', '#13c2c2', '#fadb14', '#f5222d'
+  ];
+
   const regionalOption = {
+    color: chartColors,
     title: {
       text: totalCount.toLocaleString(),
       subtext: '总计',
@@ -176,7 +226,15 @@ const TrendDashboard: React.FC = () => {
         center: ['50%', '50%'],
         minAngle: 6,
         avoidLabelOverlap: true,
-        itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 1 },
+        itemStyle: {
+          borderRadius: 6,
+          borderColor: '#fff',
+          borderWidth: 2,
+          shadowBlur: 12,
+          shadowOffsetX: 0,
+          shadowOffsetY: 6,
+          shadowColor: 'rgba(0, 0, 0, 0.18)'
+        },
         label: { show: false },
         labelLine: { show: false },
         clockwise: true,
@@ -239,15 +297,40 @@ ${regionDetail}
    - 建议投资机构、基金经理提前调研并布局相关产业链中具备高起草权、强研发储备优势的龙头上市与非上市企业。`;
   };
 
+  const fallbackCopy = (text: string) => {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.opacity = '0';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    try {
+      const successful = document.execCommand('copy');
+      if (successful) {
+        message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
+      } else {
+        message.error('复制失败，请手动选择文字复制。');
+      }
+    } catch (err) {
+      message.error('复制失败，请手动选择文字复制。');
+    }
+    document.body.removeChild(textArea);
+  };
+
   const handleCopyReport = () => {
     const text = generateReportText();
-    navigator.clipboard.writeText(text)
-      .then(() => {
-        message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
-      })
-      .catch(() => {
-        message.error('复制失败，请手动选择文字复制。');
-      });
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text)
+        .then(() => {
+          message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
+        })
+        .catch(() => {
+          fallbackCopy(text);
+        });
+    } else {
+      fallbackCopy(text);
+    }
   };
 
   const reportButton = (
@@ -399,9 +482,8 @@ ${regionDetail}
                         paddingRight: '4px'
                       }} className="custom-scrollbar">
                         {sortedData.map((item, index) => {
-                          const percent = totalCount > 0 ? ((item.count / totalCount) * 100).toFixed(1) : '0.0';
-                          const colors = ['#1890ff', '#2f54eb', '#722ed1', '#eb2f96', '#52c41a', '#13c2c2', '#fa8c16', '#fadb14', '#fa541c', '#f5222d'];
-                          const dotColor = colors[index % colors.length];
+                          const percent = totalCount > 0 ? ((item.count / totalCount) * 100).toFixed(2) : '0.00';
+                          const dotColor = listColors[index % listColors.length];
                           return (
                             <div 
                               key={item.province}
@@ -426,18 +508,18 @@ ${regionDetail}
                                 </span>
                               </div>
                               <span style={{ 
-                                color: '#8c8c8c', 
+                                color: '#595959', 
                                 width: 40, 
                                 textAlign: 'right', 
                                 flexShrink: 0,
                                 fontFamily: 'Consolas, Monaco, monospace' 
                               }}>
-                                {item.count.toLocaleString()}
+                                {item.count}
                               </span>
                               <span style={{ 
                                 fontWeight: 'bold', 
                                 color: '#1677ff', 
-                                width: 55, 
+                                width: 65, 
                                 textAlign: 'right', 
                                 flexShrink: 0,
                                 fontFamily: 'Consolas, Monaco, monospace' 
