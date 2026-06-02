@@ -151,18 +151,20 @@ const TrendDashboard: React.FC = () => {
       text: totalCount.toLocaleString(),
       subtext: '总计',
       left: 'center',
-      top: 'center',
+      top: 'middle',
       textAlign: 'center',
-      textVerticalAlign: 'middle',
       textStyle: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: 'bold',
-        color: '#1677ff'
+        color: '#1677ff',
+        lineHeight: 22
       },
       subtextStyle: {
         fontSize: 11,
-        color: '#8c8c8c'
-      }
+        color: '#8c8c8c',
+        lineHeight: 14
+      },
+      itemGap: 4
     },
     tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
     legend: { show: false },
@@ -177,6 +179,10 @@ const TrendDashboard: React.FC = () => {
         itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 1 },
         label: { show: false },
         labelLine: { show: false },
+        clockwise: true,
+        animationType: 'expansion',
+        animationDuration: 1500,
+        animationEasing: 'cubicOut',
         data: chartData
       }
     ]
@@ -402,13 +408,12 @@ ${regionDetail}
                               style={{ 
                                 display: 'flex', 
                                 alignItems: 'center', 
-                                justifyContent: 'space-between',
                                 fontSize: 11,
-                                padding: '4px 0',
+                                padding: '5px 0',
                                 borderBottom: '1px solid #f0f0f0'
                               }}
                             >
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
                                 <span style={{ 
                                   width: 6, 
                                   height: 6, 
@@ -420,12 +425,25 @@ ${regionDetail}
                                   {item.province}
                                 </span>
                               </div>
-                              <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
-                                <span style={{ color: '#8c8c8c' }}>{item.count.toLocaleString()}</span>
-                                <span style={{ fontWeight: 'bold', color: '#1677ff', width: '38px', textAlign: 'right' }}>
-                                  {percent}%
-                                </span>
-                              </div>
+                              <span style={{ 
+                                color: '#8c8c8c', 
+                                width: 40, 
+                                textAlign: 'right', 
+                                flexShrink: 0,
+                                fontFamily: 'Consolas, Monaco, monospace' 
+                              }}>
+                                {item.count.toLocaleString()}
+                              </span>
+                              <span style={{ 
+                                fontWeight: 'bold', 
+                                color: '#1677ff', 
+                                width: 55, 
+                                textAlign: 'right', 
+                                flexShrink: 0,
+                                fontFamily: 'Consolas, Monaco, monospace' 
+                              }}>
+                                {percent}%
+                              </span>
                             </div>
                           );
                         })}
