@@ -4,6 +4,7 @@ import { FileTextOutlined, CloudDownloadOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import StandardsTable from './components/StandardsTable';
 import CustomPackModal from './components/CustomPackModal';
+import DownloadEstimateModal from './components/DownloadEstimateModal';
 import { useClientStandardSearch } from '@/hooks/useClientStandardSearch';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
@@ -11,14 +12,21 @@ import { useTaskContext } from '@/store/TaskContext';
 const { Text } = Typography;
 
 const SearchStandardsPage: React.FC = () => {
-  const [params, setParams] = useState<{ page: number; keyword: string; search_mode?: 'title' | 'full_text' }>({
+  const [params, setParams] = useState<any>({
     page: 1,
     keyword: '',
-    search_mode: 'title'
+    search_mode: 'title',
+    parse_status: 'all',
+    province_id: undefined,
+    city_id: undefined,
+    district_id: undefined
   });
 
   // 自定义打包弹窗状态
   const [customPackVisible, setCustomPackVisible] = useState(false);
+
+  // 容量估算及下载配置弹窗状态
+  const [estimateModalVisible, setEstimateModalVisible] = useState(false);
 
   // 选中的标准行ID
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -27,8 +35,11 @@ const SearchStandardsPage: React.FC = () => {
 
   const { data, isLoading, isFetching } = useClientStandardSearch(params);
 
-  const handleSearch = (keyword: string, searchMode: 'title' | 'full_text') => {
-    setParams({ keyword, search_mode: searchMode, page: 1 });
+  const handleSearch = (searchParams: any) => {
+    setParams({
+      ...searchParams,
+      page: 1
+    });
     setSelectedRowKeys([]); // 搜索条件改变清空勾选
   };
 
@@ -56,6 +67,65 @@ const SearchStandardsPage: React.FC = () => {
     } catch (err: any) {
       const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
       message.error(errMsg);
+    }
+  };
+
+  // 触发按照容量/预估条件包或导出的动作
+  const handleEstimateDownload = async (mode: 'zip' | 'excel') => {
+    setEstimateModalVisible(false);
+
+    if (mode === 'excel') {
+      const hide = message.loading('正在生成企业标准目录 Excel，请稍候...', 0);
+      try {
+        const { data: fileBlob, headers } = await apiClient.get('/client/standards/export/', {
+          params,
+          responseType: 'blob'
+        });
+        hide();
+
+        const blob = new Blob([fileBlob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+
+        const contentDisposition = headers['content-disposition'];
+        let filename = '企业标准目录.xlsx';
+        if (contentDisposition) {
+          const match = contentDisposition.match(/filename\*=UTF-8''(.+)$/);
+          if (match && match[1]) {
+            filename = decodeURIComponent(match[1]);
+          } else {
+            const match2 = contentDisposition.match(/filename=(.+)$/);
+            if (match2 && match2[1]) {
+              filename = decodeURIComponent(match2[1]);
+            }
+          }
+        }
+
+        link.setAttribute('download', filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+        message.success('Excel 目录文件导出成功！');
+      } catch (err: any) {
+        hide();
+        message.error('导出 Excel 失败，请检查网络或稍后重试');
+        console.error(err);
+      }
+    } else {
+      // mode === 'zip'
+      try {
+        const { page, ...packParams } = params;
+        const { data: response } = await apiClient.post<{ token: string; count: number }>('/client/standards/pack/', packParams);
+        const { token, count } = response;
+        
+        message.success(`已锁定符合筛选条件的 ${count} 个企标，打包任务已提交至后台处理，您可继续浏览其他页面...`);
+        dispatchTask(token, '按筛选条件批量打包企标');
+      } catch (err: any) {
+        const errMsg = err.response?.data?.error || '提交请求失败，没有找到可供下载的企标 PDF 文件';
+        message.error(errMsg);
+      }
     }
   };
 
@@ -157,6 +227,42 @@ const SearchStandardsPage: React.FC = () => {
         loading={isFetching}
       />
 
+      {/* 玻璃浮雕质感的操作工具栏 */}
+      <div 
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: 'rgba(255, 255, 255, 0.65)',
+          backdropFilter: 'blur(12px)',
+          border: '1px solid rgba(255, 255, 255, 0.5)',
+          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 16px rgba(0, 0, 0, 0.04)',
+          padding: '12px 24px',
+          borderRadius: 12,
+          marginBottom: 16,
+          transition: 'all 0.3s ease'
+        }}
+      >
+        <div style={{ fontSize: 14, color: '#006064', fontWeight: 500 }}>
+          当前条件共检索到 <span style={{ fontSize: 16, fontWeight: 'bold', color: '#00acc1' }}>{data?.count || 0}</span> 条企业标准
+        </div>
+        <Button
+          type="primary"
+          icon={<CloudDownloadOutlined />}
+          onClick={() => setEstimateModalVisible(true)}
+          disabled={!data || data.count === 0}
+          style={{
+            borderRadius: 8,
+            background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
+            borderColor: '#00acc1',
+            fontWeight: 'bold',
+            boxShadow: '0 4px 12px rgba(0, 131, 143, 0.2)'
+          }}
+        >
+          批量下载（按当前条件）
+        </Button>
+      </div>
+
       {selectedRowKeys.length > 0 && (
         <div 
           style={{ 
@@ -205,7 +311,6 @@ const SearchStandardsPage: React.FC = () => {
 
       {data && data.count > 0 && (
         <div style={{ marginTop: 24, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
-          <Text type="secondary">共计 {data.count} 条企业标准</Text>
           <Pagination
             current={params.page}
             pageSize={10}
@@ -224,12 +329,17 @@ const SearchStandardsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Modal is removed and managed by TaskContext */}
-
       <CustomPackModal
         open={customPackVisible}
         onCancel={() => setCustomPackVisible(false)}
         onSubmit={handleCustomPack}
+      />
+
+      <DownloadEstimateModal
+        open={estimateModalVisible}
+        onCancel={() => setEstimateModalVisible(false)}
+        onDownload={handleEstimateDownload}
+        searchParams={params}
       />
     </div>
   );

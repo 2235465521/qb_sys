@@ -13,21 +13,61 @@ class PackRequestView(APIView):
     POST /api/client/standards/pack/
     提交打包任务
 
-    Body: { "standard_ids": [1, 2, 3] }
-    Returns: { "token": "xxx", "status": "pending" }
+    Body: { "standard_ids": [1, 2, 3], ... }
+    Returns: { "token": "xxx", "status": "pending", "count": 3 }
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
         standard_ids = request.data.get('standard_ids', [])
+        if not standard_ids:
+            from standards.models import Standard
+            from django.db.models import Q
+            qs = Standard.objects.filter(type='enterprise')
+
+            province_id = request.data.get('province_id')
+            city_id = request.data.get('city_id')
+            district_id = request.data.get('district_id')
+            if province_id:
+                qs = qs.filter(company__province_id=province_id)
+            if city_id:
+                qs = qs.filter(company__city_id=city_id)
+            if district_id:
+                qs = qs.filter(company__district_id=district_id)
+
+            parse_status = request.data.get('parse_status')
+            if parse_status == 'pending_reference':
+                qs = qs.filter(is_parsed='unparsed')
+            elif parse_status == 'pending_indicator':
+                qs = qs.filter(is_parsed='references_parsed')
+
+            keyword = request.data.get('keyword')
+            search_mode = request.data.get('search_mode', 'title')
+            if keyword:
+                if search_mode == 'full_text':
+                    from standards.models import StandardContent
+                    matching_std_ids = StandardContent.objects.filter(
+                        content__icontains=keyword
+                    ).values_list('standard_id', flat=True).distinct()
+                    qs = qs.filter(id__in=matching_std_ids)
+                else:
+                    qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+
+            # 只提取有有效 PDF 文件的标准进行打包
+            file_qs = qs.filter(
+                (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) |
+                (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
+            )
+            standard_ids = list(file_qs.values_list('id', flat=True)[:500])
+
         if not standard_ids or not isinstance(standard_ids, list):
             return Response(
-                {'error': 'standard_ids 不能为空'},
+                {'error': '未找到符合条件的企标文件，或 standard_ids 不能为空'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        if len(standard_ids) > 100:
+        if len(standard_ids) > 500:
             return Response(
-                {'error': '单次最多选择 100 个标准'},
+                {'error': '单次最多打包 500 个标准'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -38,7 +78,7 @@ class PackRequestView(APIView):
         from standards.tasks import pack_standards_zip
         pack_standards_zip.delay(standard_ids=standard_ids, download_token=token)
 
-        return Response({'token': token, 'status': 'pending'}, status=status.HTTP_202_ACCEPTED)
+        return Response({'token': token, 'status': 'pending', 'count': len(standard_ids)}, status=status.HTTP_202_ACCEPTED)
 
 
 class PackStatusView(APIView):

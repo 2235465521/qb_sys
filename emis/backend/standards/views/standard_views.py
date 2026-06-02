@@ -40,7 +40,26 @@ class StandardListView(generics.ListAPIView):
         if params.get('company_id'):
             qs = qs.filter(company_id=params['company_id'])
 
+        # 1. 地域筛选
+        province_id = params.get('province_id')
+        city_id = params.get('city_id')
+        district_id = params.get('district_id')
+        if province_id:
+            qs = qs.filter(company__province_id=province_id)
+        if city_id:
+            qs = qs.filter(company__city_id=city_id)
+        if district_id:
+            qs = qs.filter(company__district_id=district_id)
+
+        # 2. 解析状态细化筛选
+        parse_status = params.get('parse_status')
+        if parse_status == 'pending_reference':
+            qs = qs.filter(is_parsed='unparsed')
+        elif parse_status == 'pending_indicator':
+            qs = qs.filter(is_parsed='references_parsed')
+
         if params.get('keyword'):
+
             from django.db.models import Q
             kw = params['keyword']
             if params.get('search_mode') == 'full_text':
@@ -452,4 +471,170 @@ class StandardGraphView(APIView):
             ]
         }
         return Response(response_data, status=status.HTTP_200_OK)
+
+
+class StandardDownloadEstimateView(APIView):
+    """
+    GET/POST /api/client/standards/download-estimate/
+    根据当前高级查询条件，快速计算企业数、文件数和预估文件总体积
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        return self._handle_estimate(request.query_params)
+
+    def post(self, request):
+        return self._handle_estimate(request.data)
+
+    def _handle_estimate(self, params):
+        qs = Standard.objects.filter(type='enterprise')
+
+        # 1. 地域级联筛选
+        province_id = params.get('province_id')
+        city_id = params.get('city_id')
+        district_id = params.get('district_id')
+
+        if province_id:
+            qs = qs.filter(company__province_id=province_id)
+        if city_id:
+            qs = qs.filter(company__city_id=city_id)
+        if district_id:
+            qs = qs.filter(company__district_id=district_id)
+
+        # 2. 解析状态筛选
+        parse_status = params.get('parse_status')
+        if parse_status == 'pending_reference':
+            qs = qs.filter(is_parsed='unparsed')
+        elif parse_status == 'pending_indicator':
+            qs = qs.filter(is_parsed='references_parsed')
+
+        # 3. 关键词 & 检索模式筛选
+        keyword = params.get('keyword')
+        search_mode = params.get('search_mode', 'title')
+        if keyword:
+            if search_mode == 'full_text':
+                from standards.models import StandardContent
+                matching_std_ids = StandardContent.objects.filter(
+                    content__icontains=keyword
+                ).values_list('standard_id', flat=True).distinct()
+                qs = qs.filter(id__in=matching_std_ids)
+            else:
+                from django.db.models import Q
+                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+
+        # 4. 聚合计算（企业数量，文件总数，预估总体积）
+        # 有效 PDF 规则：pdf_file 不为空 或 disk_filename 不为空
+        from django.db.models import Q
+        file_qs = qs.filter(
+            (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) |
+            (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
+        )
+
+        company_count = qs.values('company').distinct().count()
+        files_count = file_qs.count()
+        estimated_size_mb = files_count * 2.0  # 每个文件按 2MB 估算
+
+        return Response({
+            'company_count': company_count,
+            'files_count': files_count,
+            'estimated_size_mb': round(estimated_size_mb, 2)
+        }, status=status.HTTP_200_OK)
+
+
+class ExportStandardListView(APIView):
+    """
+    GET /api/client/standards/export/
+    导出当前高级过滤条件下的企业标准目录为 Excel 文件
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        params = request.query_params
+        qs = Standard.objects.filter(type='enterprise').select_related('company')
+
+        # 1. 地域级联筛选
+        province_id = params.get('province_id')
+        city_id = params.get('city_id')
+        district_id = params.get('district_id')
+
+        if province_id:
+            qs = qs.filter(company__province_id=province_id)
+        if city_id:
+            qs = qs.filter(company__city_id=city_id)
+        if district_id:
+            qs = qs.filter(company__district_id=district_id)
+
+        # 2. 解析状态筛选
+        parse_status = params.get('parse_status')
+        if parse_status == 'pending_reference':
+            qs = qs.filter(is_parsed='unparsed')
+        elif parse_status == 'pending_indicator':
+            qs = qs.filter(is_parsed='references_parsed')
+
+        # 3. 关键词筛选
+        keyword = params.get('keyword')
+        search_mode = params.get('search_mode', 'title')
+        if keyword:
+            if search_mode == 'full_text':
+                from standards.models import StandardContent
+                matching_std_ids = StandardContent.objects.filter(
+                    content__icontains=keyword
+                ).values_list('standard_id', flat=True).distinct()
+                qs = qs.filter(id__in=matching_std_ids)
+            else:
+                from django.db.models import Q
+                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+
+        standards = qs.order_by('-created_at')
+
+        # 4. 生成 Excel
+        import openpyxl
+        import io
+        from django.http import HttpResponse
+        from urllib.parse import quote
+        from django.utils import timezone
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "企业标准目录"
+
+        headers = ["序号", "标准编号", "标准名称", "所属省份", "所属城市", "所属区县", "起草单位/企业", "标准状态", "发布日期"]
+        ws.append(headers)
+
+        for idx, std in enumerate(standards):
+            prov = std.company.province.name if std.company and std.company.province else "--"
+            city = std.company.city.name if std.company and std.company.city else "--"
+            dist = std.company.district.name if std.company and std.company.district else "--"
+            company_name = std.company.name if std.company else "--"
+            
+            ws.append([
+                idx + 1,
+                std.standard_no,
+                std.title or "--",
+                prov,
+                city,
+                dist,
+                company_name,
+                std.get_status_display() or "现行",
+                std.publish_date.strftime('%Y-%m-%d') if std.publish_date else "--"
+            ])
+
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+
+        response = HttpResponse(
+            buffer.getvalue(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+
+        filename = f"企标检索导出清单_{timezone.now().strftime('%Y%m%d%H%M')}.xlsx"
+        try:
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        except Exception:
+            response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+
+        return response
+
+
 

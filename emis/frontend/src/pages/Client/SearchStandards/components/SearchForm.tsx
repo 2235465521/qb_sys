@@ -1,17 +1,118 @@
-import React from 'react';
-import { Form, Input, Button, Card, Row, Col, Segmented } from 'antd';
-import { SearchOutlined, FontSizeOutlined, FileTextOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Form, Input, Button, Card, Row, Col, Radio, Cascader, Select } from 'antd';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
+import apiClient from '@/api/client';
+import type { Province, City, District } from '@/types';
 
 interface SearchFormProps {
-  onSearch: (keyword: string, searchMode: 'title' | 'full_text') => void;
+  onSearch: (params: any) => void;
   loading: boolean;
+}
+
+interface CascaderOption {
+  value: string | number;
+  label: string;
+  isLeaf?: boolean;
+  children?: CascaderOption[];
+  loading?: boolean;
 }
 
 const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
   const [form] = Form.useForm();
+  const [expanded, setExpanded] = useState(false);
+  const [cascaderOptions, setCascaderOptions] = useState<CascaderOption[]>([]);
+
+  // 首次挂载拉取省份列表
+  useEffect(() => {
+    const fetchProvinces = async () => {
+      try {
+        const { data } = await apiClient.get<Province[]>('/admin/dict/provinces/');
+        setCascaderOptions(data.map(p => ({
+          value: p.id,
+          label: p.name,
+          isLeaf: false
+        })));
+      } catch (err) {
+        console.error('获取省份字典失败:', err);
+      }
+    };
+    fetchProvinces();
+  }, []);
+
+  // Cascader 级联延迟加载
+  const loadCascaderData = async (selectedOptions: CascaderOption[]) => {
+    const targetOption = selectedOptions[selectedOptions.length - 1];
+    targetOption.loading = true;
+
+    try {
+      if (selectedOptions.length === 1) {
+        // 第一级：加载城市
+        const { data } = await apiClient.get<City[]>('/admin/dict/cities/', {
+          params: { province_id: targetOption.value }
+        });
+        targetOption.loading = false;
+        if (data.length > 0) {
+          targetOption.children = data.map(c => ({
+            value: c.id,
+            label: c.name,
+            isLeaf: false
+          }));
+        } else {
+          targetOption.isLeaf = true;
+        }
+      } else if (selectedOptions.length === 2) {
+        // 第二级：加载区县
+        const { data } = await apiClient.get<District[]>('/admin/dict/districts/', {
+          params: { city_id: targetOption.value }
+        });
+        targetOption.loading = false;
+        if (data.length > 0) {
+          targetOption.children = data.map(d => ({
+            value: d.id,
+            label: d.name,
+            isLeaf: true
+          }));
+        } else {
+          targetOption.isLeaf = true;
+        }
+      }
+      setCascaderOptions([...cascaderOptions]);
+    } catch (err) {
+      targetOption.loading = false;
+      console.error('获取下级字典失败:', err);
+    }
+  };
 
   const handleFinish = (values: any) => {
-    onSearch(values.keyword || '', values.search_mode || 'title');
+    const params: any = {
+      keyword: values.keyword || '',
+      search_mode: values.search_mode || 'title',
+      parse_status: values.parse_status || 'all',
+    };
+
+    if (values.region && values.region.length > 0) {
+      params.province_id = values.region[0];
+      if (values.region.length > 1) {
+        params.city_id = values.region[1];
+      }
+      if (values.region.length > 2) {
+        params.district_id = values.region[2];
+      }
+    }
+
+    onSearch(params);
+  };
+
+  const handleReset = () => {
+    form.resetFields();
+    onSearch({
+      keyword: '',
+      search_mode: 'title',
+      parse_status: 'all',
+      province_id: undefined,
+      city_id: undefined,
+      district_id: undefined,
+    });
   };
 
   return (
@@ -31,77 +132,108 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
         form={form}
         layout="horizontal"
         onFinish={handleFinish}
-        initialValues={{ search_mode: 'title' }}
+        initialValues={{ search_mode: 'title', parse_status: 'all' }}
       >
-        <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 'bold', color: '#006064' }}>检索模式：</span>
-          <Form.Item name="search_mode" noStyle>
-            <Segmented
-              size="middle"
-              options={[
-                {
-                  label: (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 8px' }}>
-                      <FontSizeOutlined style={{ fontSize: 14 }} />
-                      <span>按标准名称</span>
-                    </div>
-                  ),
-                  value: 'title',
-                },
-                {
-                  label: (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '2px 8px' }}>
-                      <FileTextOutlined style={{ fontSize: 14 }} />
-                      <span>按 PDF 正文 (全文深度检索)</span>
-                    </div>
-                  ),
-                  value: 'full_text',
-                },
-              ]}
-              style={{
-                borderRadius: 8,
-                background: 'rgba(0, 96, 100, 0.05)',
-                padding: '3px',
-              }}
-            />
-          </Form.Item>
-        </div>
+        {/* 第一排 */}
         <Row gutter={16} align="middle">
-          <Col xs={24} sm={18} md={20}>
+          {/* 综合检索框 */}
+          <Col xs={24} sm={12} md={13}>
             <Form.Item name="keyword" style={{ marginBottom: 0 }}>
               <Input
-                placeholder="请输入关键词以进行模糊检索（如: Q/XMBL, 电路板）"
-                prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />}
+                placeholder="请输入关键词检索企业标准..."
+                addonBefore={
+                  <Form.Item name="search_mode" noStyle>
+                    <Select style={{ width: 110, color: '#006064', fontWeight: 500 }}>
+                      <Select.Option value="title">检索名称</Select.Option>
+                      <Select.Option value="full_text">PDF正文</Select.Option>
+                    </Select>
+                  </Form.Item>
+                }
                 allowClear
                 size="large"
                 style={{ borderRadius: 8 }}
               />
             </Form.Item>
           </Col>
-          <Col xs={24} sm={6} md={4}>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              icon={<SearchOutlined />}
-              size="large"
-              block
-              style={{
-                borderRadius: 8,
-                fontWeight: 500,
-                background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
-                borderColor: '#00acc1',
-                boxShadow: '0 4px 10px rgba(0, 131, 143, 0.2)'
-              }}
-            >
-              检索企标
-            </Button>
+
+          {/* 解析状态选择 */}
+          <Col xs={24} sm={8} md={7}>
+            <Form.Item name="parse_status" style={{ marginBottom: 0 }}>
+              <Radio.Group
+                optionType="button"
+                buttonStyle="solid"
+                size="large"
+                style={{ width: '100%', display: 'flex', gap: 4 }}
+              >
+                <Radio.Button value="all" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>全部</Radio.Button>
+                <Radio.Button value="pending_reference" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>待引用解析</Radio.Button>
+                <Radio.Button value="pending_indicator" style={{ flex: 1, textAlign: 'center', borderRadius: 6 }}>待指标解析</Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+          </Col>
+
+          {/* 检索与高级触发组 */}
+          <Col xs={24} sm={4} md={4}>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                icon={<SearchOutlined />}
+                size="large"
+                style={{
+                  borderRadius: 8,
+                  fontWeight: 500,
+                  background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
+                  borderColor: '#00acc1',
+                  boxShadow: '0 4px 10px rgba(0, 131, 143, 0.2)',
+                  flex: 1
+                }}
+              >
+                检索
+              </Button>
+              <Button
+                type="text"
+                icon={expanded ? <UpOutlined /> : <DownOutlined />}
+                onClick={() => setExpanded(!expanded)}
+                style={{ color: '#00838f', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: 4 }}
+              >
+                高级
+              </Button>
+            </div>
           </Col>
         </Row>
+
+        {/* 第二排 - 高级选项 (地域 Cascader) */}
+        {expanded && (
+          <Row gutter={16} style={{ marginTop: 16 }} align="middle">
+            <Col xs={24} sm={12} md={10}>
+              <Form.Item label="所属地域" name="region" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                <Cascader
+                  options={cascaderOptions}
+                  loadData={loadCascaderData}
+                  placeholder="请选择省 / 市 / 区县"
+                  changeOnSelect
+                  size="large"
+                  style={{ width: '100%', borderRadius: 8 }}
+                />
+              </Form.Item>
+            </Col>
+            <Col xs={24} sm={12} md={4}>
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleReset}
+                size="large"
+                style={{ borderRadius: 8, color: '#666' }}
+              >
+                重置
+              </Button>
+            </Col>
+          </Row>
+        )}
       </Form>
     </Card>
   );
 };
 
 export default SearchForm;
-

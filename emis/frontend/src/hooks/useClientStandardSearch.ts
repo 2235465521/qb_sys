@@ -7,6 +7,10 @@ export interface ClientStandardSearchParams {
   keyword?: string;
   type?: string;
   search_mode?: 'title' | 'full_text';
+  parse_status?: 'all' | 'pending_reference' | 'pending_indicator';
+  province_id?: number;
+  city_id?: number;
+  district_id?: number;
 }
 
 export const useClientStandardSearch = (params: ClientStandardSearchParams) => {
