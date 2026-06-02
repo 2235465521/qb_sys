@@ -28,13 +28,24 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
     from standards.utils.archive_helpers import create_zip_from_standards
     import os
 
-    try:
-        # 更新进度
-        cache.set(f'zip_task_{download_token}', {'status': 'running', 'progress': 0}, timeout=3600)
+    def _update_progress(progress: int, message: str = ''):
+        """向缓存写入当前进度，供前端轮询读取"""
+        cache.set(f'zip_task_{download_token}', {
+            'status': 'running',
+            'progress': progress,
+            'message': message,
+        }, timeout=3600)
 
+    try:
+        # 阶段 1：任务开始 (0%)
+        _update_progress(0, '正在准备打包任务...')
+
+        # 阶段 2：开始 I/O 读取文件 (30%)
+        _update_progress(30, f'正在读取 {len(standard_ids)} 个标准文件...')
         zip_bytes = create_zip_from_standards(standard_ids, include_excel=include_excel)
 
-        # 将 ZIP 写入临时文件（供 Nginx X-Accel-Redirect 使用）
+        # 阶段 3：写入磁盘 (80%)
+        _update_progress(80, '正在写入 ZIP 文件到磁盘...')
         from django.conf import settings
         temp_dir = settings.MEDIA_ROOT / 'temp_zips'
         temp_dir.mkdir(parents=True, exist_ok=True)
@@ -43,9 +54,10 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
         with open(zip_path, 'wb') as f:
             f.write(zip_bytes)
 
-        # 更新任务状态，使用安全 API 包装器下载
+        # 阶段 4：完成 (100%)
         cache.set(f'zip_task_{download_token}', {
             'status': 'done',
+            'progress': 100,
             'download_url': f'/api/client/standards/pack/download/?token={download_token}',
             'file_size': len(zip_bytes),
         }, timeout=3600)
@@ -53,6 +65,7 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
     except Exception as exc:
         cache.set(f'zip_task_{download_token}', {
             'status': 'failed',
+            'progress': 0,
             'error': str(exc),
         }, timeout=3600)
         self.update_state(

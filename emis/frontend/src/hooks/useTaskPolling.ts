@@ -135,10 +135,13 @@ export const useTaskPolling = () => {
             description: error || '发生了未知错误',
           });
         } else {
-          // Update running progress
+          // 优先使用后端返回的真实进度，若没有则本地模拟递增（上限 85%，防止超过完成前跳到 100%）
+          const serverProgress = typeof res.data.progress === 'number' ? res.data.progress : null;
           setTasks(prev => prev.map(t => {
             if (t.id === token) {
-              const nextProgress = t.progress < 90 ? t.progress + 10 : t.progress;
+              const nextProgress = serverProgress !== null
+                ? serverProgress
+                : (t.progress < 85 ? t.progress + 5 : t.progress);
               return { ...t, progress: nextProgress };
             }
             return t;
