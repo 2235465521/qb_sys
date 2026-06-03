@@ -297,57 +297,7 @@ ${regionDetail}
    - 建议投资机构、基金经理提前调研并布局相关产业链中具备高起草权、强研发储备优势的龙头上市与非上市企业。`;
   };
 
-  const fallbackCopy = (text: string) => {
-    const textArea = document.createElement('textarea');
-    textArea.value = text;
-    textArea.style.position = 'absolute';
-    textArea.style.left = '-9999px';
-    textArea.style.top = '0';
-    textArea.setAttribute('readonly', '');
-    document.body.appendChild(textArea);
-    
-    const activeElement = document.activeElement as HTMLElement | null;
-    textArea.focus();
-    textArea.select();
-    textArea.setSelectionRange(0, textArea.value.length);
-    
-    try {
-      const successful = document.execCommand('copy');
-      if (successful) {
-        message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
-      } else {
-        message.error('复制失败，请手动选择文字复制。');
-      }
-    } catch (err) {
-      message.error('复制失败，请手动选择文字复制。');
-      console.error('Fallback copy failed:', err);
-    }
-    
-    document.body.removeChild(textArea);
-    if (activeElement) {
-      activeElement.focus();
-    }
-  };
 
-  const handleCopyReport = () => {
-    const text = generateReportText();
-    if (!text) {
-      message.error('报告内容为空，无法复制！');
-      return;
-    }
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text)
-        .then(() => {
-          message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
-        })
-        .catch((err) => {
-          console.warn('Clipboard API failed, trying fallback:', err);
-          fallbackCopy(text);
-        });
-    } else {
-      fallbackCopy(text);
-    }
-  };
 
   const reportButton = (
     <Button 
@@ -571,9 +521,6 @@ ${regionDetail}
         footer={[
           <Button key="close" onClick={() => setReportVisible(false)}>
             关闭
-          </Button>,
-          <Button key="copy" type="primary" onClick={handleCopyReport}>
-            复制报告内容
           </Button>,
         ]}
         width={720}
