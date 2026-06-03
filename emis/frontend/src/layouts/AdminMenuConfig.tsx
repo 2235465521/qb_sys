@@ -11,6 +11,7 @@ import {
   AppstoreOutlined,
   InteractionOutlined,
   ToolOutlined,
+  HistoryOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -50,7 +51,7 @@ export const adminMenuItems: MenuProps['items'] = [
       {
         key: '/admin/leads',
         icon: <CustomerServiceOutlined />,
-        label: '线索客户管理',
+        label: '客户管理',
       },
       {
         key: '/admin/members',
@@ -78,6 +79,11 @@ export const adminMenuItems: MenuProps['items'] = [
         key: '/admin/dict',
         icon: <SettingOutlined />,
         label: '数据字典',
+      },
+      {
+        key: '/admin/statistics',
+        icon: <HistoryOutlined />,
+        label: '用户使用记录',
       },
     ],
   },

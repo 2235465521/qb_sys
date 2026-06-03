@@ -15,6 +15,7 @@ import MemberAdminPage from '@/pages/Admin/Members';
 import DictManager from '@/pages/Admin/Dict';
 import SmsTemplates from '@/pages/Admin/SmsTemplates';
 import AdminUsersManager from '@/pages/Admin/Users';
+import AdminStatisticsPage from '@/pages/Admin/Statistics';
 // 前台应用页面
 import CompanySearch from '@/pages/Client/Search';
 import ReferenceAnalysis from '@/pages/Client/Analysis';
@@ -72,6 +73,7 @@ export const router = createBrowserRouter([
       { path: 'users', element: <AdminUsersManager /> },
       { path: 'dict', element: <DictManager /> },
       { path: 'sms-templates', element: <SmsTemplates /> },
+      { path: 'statistics', element: <AdminStatisticsPage /> },
     ]
   }
 ]);

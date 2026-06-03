@@ -33,6 +33,9 @@ urlpatterns = [
     # ── 前台模块三：会员与通知 ────────────────────────────
     path('api/client/members/', include('users.urls.member_urls')),
     path('api/client/notifications/', include('notifications.urls.task_urls')),
+
+    # ── 后台使用情况与审计统计 ────────────────────────────
+    path('api/admin/statistics/', include('statistics.urls')),
 ]
 
 # 媒体文件静态代理 (Django static() 内部在非 DEBUG 模式下会自动清空，无需额外包裹)
