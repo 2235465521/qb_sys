@@ -148,7 +148,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       title: '标准名称',
       dataIndex: 'title',
       key: 'title',
-      width: '30%',
+      width: '20%',
       align: 'center' as const,
       ellipsis: true,
       render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
@@ -177,6 +177,18 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
         }
         return <Tag color="warning" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '草案'}</Tag>;
       },
+    },
+    {
+      title: '实施时间',
+      dataIndex: 'implement_date',
+      key: 'implement_date',
+      width: 130,
+      align: 'center' as const,
+      render: (date: string) => (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {date ? dayjs(date).format('YYYY-MM-DD') : '--'}
+        </span>
+      ),
     },
     {
       title: '发布时间',

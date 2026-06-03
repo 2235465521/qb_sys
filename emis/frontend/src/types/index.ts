@@ -91,6 +91,8 @@ export interface Standard {
   citation_count: number
   status: string
   status_display: string
+  publish_date?: string
+  implement_date?: string
   pdf_url?: string | null
   all_chain?: number[]
   created_at: string
