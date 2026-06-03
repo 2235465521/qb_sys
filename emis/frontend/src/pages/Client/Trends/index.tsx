@@ -333,7 +333,7 @@ ${regionDetail}
                       }
                     `}</style>
                     <div style={{ flex: 1.2, height: '100%' }}>
-                      <ReactECharts key={`regional-chart-${days}`} option={regionalOption} style={{ height: '100%', width: '100%' }} />
+                      <ReactECharts key={`regional-chart-${selectedKeyword}-${days}-${chartData.length}`} option={regionalOption} style={{ height: '100%', width: '100%' }} />
                     </div>
                     <div style={{ 
                       flex: 0.8, 

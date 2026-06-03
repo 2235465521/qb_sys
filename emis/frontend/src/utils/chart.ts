@@ -53,6 +53,7 @@ export const makeAnalyticsPieChartPair = (
   ];
 
   return {
+    animation: true,
     color: chartColors as any,
     title: {
       text: total.toLocaleString(),
@@ -120,9 +121,9 @@ export const makeAnalyticsPieChartPair = (
         clockwise: true,
         // 动效核心配置：扇形延迟开花展开动画
         animationType: 'expansion',    // 扇形入场动画
-        animationDuration: 1500,       // 基础时长 1.5 秒
+        animationDuration: 2500,       // 基础时长 2.5 秒，慢速美观
         animationEasing: 'cubicInOut', // 平滑缓动
-        animationDelay: (idx: number) => idx * 100, // 接力顺次展开
+        animationDelay: (idx: number) => idx * 200, // 接力顺次展开
         data: data
       }
     ]
