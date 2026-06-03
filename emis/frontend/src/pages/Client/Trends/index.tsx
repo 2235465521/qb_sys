@@ -4,6 +4,7 @@ import { RadarChartOutlined, FireOutlined, RiseOutlined, EnvironmentOutlined, Fi
 import ReactECharts from 'echarts-for-react';
 import 'echarts-wordcloud';
 import { useTrendData } from '@/hooks/useTrendData';
+import { makeAnalyticsPieChartPair } from '@/utils/chart';
 
 const { Title } = Typography;
 
@@ -146,105 +147,16 @@ const TrendDashboard: React.FC = () => {
   const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
   const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
 
-  // Unified color palette: chartColors for 3D gradients, listColors for list dot matching
-  const chartColors = [
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#69b1ff' }, { offset: 1, color: '#1677ff' }] // 3D Blue
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#95de64' }, { offset: 1, color: '#52c41a' }] // 3D Green
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#ffd591' }, { offset: 1, color: '#fa8c16' }] // 3D Orange
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#ff9c6e' }, { offset: 1, color: '#fa541c' }] // 3D Red-Orange
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#ff85c0' }, { offset: 1, color: '#eb2f96' }] // 3D Pink
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#b37feb' }, { offset: 1, color: '#722ed1' }] // 3D Purple
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#85a5ff' }, { offset: 1, color: '#2f54eb' }] // 3D Indigo
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#5cdbd3' }, { offset: 1, color: '#13c2c2' }] // 3D Cyan
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#ffec3d' }, { offset: 1, color: '#fadb14' }] // 3D Yellow
-    },
-    {
-      type: 'linear', x: 0, y: 0, x2: 1, y2: 1,
-      colorStops: [{ offset: 0, color: '#ff7875' }, { offset: 1, color: '#f5222d' }] // 3D Red
-    }
-  ];
-
   const listColors = [
     '#1677ff', '#52c41a', '#fa8c16', '#fa541c', '#eb2f96',
     '#722ed1', '#2f54eb', '#13c2c2', '#fadb14', '#f5222d'
   ];
 
-  const regionalOption = {
-    color: chartColors,
-    title: {
-      text: totalCount.toLocaleString(),
-      subtext: '总计',
-      left: 'center',
-      top: 'middle',
-      textAlign: 'center',
-      textStyle: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        color: '#1677ff',
-        lineHeight: 22
-      },
-      subtextStyle: {
-        fontSize: 11,
-        color: '#8c8c8c',
-        lineHeight: 14
-      },
-      itemGap: 4
-    },
-    tooltip: { trigger: 'item', formatter: '{b}: {c} 项 ({d}%)' },
-    legend: { show: false },
-    series: [
-      {
-        name: '分布区域',
-        type: 'pie',
-        radius: ['55%', '75%'],
-        center: ['50%', '50%'],
-        minAngle: 6,
-        avoidLabelOverlap: true,
-        itemStyle: {
-          borderRadius: 6,
-          borderColor: '#fff',
-          borderWidth: 2,
-          shadowBlur: 12,
-          shadowOffsetX: 0,
-          shadowOffsetY: 6,
-          shadowColor: 'rgba(0, 0, 0, 0.18)'
-        },
-        label: { show: false },
-        labelLine: { show: false },
-        clockwise: true,
-        animationType: 'expansion',
-        animationDuration: 1500,
-        animationEasing: 'cubicOut',
-        data: chartData
-      }
-    ]
-  };
+  const regionalOption = makeAnalyticsPieChartPair(
+    chartData,
+    '分布区域',
+    '总计'
+  );
 
   const generateReportText = () => {
     if (!selectedKeyword) return '';
@@ -421,7 +333,7 @@ ${regionDetail}
                       }
                     `}</style>
                     <div style={{ flex: 1.2, height: '100%' }}>
-                      <ReactECharts option={regionalOption} style={{ height: '100%', width: '100%' }} />
+                      <ReactECharts key={`regional-chart-${days}`} option={regionalOption} style={{ height: '100%', width: '100%' }} />
                     </div>
                     <div style={{ 
                       flex: 0.8, 
