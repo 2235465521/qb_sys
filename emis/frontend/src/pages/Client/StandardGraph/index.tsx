@@ -220,44 +220,59 @@ const StandardGraphPage: React.FC = () => {
       let x = 300;
       let y = 300;
       let fixed = false;
+      let symbolSize = 0.001; // 初始化极小尺寸避免 ECharts 警告
+      let showLabel = false;
 
       if (isCenter) {
         fixed = true; // 中心企标固定在正中央
+        symbolSize = 54;
+        showLabel = true;
       } else if (node.category === 1) {
-        // 第一阶段（第1阶段及以后）一级引用节点开始从中心飞往它们的最终坐标
+        // 阶段 0：主节点在中心，一级引用收缩在中心且不可见 (size 0)
+        // 阶段 1 & 2：一级引用节点飞往各自的最终位置，并成长为正常尺寸，展现标签
         if (animationStage >= 1) {
           const theta = (category1Index / N1) * 2 * Math.PI;
           x = 300 + 150 * Math.cos(theta); // 稍加扩大半径防拥挤
           y = 300 + 150 * Math.sin(theta);
+          symbolSize = 38;
+          showLabel = true;
+        } else {
+          x = 300;
+          y = 300;
+          symbolSize = 0.001;
+          showLabel = false;
         }
         category1Index++;
       } else if (node.category === 2) {
         // 二级最新标准节点：
-        // 阶段0：全聚集在中心 (300, 300)
-        // 阶段1：依附在它们的一级引用父节点位置（与父节点一起从中心飞到一级引用位置）
-        // 阶段2：从一级引用位置飞往它们自己的最终二级外层“展叶”位置，形成二次发芽
+        // 阶段 0：收缩在中心不可见
+        // 阶段 1：依附在它们的一级引用父节点位置且不可见（伴随父节点一同在不可见状态下飞出）
+        // 阶段 2：自一级节点向外分叉“生长/展叶”，展现出正常尺寸和标签
         const parentLink = links.find(l => l.target === node.id);
         const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
         const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
         const parentTheta = (parentIndex / N1) * 2 * Math.PI;
 
-        if (animationStage === 1) {
-          // 阶段1：处于一级节点位置
+        if (animationStage === 0) {
+          x = 300;
+          y = 300;
+          symbolSize = 0.001;
+          showLabel = false;
+        } else if (animationStage === 1) {
+          // 伴随父节点一同飞出到一级引用节点位置，但保持隐身
           x = 300 + 150 * Math.cos(parentTheta);
           y = 300 + 150 * Math.sin(parentTheta);
+          symbolSize = 0.001;
+          showLabel = false;
         } else if (animationStage === 2) {
-          // 阶段2：从一级节点向外发散，萌芽出第二级树叶
+          // 阶段2：向外延伸发芽，露出树叶
           const theta = parentTheta + 0.35; // 偏转角度形成优雅的枝叶发散效果
           x = 300 + 260 * Math.cos(theta);
           y = 300 + 260 * Math.sin(theta);
+          symbolSize = 30;
+          showLabel = true;
         }
       }
-
-      // 设置节点尺寸，保证圆滑丰满
-      let symbolSize = 30;
-      if (isCenter) symbolSize = 54;
-      else if (node.category === 1) symbolSize = 38;
-      else if (node.category === 2) symbolSize = 30;
 
       return {
         ...node,
@@ -265,6 +280,9 @@ const StandardGraphPage: React.FC = () => {
         y,
         fixed,
         symbolSize,
+        label: {
+          show: showLabel
+        },
         itemStyle: {
           // 微光渐变与高饱和发光描边 (玻璃态质感，比生硬 3D 更加现代、圆滑)
           color: isCenter
@@ -306,11 +324,20 @@ const StandardGraphPage: React.FC = () => {
 
     const processedLinks = links.map(link => {
       const isLatest = link.label?.formatter === '最新标准';
+      
+      // 动态连线宽度：配合生长动画，分支未长出时连线不可见
+      let linkWidth = 0;
+      if (!isLatest && animationStage >= 1) {
+        linkWidth = 2.5; // 第一阶段：企标 $\rightarrow$ 引用标准的树枝长出
+      } else if (isLatest && animationStage === 2) {
+        linkWidth = 2.5; // 第二阶段：引用标准 $\rightarrow$ 最新标准的细枝长出
+      }
+
       return {
         ...link,
         lineStyle: {
           color: isLatest ? '#ffe58f' : '#91d5ff',
-          width: 2.5,
+          width: linkWidth,
           type: 'solid',
           curveness: isLatest ? 0.2 : 0.08
         },
@@ -386,10 +413,12 @@ const StandardGraphPage: React.FC = () => {
           }
         }
       ],
-      // 扇叶与开花：设置慢速顺次入场延迟动画与缓动特效
-      animationDuration: 2500,       // 延长至 2.5 秒，使开花飞出过渡极佳
-      animationEasing: 'cubicInOut', // 丝滑柔和缓动
-      animationDelay: (idx: number) => idx * 120, // 顺次慢速开花展开
+      // 树枝与萌芽动效：如果处于初始阶段 0 则禁用动画（使中心主节点以正常大小稳定出现，避免大小闪烁）
+      // 阶段 1 和 2 开启丝滑生长动画，促使枝叶依次从中心和父节点向外绽放
+      animation: animationStage !== 0,
+      animationDuration: animationStage === 1 ? 1600 : 2000,
+      animationEasing: 'cubicInOut',
+      animationDelay: (idx: number) => idx * 100, // 顺次慢速开花展开
       series: [
         {
           type: 'graph',
