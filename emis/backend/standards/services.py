@@ -573,7 +573,7 @@ def import_standards_from_excel(file_obj) -> dict:
                 standard_status = 'draft'
 
             pdf_filename = str(row.get('PDF文件名', '')).strip()
-            pdf_db_path = f"pdfs/{today_str}/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
+            pdf_db_path = f"整合/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
             
             new_standard = Standard(
                 standard_no=standard_no,

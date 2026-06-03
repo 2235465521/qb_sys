@@ -338,12 +338,12 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
             </Row>
             <Row gutter={16} style={{ marginTop: 16 }} align="middle">
               <Col xs={24} md={12}>
-                <Form.Item label="已发布时间" name="publishDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                <Form.Item label="发布时间" name="publishDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
                   <FlexibleDateSelector />
                 </Form.Item>
               </Col>
               <Col xs={24} md={12}>
-                <Form.Item label="已实施时间" name="implementDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                <Form.Item label="实施时间" name="implementDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
                   <FlexibleDateSelector />
                 </Form.Item>
               </Col>

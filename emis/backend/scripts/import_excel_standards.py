@@ -159,9 +159,9 @@ def run_import(excel_path):
             elif '草案' in status_str:
                 standard_status = 'draft'
 
-            # 绑定 PDF 物理存储相对路径，适配系统 pdf_upload_path 分层规范
+            # 绑定 PDF 物理存储相对路径，直接映射到磁盘整合目录，不再使用违背物理分布的 pdfs/ 前缀
             pdf_filename = str(row.get('PDF文件名', '')).strip()
-            pdf_db_path = f"pdfs/{today_str}/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
+            pdf_db_path = f"整合/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
             
             new_standard = Standard(
                 standard_no=standard_no,

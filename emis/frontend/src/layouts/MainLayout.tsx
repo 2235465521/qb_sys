@@ -90,22 +90,10 @@ const MainLayout: React.FC = () => {
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          gap: 8,
           borderBottom: '1px solid #f0f0f0',
           background: '#fff'
         }}>
-          <BrandLogo width={collapsed ? 28 : 32} height={collapsed ? 28 : 32} />
-          {!collapsed && (
-            <span style={{ 
-              fontWeight: 800, 
-              fontSize: 16, 
-              color: '#141414', 
-              letterSpacing: '0.5px',
-              fontFamily: '"Outfit", sans-serif' 
-            }}>
-              ESIM SYSTEM
-            </span>
-          )}
+          <BrandLogo width={collapsed ? 36 : 48} height={collapsed ? 36 : 48} />
         </div>
         <Menu
           theme="light"

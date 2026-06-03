@@ -6,7 +6,7 @@ import axios from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
 import BrandLogo from '@/components/BrandLogo';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -78,42 +78,29 @@ const LoginPage: React.FC = () => {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           {/* Brand Logo Container */}
           <div style={{ 
-            width: 72, height: 72, background: 'rgba(82,196,26,0.1)', borderRadius: 16, 
+            width: 96, height: 96, background: 'rgba(82,196,26,0.1)', borderRadius: '50%', 
             display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
-            marginBottom: 16, border: '1px solid rgba(82,196,26,0.2)',
+            marginBottom: 20, border: '1px solid rgba(82,196,26,0.2)',
             boxShadow: '0 4px 20px rgba(82,196,26,0.15)'
           }}>
-            <BrandLogo width={48} height={48} />
+            <BrandLogo width={72} height={72} />
           </div>
 
           {/* Typography Headers */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
             <span style={{ 
-              fontSize: 12, 
+              fontSize: 16, 
               color: '#52c41a', 
               fontWeight: 'bold', 
-              letterSpacing: 3, 
+              letterSpacing: 2, 
               textTransform: 'uppercase',
               opacity: 0.95
             }}>
-              MIND ZONE
+              中科标准企业管理信息系统
             </span>
-            <Title level={2} style={{ 
-              margin: '4px 0 8px 0', 
-              color: '#ffffff', 
-              fontWeight: 800, 
-              letterSpacing: '1px',
-              fontFamily: '"Outfit", "Inter", sans-serif',
-              textShadow: '0 2px 10px rgba(82, 196, 26, 0.25)'
-            }}>
-              ESIM SYSTEM
-            </Title>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
               <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, display: 'block', fontWeight: 500 }}>
                 Data-driven Enterprise Standard Management
-              </Text>
-              <Text style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, display: 'block', fontStyle: 'italic' }}>
-                Excellence Through Optimization
               </Text>
             </div>
           </div>
