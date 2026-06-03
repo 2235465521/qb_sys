@@ -39,6 +39,7 @@ const StandardGraphPage: React.FC = () => {
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInitialRender, setIsInitialRender] = useState(true);
 
   // 联想输入选择器状态
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
@@ -61,6 +62,7 @@ const StandardGraphPage: React.FC = () => {
             value: firstStd.id,
             label: `${firstStd.standard_no} | ${firstStd.title || '无名称'}`
           }]);
+          setIsInitialRender(true);
           fetchGraph(firstStd.id);
         } else {
           setIsLoading(false);
@@ -84,9 +86,14 @@ const StandardGraphPage: React.FC = () => {
   const fetchGraph = async (id: number) => {
     setIsLoading(true);
     setError(null);
+    setIsInitialRender(true);
     try {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
+      // Wait for ECharts component to initialize at center coordinates, then trigger fly-out animation
+      setTimeout(() => {
+        setIsInitialRender(false);
+      }, 80);
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.error || '拉取图谱数据失败，请重试');
@@ -189,7 +196,7 @@ const StandardGraphPage: React.FC = () => {
     const N1 = graphData.nodes.filter(n => n.category === 1).length;
     let category1Index = 0;
 
-    // 计算入场时的“扇叶”或“花瓣”轨迹坐标位置，并配置 3D 径向渐变
+    // 计算入场时的“扇叶”或“花瓣”轨迹坐标位置，并配置微光玻璃 3D 节点外观
     const processedNodes = nodes.map(node => {
       const isCenter = node.category === 0;
 
@@ -197,64 +204,75 @@ const StandardGraphPage: React.FC = () => {
       let y = 300;
       let fixed = false;
 
+      // 依据 isInitialRender 在初次挂载时将节点堆叠在中心 (300, 300)，数据载入后飞跃展开
       if (isCenter) {
         fixed = true; // 中心企标固定在正中央
       } else if (node.category === 1) {
-        const theta = (category1Index / N1) * 2 * Math.PI;
-        x = 300 + 100 * Math.cos(theta);
-        y = 300 + 100 * Math.sin(theta);
+        if (!isInitialRender) {
+          const theta = (category1Index / N1) * 2 * Math.PI;
+          x = 300 + 150 * Math.cos(theta); // 稍加扩大半径防拥挤
+          y = 300 + 150 * Math.sin(theta);
+        }
         category1Index++;
       } else if (node.category === 2) {
-        const parentLink = links.find(l => l.target === node.id);
-        const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
-        const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
+        if (!isInitialRender) {
+          const parentLink = links.find(l => l.target === node.id);
+          const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
+          const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
 
-        const theta = (parentIndex / N1) * 2 * Math.PI + 0.3; // 偏转角度形成扇叶延伸弧度
-        x = 300 + 220 * Math.cos(theta);
-        y = 300 + 220 * Math.sin(theta);
+          const theta = (parentIndex / N1) * 2 * Math.PI + 0.35; // 偏转角度形成优雅扇叶弧度
+          x = 300 + 260 * Math.cos(theta);
+          y = 300 + 260 * Math.sin(theta);
+        }
       }
+
+      // 设置节点尺寸，保证圆滑丰满
+      let symbolSize = 30;
+      if (isCenter) symbolSize = 54;
+      else if (node.category === 1) symbolSize = 38;
+      else if (node.category === 2) symbolSize = 30;
 
       return {
         ...node,
         x,
         y,
         fixed,
+        symbolSize,
         itemStyle: {
-          // 利用径向渐变（Radial Gradient）为节点添加凸起的 3D 气泡视觉质感
+          // 微光渐变与高饱和发光描边 (玻璃态质感，比生硬 3D 更加现代、圆滑)
           color: isCenter
             ? {
-                type: 'radial',
-                x: 0.3, y: 0.3, r: 0.6,
+                type: 'linear',
+                x: 0, y: 0, x2: 1, y2: 1,
                 colorStops: [
-                  { offset: 0, color: '#e0f7fa' },
-                  { offset: 0.2, color: '#00e5ff' },
-                  { offset: 1, color: '#006064' }
+                  { offset: 0, color: '#e0f2f1' },
+                  { offset: 1, color: '#00b0ff' } // 亮眼科技蓝绿
                 ]
               }
             : (node.category === 1
                 ? {
-                    type: 'radial',
-                    x: 0.3, y: 0.3, r: 0.6,
+                    type: 'linear',
+                    x: 0, y: 0, x2: 1, y2: 1,
                     colorStops: [
                       { offset: 0, color: '#e6f7ff' },
-                      { offset: 0.3, color: '#69c0ff' },
-                      { offset: 1, color: '#0050b3' }
+                      { offset: 1, color: '#1890ff' } // 引用蓝
                     ]
                   }
                 : {
-                    type: 'radial',
-                    x: 0.3, y: 0.3, r: 0.6,
+                    type: 'linear',
+                    x: 0, y: 0, x2: 1, y2: 1,
                     colorStops: [
                       { offset: 0, color: '#fffbe6' },
-                      { offset: 0.3, color: '#ffe58f' },
-                      { offset: 1, color: '#d48806' }
+                      { offset: 1, color: '#fadb14' } // 警示金黄
                     ]
                   }
               ),
-          shadowBlur: 15,
-          shadowColor: 'rgba(0, 0, 0, 0.18)',
-          shadowOffsetX: 3,
-          shadowOffsetY: 5
+          borderColor: isCenter ? '#00e5ff' : (node.category === 1 ? '#40a9ff' : '#ffe58f'),
+          borderWidth: isCenter ? 3.5 : 2,
+          shadowBlur: isCenter ? 25 : 15,
+          shadowColor: isCenter ? 'rgba(0, 229, 255, 0.4)' : (node.category === 1 ? 'rgba(24, 144, 255, 0.3)' : 'rgba(250, 219, 20, 0.45)'),
+          shadowOffsetX: 0,
+          shadowOffsetY: 0
         }
       };
     });
@@ -264,18 +282,18 @@ const StandardGraphPage: React.FC = () => {
       return {
         ...link,
         lineStyle: {
-          color: isLatest ? '#fadb14' : '#1890ff',
-          width: 2,
+          color: isLatest ? '#ffe58f' : '#91d5ff',
+          width: 2.5,
           type: 'solid',
-          curveness: isLatest ? 0.15 : 0.05
+          curveness: isLatest ? 0.2 : 0.08
         },
         edgeSymbol: ['none', 'arrow'],
-        edgeSymbolSize: [4, 8]
+        edgeSymbolSize: [4, 9]
       };
     });
 
     return { nodes: processedNodes, links: processedLinks, categories };
-  }, [graphData]);
+  }, [graphData, isInitialRender]);
 
   // ECharts 图表配置
   const getOption = () => {
@@ -341,35 +359,35 @@ const StandardGraphPage: React.FC = () => {
           }
         }
       ],
-      // 扇叶与开花：设置顺次入场延迟动画与缓动特效
-      animationDuration: 1800,
-      animationEasing: 'elasticOut',
-      animationDelay: (idx: number) => idx * 60,
+      // 扇叶与开花：设置慢速顺次入场延迟动画与缓动特效
+      animationDuration: 2500,       // 延长至 2.5 秒，使开花飞出过渡极佳
+      animationEasing: 'cubicInOut', // 丝滑柔和缓动
+      animationDelay: (idx: number) => idx * 120, // 顺次慢速开花展开
       series: [
         {
           type: 'graph',
-          layout: 'force',
+          layout: 'none', // 使用自定义预计算的扇形坐标系统，摆脱 force 的杂乱无章与无序抖动
           data: processedGraphData.nodes,
           links: processedGraphData.links,
           categories: processedGraphData.categories,
           roam: true,
+          draggable: true, // 允许用户在 static 布局下自由拖拽节点排版
           label: {
             show: true,
             position: 'right',
             formatter: '{b}',
             fontSize: 11,
-            color: '#434343',
-            fontFamily: 'Courier New, monospace',
-            fontWeight: 'bold',
-            backgroundColor: 'rgba(255,255,255,0.7)',
-            padding: [2, 4],
-            borderRadius: 4
-          },
-          force: {
-            repulsion: 800,
-            edgeLength: 150,
-            gravity: 0.05,
-            layoutAnimation: true
+            color: '#262626',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            fontWeight: 500,
+            // 现代气泡卡片标签样式，高雅精致
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            borderWidth: 1,
+            borderColor: '#e8e8e8',
+            padding: [4, 7],
+            borderRadius: 6,
+            shadowBlur: 6,
+            shadowColor: 'rgba(0, 0, 0, 0.04)'
           },
           edgeLabel: {
             show: true,
