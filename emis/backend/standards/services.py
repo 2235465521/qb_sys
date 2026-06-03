@@ -558,12 +558,18 @@ def import_standards_from_excel(file_obj) -> dict:
                 continue
                 
             publish_date = None
-            pub_date_val = row.get('公开时间')
-            if pd.notnull(pub_date_val):
-                try:
-                    publish_date = pd.to_datetime(pub_date_val).date()
-                except:
-                    pass
+            pub_date_col = None
+            for col_key in ['公开时间', '公布时间', '发布日期', '发布时间', '公开日期', '日期']:
+                if col_key in row:
+                    pub_date_col = col_key
+                    break
+            if pub_date_col:
+                pub_date_val = row.get(pub_date_col)
+                if pd.notnull(pub_date_val):
+                    try:
+                        publish_date = pd.to_datetime(pub_date_val).date()
+                    except:
+                        pass
             
             status_str = str(row.get('标准状态', ''))
             standard_status = 'active'

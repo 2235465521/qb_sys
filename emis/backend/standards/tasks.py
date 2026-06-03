@@ -341,7 +341,8 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             'company_name': ['起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称'],
             'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码'],
             'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '被引用标准号*', '被引用标准号', '引用的标准号'],
-            'latest_no': ['最新标准号', '最新被引用标准号']
+            'latest_no': ['最新标准号', '最新被引用标准号'],
+            'publish_date': ['公开时间', '公布时间', '发布日期', '发布时间', '公开日期', '日期']
         }
 
         # 映射实际列名
@@ -364,6 +365,7 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
         col_credit_code = actual_cols['credit_code']
         col_cited_no = actual_cols['cited_no']
         col_latest_no = actual_cols.get('latest_no')
+        col_publish_date = actual_cols.get('publish_date')
 
         # 2. 循环遍历各行
         for idx, row in df.iterrows():
@@ -388,6 +390,14 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             cited_no = str(row.get(col_cited_no, '')).strip() if pd.notna(row.get(col_cited_no)) else ''
             latest_no = str(row.get(col_latest_no, '')) if col_latest_no and pd.notna(row.get(col_latest_no)) else ''
             latest_no = latest_no.strip()
+
+            publish_date = None
+            if col_publish_date and pd.notna(row.get(col_publish_date)):
+                pub_date_val = row.get(col_publish_date)
+                try:
+                    publish_date = pd.to_datetime(pub_date_val).date()
+                except:
+                    pass
 
             # 数据完整性必填校验
             if not std_no or std_no == 'nan':
@@ -427,15 +437,22 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                             'title': std_title,
                             'company': company,
                             'type': 'enterprise',
-                            'is_parsed': 'references_parsed'
+                            'is_parsed': 'references_parsed',
+                            'publish_date': publish_date
                         }
                     )
 
+                    # 联动更新主表状态及发布时间
+                    updated_fields = []
                     if not created_std:
-                        # 联动更新主表状态为“已完成引用解析”
                         if standard.is_parsed == 'unparsed':
                             standard.is_parsed = 'references_parsed'
-                            standard.save(update_fields=['is_parsed'])
+                            updated_fields.append('is_parsed')
+                        if publish_date and not standard.publish_date:
+                            standard.publish_date = publish_date
+                            updated_fields.append('publish_date')
+                        if updated_fields:
+                            standard.save(update_fields=updated_fields)
 
                     # C. 对齐系统中已有的被引标准
                     cited_std = Standard.objects.filter(standard_no=cited_no).first()
