@@ -302,9 +302,9 @@ const StandardGraphPage: React.FC = () => {
           animationDurationUpdate: 1800, // 超长1.8秒顺滑发散生长更新动画，宛如枝叶随时间推移逐渐生长
           animationEasingUpdate: 'cubicInOut',
           lineStyle: {
-            color: '#81c784', // 树枝般的淡绿色
-            width: 3,
-            curveness: 0.5 // 树枝般的弯曲感
+            color: '#b3e5fc', // 优雅清爽的极浅科技蓝
+            width: 1.5,       // 更细的线条，显得精致现代而不笨重
+            curveness: 0.55   // 优美的曲线弧度
           },
           label: {
             position: 'outside',
