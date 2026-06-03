@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Row, Col, Card, Typography, Select, Spin, Empty, Tag, Modal, Button, message } from 'antd';
+import { Row, Col, Card, Typography, Select, Spin, Empty, Tag, Modal, Button } from 'antd';
 import { RadarChartOutlined, FireOutlined, RiseOutlined, EnvironmentOutlined, FileTextOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import 'echarts-wordcloud';
