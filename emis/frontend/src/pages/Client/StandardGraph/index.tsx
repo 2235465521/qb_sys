@@ -39,12 +39,18 @@ const StandardGraphPage: React.FC = () => {
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isInitialRender, setIsInitialRender] = useState(true);
+  
+  // 动画阶段状态：0 - 中心聚合，1 - 一级引用向外生长，2 - 二级最新标准自一级分支向外展叶
+  const [animationStage, setAnimationStage] = useState<number>(0);
 
   // 联想输入选择器状态
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const timeoutRef = useRef<any>(null);
+
+  // 动画阶段定时器引用，防止异步内存泄漏和干扰
+  const stageTimer1Ref = useRef<any>(null);
+  const stageTimer2Ref = useRef<any>(null);
 
   // 挂载时加载默认首个企标作为展示数据
   useEffect(() => {
@@ -62,7 +68,6 @@ const StandardGraphPage: React.FC = () => {
             value: firstStd.id,
             label: `${firstStd.standard_no} | ${firstStd.title || '无名称'}`
           }]);
-          setIsInitialRender(true);
           fetchGraph(firstStd.id);
         } else {
           setIsLoading(false);
@@ -76,9 +81,9 @@ const StandardGraphPage: React.FC = () => {
     loadDefaultStandard();
 
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (stageTimer1Ref.current) clearTimeout(stageTimer1Ref.current);
+      if (stageTimer2Ref.current) clearTimeout(stageTimer2Ref.current);
     };
   }, []);
 
@@ -86,14 +91,26 @@ const StandardGraphPage: React.FC = () => {
   const fetchGraph = async (id: number) => {
     setIsLoading(true);
     setError(null);
-    setIsInitialRender(true);
+    setAnimationStage(0); // 立即初始化为第0阶段
+
+    // 清理之前的定时器
+    if (stageTimer1Ref.current) clearTimeout(stageTimer1Ref.current);
+    if (stageTimer2Ref.current) clearTimeout(stageTimer2Ref.current);
+
     try {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
-      // Wait for ECharts component to initialize at center coordinates, then trigger fly-out animation
-      setTimeout(() => {
-        setIsInitialRender(false);
-      }, 80);
+
+      // 第一阶段：延时 60ms 触发一级节点向外生长，二级节点紧随其父节点移动
+      stageTimer1Ref.current = setTimeout(() => {
+        setAnimationStage(1);
+      }, 60);
+
+      // 第二阶段：延时 1100ms（此时一级节点已稳定），触发二级节点自一级节点向外“开花展叶”
+      stageTimer2Ref.current = setTimeout(() => {
+        setAnimationStage(2);
+      }, 1100);
+
     } catch (err: any) {
       console.error(err);
       setError(err.response?.data?.error || '拉取图谱数据失败，请重试');
@@ -196,7 +213,7 @@ const StandardGraphPage: React.FC = () => {
     const N1 = graphData.nodes.filter(n => n.category === 1).length;
     let category1Index = 0;
 
-    // 计算入场时的“扇叶”或“花瓣”轨迹坐标位置，并配置微光玻璃 3D 节点外观
+    // 计算入场时类似“树木枝叶向外萌芽”的轨迹坐标位置，并配置微光玻璃 3D 节点外观
     const processedNodes = nodes.map(node => {
       const isCenter = node.category === 0;
 
@@ -204,23 +221,33 @@ const StandardGraphPage: React.FC = () => {
       let y = 300;
       let fixed = false;
 
-      // 依据 isInitialRender 在初次挂载时将节点堆叠在中心 (300, 300)，数据载入后飞跃展开
       if (isCenter) {
         fixed = true; // 中心企标固定在正中央
       } else if (node.category === 1) {
-        if (!isInitialRender) {
+        // 第一阶段（第1阶段及以后）一级引用节点开始从中心飞往它们的最终坐标
+        if (animationStage >= 1) {
           const theta = (category1Index / N1) * 2 * Math.PI;
           x = 300 + 150 * Math.cos(theta); // 稍加扩大半径防拥挤
           y = 300 + 150 * Math.sin(theta);
         }
         category1Index++;
       } else if (node.category === 2) {
-        if (!isInitialRender) {
-          const parentLink = links.find(l => l.target === node.id);
-          const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
-          const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
+        // 二级最新标准节点：
+        // 阶段0：全聚集在中心 (300, 300)
+        // 阶段1：依附在它们的一级引用父节点位置（与父节点一起从中心飞到一级引用位置）
+        // 阶段2：从一级引用位置飞往它们自己的最终二级外层“展叶”位置，形成二次发芽
+        const parentLink = links.find(l => l.target === node.id);
+        const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
+        const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
+        const parentTheta = (parentIndex / N1) * 2 * Math.PI;
 
-          const theta = (parentIndex / N1) * 2 * Math.PI + 0.35; // 偏转角度形成优雅扇叶弧度
+        if (animationStage === 1) {
+          // 阶段1：处于一级节点位置
+          x = 300 + 150 * Math.cos(parentTheta);
+          y = 300 + 150 * Math.sin(parentTheta);
+        } else if (animationStage === 2) {
+          // 阶段2：从一级节点向外发散，萌芽出第二级树叶
+          const theta = parentTheta + 0.35; // 偏转角度形成优雅的枝叶发散效果
           x = 300 + 260 * Math.cos(theta);
           y = 300 + 260 * Math.sin(theta);
         }
@@ -293,7 +320,7 @@ const StandardGraphPage: React.FC = () => {
     });
 
     return { nodes: processedNodes, links: processedLinks, categories };
-  }, [graphData, isInitialRender]);
+  }, [graphData, animationStage]);
 
   // ECharts 图表配置
   const getOption = () => {
@@ -521,6 +548,7 @@ const StandardGraphPage: React.FC = () => {
         ) : graphData && graphData.nodes.length > 0 ? (
           <div style={{ height: '75vh', position: 'relative' }}>
             <ReactECharts
+              key={`graph-chart-${selectedId}`}
               option={getOption()}
               style={{ height: '100%', width: '100%' }}
               theme="light"
