@@ -40,6 +40,27 @@ const ImportModal: React.FC<ImportModalProps> = ({ open, onCancel, onSuccess }) 
     return false; // Prevent auto upload
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await apiClient.get('/admin/companies/import/template/', {
+        responseType: 'blob',
+      });
+      const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', '企业批量导入模板.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode?.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      message.success('下载导入模板成功！');
+    } catch (err) {
+      console.error(err);
+      message.error('下载模板失败，请稍后重试');
+    }
+  };
+
   const reset = () => {
     setResult(null);
     onCancel();
@@ -62,7 +83,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ open, onCancel, onSuccess }) 
             type="link" 
             icon={<DownloadOutlined />} 
             size="small"
-            onClick={() => window.location.href = '/api/admin/companies/import/template/'}
+            onClick={handleDownloadTemplate}
           >
             下载导入模板.xlsx
           </Button>
