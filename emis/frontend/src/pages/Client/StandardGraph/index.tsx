@@ -322,6 +322,28 @@ const StandardGraphPage: React.FC = () => {
       };
     });
 
+    // 塞入两个绝对定位的隐形锚点 (Anchor Nodes)，将 ECharts 图谱的视口边界固定为 600x600。
+    // 这能彻底防止 Stage 0 阶段（所有节点堆叠在中心 300,300 时）因坐标包围盒宽高度为 0 导致 ECharts 算错缩放比、把节点无限放大占满全屏的 bug。
+    processedNodes.push({
+      id: 'anchor_top_left',
+      name: '',
+      x: 0,
+      y: 0,
+      symbolSize: 0.001,
+      itemStyle: { opacity: 0 },
+      label: { show: false }
+    } as any);
+
+    processedNodes.push({
+      id: 'anchor_bottom_right',
+      name: '',
+      x: 600,
+      y: 600,
+      symbolSize: 0.001,
+      itemStyle: { opacity: 0 },
+      label: { show: false }
+    } as any);
+
     const processedLinks = links.map(link => {
       const isLatest = link.label?.formatter === '最新标准';
       
@@ -419,10 +441,11 @@ const StandardGraphPage: React.FC = () => {
       animationDuration: animationStage === 1 ? 1600 : 2000,
       animationEasing: 'cubicInOut',
       animationDelay: (idx: number) => idx * 100, // 顺次慢速开花展开
-      series: [
+       series: [
         {
           type: 'graph',
           layout: 'none', // 使用自定义预计算的扇形坐标系统，摆脱 force 的杂乱无章与无序抖动
+          animation: animationStage !== 0, // 系列级别亦同步禁用/开启，防止主节点闪烁
           data: processedGraphData.nodes,
           links: processedGraphData.links,
           categories: processedGraphData.categories,
