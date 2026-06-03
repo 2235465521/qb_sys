@@ -40,6 +40,7 @@ class RegionalDistributionView(APIView):
         keyword = request.query_params.get('keyword', '')
         if not keyword:
             return Response({'error': '请提供 keyword 参数'}, status=status.HTTP_400_BAD_REQUEST)
+        days = int(request.query_params.get('days', 30))
         
-        data = trend_services.get_regional_distribution(keyword=keyword)
+        data = trend_services.get_regional_distribution(keyword=keyword, days=days)
         return Response(data)

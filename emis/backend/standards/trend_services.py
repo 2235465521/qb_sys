@@ -56,21 +56,30 @@ def get_trend_word_cloud(days: int = 30, limit: int = 50):
     cache.set(cache_key, results, 60 * 60 * 12)  # 缓存12小时
     return results
 
-def get_regional_distribution(keyword: str):
+def get_regional_distribution(keyword: str, days: int = 30):
     """
     区域产业集群画像
     """
-    raw_key = f'trend_region_{keyword}'
+    raw_key = f'trend_region_{keyword}_{days}d'
     cache_key = make_safe_key(raw_key)
     cached_data = cache.get(cache_key)
     if cached_data:
         return cached_data
 
+    start_date = timezone.now().date() - timedelta(days=days)
     standards = Standard.objects.filter(
         type='enterprise',
         title__icontains=keyword,
+        publish_date__gte=start_date,
         company__isnull=False
     ).select_related('company')
+
+    if not standards.exists():
+        standards = Standard.objects.filter(
+            type='enterprise',
+            title__icontains=keyword,
+            company__isnull=False
+        ).select_related('company')
 
     region_counter = Counter()
     for std in standards:

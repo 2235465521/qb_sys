@@ -41,11 +41,11 @@ export const useTrendData = (days: number = 30, selectedKeyword: string = '') =>
   });
 
   const regionalQuery = useQuery({
-    queryKey: ['trend_regional', selectedKeyword],
+    queryKey: ['trend_regional', selectedKeyword, days],
     queryFn: async () => {
       if (!selectedKeyword) return [];
       const { data } = await apiClient.get<RegionalDist[]>('/client/analysis/trends/regional-dist/', {
-        params: { keyword: selectedKeyword }
+        params: { keyword: selectedKeyword, days }
       });
       return data;
     },
