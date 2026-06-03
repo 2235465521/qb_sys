@@ -40,6 +40,11 @@ const StandardGraphPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
+  // 控制树枝逐渐展开的阶段：0-仅中心，1-展开一级引用，2-展开最新标准
+  const [expandStage, setExpandStage] = useState<number>(0);
+  const expandTimer1Ref = useRef<any>(null);
+  const expandTimer2Ref = useRef<any>(null);
+
   // 联想输入选择器状态
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -75,6 +80,8 @@ const StandardGraphPage: React.FC = () => {
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
+      if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
     };
   }, []);
 
@@ -82,10 +89,25 @@ const StandardGraphPage: React.FC = () => {
   const fetchGraph = async (id: number) => {
     setIsLoading(true);
     setError(null);
+    setExpandStage(0);
+
+    if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
+    if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
 
     try {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
+
+      // 模拟树枝缓慢依次生长：
+      // 500ms 后展开第一级引用标准
+      expandTimer1Ref.current = setTimeout(() => {
+        setExpandStage(1);
+      }, 500);
+
+      // 2000ms 后展开第二级最新标准
+      expandTimer2Ref.current = setTimeout(() => {
+        setExpandStage(2);
+      }, 2000);
 
     } catch (err: any) {
       console.error(err);
@@ -171,60 +193,63 @@ const StandardGraphPage: React.FC = () => {
     };
 
     const refNodes = graphData.nodes.filter(n => n.category === 1);
-    refNodes.forEach(refNode => {
-      const hasLatest = refNode.latest_standard_no && refNode.latest_standard_no !== refNode.name;
-      
-      const childNode: any = {
-        ...refNode,
-        symbolSize: 42,
-        itemStyle: {
-          color: {
-            type: 'radial',
-            x: 0.5, y: 0.5, r: 0.5,
-            colorStops: [
-              { offset: 0, color: '#e3f2fd' },
-              { offset: 0.7, color: '#4fc3f7' },
-              { offset: 1, color: '#0277bd' }
-            ]
-          },
-          borderColor: '#81d4fa',
-          borderWidth: 2,
-          shadowBlur: 15,
-          shadowColor: 'rgba(3, 169, 244, 0.4)'
-        },
-        children: []
-      };
-
-      if (hasLatest) {
-        childNode.children.push({
-          name: refNode.latest_standard_no,
-          id: `latest_${refNode.id}`,
-          category: 2,
-          title: '最新标准版本',
-          type_display: refNode.type_display,
-          status_display: '现行',
-          company_name: '',
-          latest_standard_no: refNode.latest_standard_no,
-          symbolSize: 34,
+    
+    if (expandStage >= 1) {
+      refNodes.forEach(refNode => {
+        const hasLatest = refNode.latest_standard_no && refNode.latest_standard_no !== refNode.name;
+        
+        const childNode: any = {
+          ...refNode,
+          symbolSize: 42,
           itemStyle: {
             color: {
               type: 'radial',
               x: 0.5, y: 0.5, r: 0.5,
               colorStops: [
-                { offset: 0, color: '#fff8e1' },
-                { offset: 0.7, color: '#ffca28' },
-                { offset: 1, color: '#ff8f00' }
+                { offset: 0, color: '#e3f2fd' },
+                { offset: 0.7, color: '#4fc3f7' },
+                { offset: 1, color: '#0277bd' }
               ]
             },
-            borderColor: '#ffe082',
+            borderColor: '#81d4fa',
             borderWidth: 2,
             shadowBlur: 15,
-            shadowColor: 'rgba(255, 179, 0, 0.5)'
-          }
-        });
-      }
-      treeData.children.push(childNode);
-    });
+            shadowColor: 'rgba(3, 169, 244, 0.4)'
+          },
+          children: []
+        };
+
+        if (hasLatest && expandStage >= 2) {
+          childNode.children.push({
+            name: refNode.latest_standard_no,
+            id: `latest_${refNode.id}`,
+            category: 2,
+            title: '最新标准版本',
+            type_display: refNode.type_display,
+            status_display: '现行',
+            company_name: '',
+            latest_standard_no: refNode.latest_standard_no,
+            symbolSize: 34,
+            itemStyle: {
+              color: {
+                type: 'radial',
+                x: 0.5, y: 0.5, r: 0.5,
+                colorStops: [
+                  { offset: 0, color: '#fff8e1' },
+                  { offset: 0.7, color: '#ffca28' },
+                  { offset: 1, color: '#ff8f00' }
+                ]
+              },
+              borderColor: '#ffe082',
+              borderWidth: 2,
+              shadowBlur: 15,
+              shadowColor: 'rgba(255, 179, 0, 0.5)'
+            }
+          });
+        }
+        treeData.children.push(childNode);
+      });
+    }
 
     return {
       title: {
@@ -272,9 +297,10 @@ const StandardGraphPage: React.FC = () => {
           symbol: 'circle',
           roam: true,
           initialTreeDepth: 3, // 确保初始即完全展开计算
-          animationDurationInitial: 2500, // 超长2.5秒顺滑发散生长动画，宛如枝叶生长
+          animationDurationInitial: 1000, 
           animationEasingInitial: 'cubicOut',
-          animationDurationUpdate: 1000,
+          animationDurationUpdate: 1800, // 超长1.8秒顺滑发散生长更新动画，宛如枝叶随时间推移逐渐生长
+          animationEasingUpdate: 'cubicInOut',
           lineStyle: {
             color: '#81c784', // 树枝般的淡绿色
             width: 3,
