@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Cascader, Select, Checkbox, Space, DatePicker } from 'antd';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, CloudDownloadOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
 import apiClient from '@/api/client';
 import type { Province, City, District } from '@/types';
