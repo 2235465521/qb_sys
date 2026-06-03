@@ -1,7 +1,6 @@
 import datetime
 from django.utils import timezone
 from django.db.models import Count, Q
-from django.db.models.functions import ExtractHour
 from django.contrib.auth import get_user_model
 from rest_framework import generics, views, status
 from rest_framework.response import Response
@@ -169,13 +168,21 @@ class StatisticsChartView(views.APIView):
         ]
 
         # 3. 24 小时活跃时段分布 (柱状图数据)
-        hourly_qs = UsageLog.objects.annotate(
-            hour=ExtractHour('created_at')
-        ).values('hour').annotate(
-            count=Count('id')
-        ).order_by('hour')
+        # 为避免 MySQL 时区表缺失引发 500 错误，在 Python 端做安全时区转换和小时分布归类
+        thirty_days_ago = now - datetime.timedelta(days=30)
+        created_ats = UsageLog.objects.filter(
+            created_at__gte=thirty_days_ago
+        ).values_list('created_at', flat=True)
 
-        hour_map = {h['hour']: h['count'] for h in hourly_qs if h['hour'] is not None}
+        hour_map = {}
+        for dt in created_ats:
+            try:
+                local_dt = timezone.localtime(dt)
+                hour = local_dt.hour
+                hour_map[hour] = hour_map.get(hour, 0) + 1
+            except Exception:
+                pass
+
         hourly_distribution = []
         for hour in range(24):
             hourly_distribution.append({
