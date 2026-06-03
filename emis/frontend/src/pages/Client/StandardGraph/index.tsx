@@ -40,17 +40,10 @@ const StandardGraphPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   
-  // 动画阶段状态：0 - 中心聚合，1 - 一级引用向外生长，2 - 二级最新标准自一级分支向外展叶
-  const [animationStage, setAnimationStage] = useState<number>(0);
-
   // 联想输入选择器状态
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const timeoutRef = useRef<any>(null);
-
-  // 动画阶段定时器引用，防止异步内存泄漏和干扰
-  const stageTimer1Ref = useRef<any>(null);
-  const stageTimer2Ref = useRef<any>(null);
 
   // 挂载时加载默认首个企标作为展示数据
   useEffect(() => {
@@ -82,8 +75,6 @@ const StandardGraphPage: React.FC = () => {
 
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      if (stageTimer1Ref.current) clearTimeout(stageTimer1Ref.current);
-      if (stageTimer2Ref.current) clearTimeout(stageTimer2Ref.current);
     };
   }, []);
 
@@ -91,25 +82,10 @@ const StandardGraphPage: React.FC = () => {
   const fetchGraph = async (id: number) => {
     setIsLoading(true);
     setError(null);
-    setAnimationStage(0); // 立即初始化为第0阶段
-
-    // 清理之前的定时器
-    if (stageTimer1Ref.current) clearTimeout(stageTimer1Ref.current);
-    if (stageTimer2Ref.current) clearTimeout(stageTimer2Ref.current);
 
     try {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
-
-      // 第一阶段：延时 200ms 触发一级节点向外生长（此时中心节点已完成 150ms 极速稳定加载）
-      stageTimer1Ref.current = setTimeout(() => {
-        setAnimationStage(1);
-      }, 200);
-
-      // 第二阶段：延时 1500ms（此时一级节点已稳定），触发二级节点自一级节点向外“开花展叶”
-      stageTimer2Ref.current = setTimeout(() => {
-        setAnimationStage(2);
-      }, 1500);
 
     } catch (err: any) {
       console.error(err);
@@ -159,309 +135,156 @@ const StandardGraphPage: React.FC = () => {
     }
   };
 
-  // 动态处理图谱数据：增加二级引用（最新标准）节点与连线，计算扇叶化初始位置与 3D 特效
-  const processedGraphData = React.useMemo(() => {
-    if (!graphData) return null;
+  // 动态处理图谱数据并生成 ECharts Option，转换为径向树图(Radial Tree)
+  const getOption = () => {
+    if (!graphData || !graphData.nodes.length) return {};
 
-    const nodes = [...graphData.nodes];
-    const links = [...graphData.links];
-    const categories = [
-      { name: '中心企标' },
-      { name: '引用标准' },
-      { name: '最新标准' }
-    ];
+    const rootNode = graphData.nodes.find(n => n.category === 0);
+    if (!rootNode) return {};
 
-    const existingNodeNames = new Set(nodes.map(n => n.name));
+    const treeData = {
+      ...rootNode,
+      symbolSize: 64, // 更大更圆润的中心节点
+      itemStyle: {
+        color: {
+          type: 'radial',
+          x: 0.5, y: 0.5, r: 0.5,
+          colorStops: [
+            { offset: 0, color: '#e0f2f1' },
+            { offset: 0.7, color: '#26a69a' },
+            { offset: 1, color: '#00695c' }
+          ]
+        },
+        borderColor: '#80cbc4',
+        borderWidth: 2,
+        shadowBlur: 20,
+        shadowColor: 'rgba(0, 150, 136, 0.6)'
+      },
+      label: {
+        show: true,
+        position: 'top',
+        fontSize: 14,
+        fontWeight: 'bold',
+        color: '#004d40'
+      },
+      children: [] as any[]
+    };
 
-    // 扫描一级引用节点，若存在最新标准则添加二级引用节点及连线
-    graphData.nodes.forEach(node => {
-      if (node.category === 1 && node.latest_standard_no && node.latest_standard_no !== node.name) {
-        const latestName = node.latest_standard_no;
-        let latestId = '';
+    const refNodes = graphData.nodes.filter(n => n.category === 1);
+    refNodes.forEach(refNode => {
+      const hasLatest = refNode.latest_standard_no && refNode.latest_standard_no !== refNode.name;
+      
+      const childNode: any = {
+        ...refNode,
+        symbolSize: 42,
+        itemStyle: {
+          color: {
+            type: 'radial',
+            x: 0.5, y: 0.5, r: 0.5,
+            colorStops: [
+              { offset: 0, color: '#e3f2fd' },
+              { offset: 0.7, color: '#4fc3f7' },
+              { offset: 1, color: '#0277bd' }
+            ]
+          },
+          borderColor: '#81d4fa',
+          borderWidth: 2,
+          shadowBlur: 15,
+          shadowColor: 'rgba(3, 169, 244, 0.4)'
+        },
+        children: []
+      };
 
-        const existingNode = nodes.find(n => n.name === latestName);
-        if (existingNode) {
-          latestId = existingNode.id;
-        }
-
-        if (!latestId) {
-          latestId = `latest_${node.id}`;
-          nodes.push({
-            id: latestId,
-            name: latestName,
-            symbolSize: 32,
-            category: 2,
-            title: '最新标准版本',
-            type_display: node.type_display,
-            status_display: '现行',
-            company_name: ''
-          });
-          existingNodeNames.add(latestName);
-        }
-
-        links.push({
-          source: node.id,
-          target: latestId,
-          label: {
-            show: true,
-            formatter: '最新标准'
+      if (hasLatest) {
+        childNode.children.push({
+          name: refNode.latest_standard_no,
+          id: `latest_${refNode.id}`,
+          category: 2,
+          title: '最新标准版本',
+          type_display: refNode.type_display,
+          status_display: '现行',
+          company_name: '',
+          latest_standard_no: refNode.latest_standard_no,
+          symbolSize: 34,
+          itemStyle: {
+            color: {
+              type: 'radial',
+              x: 0.5, y: 0.5, r: 0.5,
+              colorStops: [
+                { offset: 0, color: '#fff8e1' },
+                { offset: 0.7, color: '#ffca28' },
+                { offset: 1, color: '#ff8f00' }
+              ]
+            },
+            borderColor: '#ffe082',
+            borderWidth: 2,
+            shadowBlur: 15,
+            shadowColor: 'rgba(255, 179, 0, 0.5)'
           }
         });
       }
+      treeData.children.push(childNode);
     });
-
-    const N1 = graphData.nodes.filter(n => n.category === 1).length;
-    let category1Index = 0;
-
-    // 计算入场时类似“树木枝叶向外萌芽”的轨迹坐标位置，并配置微光玻璃 3D 节点外观
-    const processedNodes = nodes.map(node => {
-      const isCenter = node.category === 0;
-
-      let x = 300;
-      let y = 300;
-      let fixed = false;
-      let symbolSize = 0.001; // 初始化极小尺寸避免 ECharts 警告
-      let showLabel = false;
-
-      if (isCenter) {
-        fixed = true; // 中心企标固定在正中央
-        symbolSize = 54;
-        showLabel = true;
-      } else if (node.category === 1) {
-        // 阶段 0：主节点在中心，一级引用收缩在中心且不可见 (size 0)
-        // 阶段 1 & 2：一级引用节点飞往各自的最终位置，并成长为正常尺寸，展现标签
-        if (animationStage >= 1) {
-          const theta = (category1Index / N1) * 2 * Math.PI;
-          x = 300 + 150 * Math.cos(theta); // 稍加扩大半径防拥挤
-          y = 300 + 150 * Math.sin(theta);
-          symbolSize = 38;
-          showLabel = true;
-        } else {
-          x = 300;
-          y = 300;
-          symbolSize = 0.001;
-          showLabel = false;
-        }
-        category1Index++;
-      } else if (node.category === 2) {
-        // 二级最新标准节点：
-        // 阶段 0：收缩在中心不可见
-        // 阶段 1：依附在它们的一级引用父节点位置且不可见（伴随父节点一同在不可见状态下飞出）
-        // 阶段 2：自一级节点向外分叉“生长/展叶”，展现出正常尺寸和标签
-        const parentLink = links.find(l => l.target === node.id);
-        const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
-        const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
-        const parentTheta = (parentIndex / N1) * 2 * Math.PI;
-
-        if (animationStage === 0) {
-          x = 300;
-          y = 300;
-          symbolSize = 0.001;
-          showLabel = false;
-        } else if (animationStage === 1) {
-          // 伴随父节点一同飞出到一级引用节点位置，但保持隐身
-          x = 300 + 150 * Math.cos(parentTheta);
-          y = 300 + 150 * Math.sin(parentTheta);
-          symbolSize = 0.001;
-          showLabel = false;
-        } else if (animationStage === 2) {
-          // 阶段2：向外延伸发芽，露出树叶
-          const theta = parentTheta + 0.35; // 偏转角度形成优雅的枝叶发散效果
-          x = 300 + 260 * Math.cos(theta);
-          y = 300 + 260 * Math.sin(theta);
-          symbolSize = 30;
-          showLabel = true;
-        }
-      }
-
-      return {
-        ...node,
-        x,
-        y,
-        fixed,
-        symbolSize,
-        label: {
-          show: showLabel
-        },
-        itemStyle: {
-          // 微光渐变与高饱和发光描边 (玻璃态质感，比生硬 3D 更加现代、圆滑)
-          color: isCenter
-            ? {
-                type: 'linear',
-                x: 0, y: 0, x2: 1, y2: 1,
-                colorStops: [
-                  { offset: 0, color: '#e0f2f1' },
-                  { offset: 1, color: '#00b0ff' } // 亮眼科技蓝绿
-                ]
-              }
-            : (node.category === 1
-                ? {
-                    type: 'linear',
-                    x: 0, y: 0, x2: 1, y2: 1,
-                    colorStops: [
-                      { offset: 0, color: '#e6f7ff' },
-                      { offset: 1, color: '#1890ff' } // 引用蓝
-                    ]
-                  }
-                : {
-                    type: 'linear',
-                    x: 0, y: 0, x2: 1, y2: 1,
-                    colorStops: [
-                      { offset: 0, color: '#fffbe6' },
-                      { offset: 1, color: '#fadb14' } // 警示金黄
-                    ]
-                  }
-              ),
-          borderColor: isCenter ? '#00e5ff' : (node.category === 1 ? '#40a9ff' : '#ffe58f'),
-          borderWidth: isCenter ? 3.5 : 2,
-          shadowBlur: isCenter ? 25 : 15,
-          shadowColor: isCenter ? 'rgba(0, 229, 255, 0.4)' : (node.category === 1 ? 'rgba(24, 144, 255, 0.3)' : 'rgba(250, 219, 20, 0.45)'),
-          shadowOffsetX: 0,
-          shadowOffsetY: 0
-        }
-      };
-    });
-
-    // 塞入两个绝对定位的隐形锚点 (Anchor Nodes)，将 ECharts 图谱的视口边界固定为 600x600。
-    // 这能彻底防止 Stage 0 阶段（所有节点堆叠在中心 300,300 时）因坐标包围盒宽高度为 0 导致 ECharts 算错缩放比、把节点无限放大占满全屏的 bug。
-    processedNodes.push({
-      id: 'anchor_top_left',
-      name: '',
-      x: 0,
-      y: 0,
-      symbolSize: 0.001,
-      itemStyle: { opacity: 0 },
-      label: { show: false }
-    } as any);
-
-    processedNodes.push({
-      id: 'anchor_bottom_right',
-      name: '',
-      x: 600,
-      y: 600,
-      symbolSize: 0.001,
-      itemStyle: { opacity: 0 },
-      label: { show: false }
-    } as any);
-
-    const processedLinks = links.map(link => {
-      const isLatest = link.label?.formatter === '最新标准';
-      
-      // 动态连线宽度：配合生长动画，分支未长出时连线不可见
-      let linkWidth = 0;
-      if (!isLatest && animationStage >= 1) {
-        linkWidth = 2.5; // 第一阶段：企标 $\rightarrow$ 引用标准的树枝长出
-      } else if (isLatest && animationStage === 2) {
-        linkWidth = 2.5; // 第二阶段：引用标准 $\rightarrow$ 最新标准的细枝长出
-      }
-
-      return {
-        ...link,
-        lineStyle: {
-          color: isLatest ? '#ffe58f' : '#91d5ff',
-          width: linkWidth,
-          type: 'solid',
-          curveness: isLatest ? 0.2 : 0.08
-        },
-        edgeSymbol: ['none', 'arrow'],
-        edgeSymbolSize: [4, 9]
-      };
-    });
-
-    return { nodes: processedNodes, links: processedLinks, categories };
-  }, [graphData, animationStage]);
-
-  // ECharts 图表配置
-  const getOption = () => {
-    if (!processedGraphData) return {};
 
     return {
       title: {
-        text: `${processedGraphData.nodes[0].name.replace(' (中心企标)', '')} 引用图谱`,
-        subtext: '点击节点查看明细，支持鼠标拖拽与滚轮缩放',
+        text: `${rootNode.name.replace(' (中心企标)', '')} 引用图谱`,
+        subtext: '向外发散的树叶状关系网络。支持鼠标拖拽与滚轮缩放',
         top: 'bottom',
         left: 'right',
-        textStyle: {
-          fontSize: 14,
-          color: '#006064'
-        }
+        textStyle: { fontSize: 14, color: '#006064' }
       },
       tooltip: {
         trigger: 'item',
-        enterable: true,
+        triggerOn: 'mousemove',
         backgroundColor: 'rgba(255, 255, 255, 0.96)',
         borderColor: '#00bcd4',
         borderWidth: 1,
         padding: [12, 16],
-        textStyle: {
-          color: '#333',
-          fontSize: 12,
-          fontFamily: 'system-ui, sans-serif'
-        },
-        extraCssText: 'box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-radius: 8px; pointer-events: auto;',
+        textStyle: { color: '#333', fontSize: 12 },
+        extraCssText: 'box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-radius: 8px;',
         formatter: (params: any) => {
-          if (params.dataType === 'node') {
-            const data = params.data;
-            const isCenter = data.category === 0;
-            const isLatest = data.category === 2;
-            
-            let color = '#1890ff';
-            if (isCenter) color = '#00838f';
-            else if (isLatest) color = '#d48806';
-            
-            return `
-              <div style="font-weight: bold; margin-bottom: 8px; color: ${color}; font-size: 14px; border-bottom: 1px solid #f0f0f0; padding-bottom: 4px;">
-                ${data.name} ${isCenter ? '(中心企标)' : (isLatest ? '(最新标准)' : '(引用标准)')}
-              </div>
-              <div style="margin-bottom: 4px;"><b>标准名称:</b> ${data.title || '--'}</div>
-              <div style="margin-bottom: 4px;"><b>标准类型:</b> ${data.type_display || '--'}</div>
-              <div style="margin-bottom: 4px;"><b>标准状态:</b> ${data.status_display || '--'}</div>
-              ${data.company_name ? `<div style="margin-bottom: 4px;"><b>起草企业:</b> ${data.company_name}</div>` : ''}
-              ${data.latest_standard_no ? `<div style="color: #fa8c16; font-weight: bold; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #f0f0f0;"><b>最新标准号:</b> ${data.latest_standard_no}</div>` : ''}
-            `;
-          }
-          return `关系: <b>${params.data.label?.formatter || '规范性引用'}</b>`;
+          const data = params.data;
+          const isCenter = data.category === 0;
+          const isLatest = data.category === 2;
+          
+          let color = '#0288d1';
+          if (isCenter) color = '#00796b';
+          else if (isLatest) color = '#f57c00';
+          
+          return `
+            <div style="font-weight: bold; margin-bottom: 8px; color: ${color}; font-size: 14px; border-bottom: 1px solid #f0f0f0; padding-bottom: 4px;">
+              ${data.name} ${isCenter ? '(中心企标)' : (isLatest ? '(最新标准)' : '(引用标准)')}
+            </div>
+            <div style="margin-bottom: 4px;"><b>标准名称:</b> ${data.title || '--'}</div>
+            <div style="margin-bottom: 4px;"><b>标准类型:</b> ${data.type_display || '--'}</div>
+            <div style="margin-bottom: 4px;"><b>标准状态:</b> ${data.status_display || '--'}</div>
+            ${data.company_name ? `<div style="margin-bottom: 4px;"><b>起草企业:</b> ${data.company_name}</div>` : ''}
+            ${data.latest_standard_no ? `<div style="color: #fa8c16; font-weight: bold; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #f0f0f0;"><b>最新标准号:</b> ${data.latest_standard_no}</div>` : ''}
+          `;
         }
       },
-      legend: [
+      series: [
         {
-          data: ['中心企标', '引用标准', '最新标准'],
-          orient: 'vertical',
-          left: 'left',
-          top: 'top',
-          textStyle: {
-            color: '#333',
-            fontWeight: 500
-          }
-        }
-      ],
-      // 树枝与萌芽动效：如果处于初始阶段 0 则进行极速 150ms 的线性显示，防止主节点从小变大弹性抖动
-      // 阶段 1 和 2 开启 1.6秒 / 2.0秒 丝滑生长动画，促使枝叶依次从中心和父节点向外绽放
-      animation: true,
-      animationDuration: animationStage === 0 ? 150 : (animationStage === 1 ? 1600 : 2000),
-      animationEasing: animationStage === 0 ? 'linear' : 'cubicInOut',
-      animationDelay: animationStage === 0 ? 0 : (idx: number) => idx * 100, // 顺次慢速开花展开
-       series: [
-        {
-          type: 'graph',
-          layout: 'none', // 使用自定义预计算的扇形坐标系统，摆脱 force 的杂乱无章与无序抖动
-          animation: true,
-          animationDuration: animationStage === 0 ? 150 : (animationStage === 1 ? 1600 : 2000),
-          animationEasing: animationStage === 0 ? 'linear' : 'cubicInOut',
-          data: processedGraphData.nodes,
-          links: processedGraphData.links,
-          categories: processedGraphData.categories,
+          type: 'tree',
+          data: [treeData],
+          layout: 'radial',
+          symbol: 'circle',
           roam: true,
-          draggable: true, // 允许用户在 static 布局下自由拖拽节点排版
+          initialTreeDepth: 3, // 确保初始即完全展开计算
+          animationDurationInitial: 2500, // 超长2.5秒顺滑发散生长动画，宛如枝叶生长
+          animationEasingInitial: 'cubicOut',
+          animationDurationUpdate: 1000,
+          lineStyle: {
+            color: '#81c784', // 树枝般的淡绿色
+            width: 3,
+            curveness: 0.5 // 树枝般的弯曲感
+          },
           label: {
-            show: true,
-            position: 'right',
-            formatter: '{b}',
+            position: 'outside',
+            rotate: 'radial', // 沿着辐射方向旋转文字
             fontSize: 11,
             color: '#262626',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            fontWeight: 500,
-            // 现代气泡卡片标签样式，高雅精致
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
             borderWidth: 1,
             borderColor: '#e8e8e8',
@@ -470,26 +293,10 @@ const StandardGraphPage: React.FC = () => {
             shadowBlur: 6,
             shadowColor: 'rgba(0, 0, 0, 0.04)'
           },
-          edgeLabel: {
-            show: true,
-            position: 'middle',
-            formatter: (params: any) => {
-              return params.data.label?.formatter || '';
-            },
-            fontSize: 9,
-            color: '#8c8c8c'
-          },
-          emphasis: {
-            focus: 'adjacency',
-            lineStyle: {
-              width: 4,
-              color: '#096dd9'
-            },
+          leaves: {
             label: {
-              fontSize: 12,
-              backgroundColor: '#fff',
-              borderWidth: 1,
-              borderColor: '#096dd9'
+              position: 'outside',
+              rotate: 'radial'
             }
           }
         }
