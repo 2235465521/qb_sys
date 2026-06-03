@@ -570,54 +570,86 @@ def parse_standard_pdf_task(self, standard_id: int):
     if not pages_text:
         return f"No text extracted from Standard {standard.standard_no} PDF."
 
-    # 4. 批量保存提取到的内容并尝试提取缺失的日期
+    # 4. 提取第一页文本，必要时 OCR 降级处理
+    import re
+    import datetime
+
+    first_page_text = pages_text[0][1] if pages_text else ""
+
+    # 若第一页文本极短（< 10 字符），判定为扫描图片 PDF，启动 OCR 降级
+    if len(first_page_text.strip()) < 10:
+        ocr_text = ""
+        try:
+            import pdfplumber
+            with pdfplumber.open(file_path) as pdf:
+                if pdf.pages:
+                    pil_image = pdf.pages[0].to_image(resolution=200).original
+            # 优先使用 easyocr
+            try:
+                import easyocr
+                reader = easyocr.Reader(['ch_sim', 'en'], gpu=False)
+                results = reader.readtext(pil_image)
+                ocr_text = "\n".join([res[1] for res in results])
+            except ImportError:
+                pass
+
+            # 降级使用 pytesseract
+            if not ocr_text:
+                try:
+                    import pytesseract
+                    ocr_text = pytesseract.image_to_string(pil_image, lang='chi_sim+eng')
+                except ImportError:
+                    pass
+
+            if ocr_text:
+                # 将 OCR 识别结果合并回第一页
+                pages_text[0] = (pages_text[0][0], ocr_text)
+                first_page_text = ocr_text
+        except Exception as ocr_err:
+            # OCR 失败不影响主流程，记录日志后继续
+            import logging
+            logging.getLogger('standards').warning(
+                f"OCR fallback failed for {standard.standard_no}: {ocr_err}"
+            )
+
+    # 5. 日期正则提取（发布日期 / 实施日期）
     extracted_publish_date = None
     extracted_implement_date = None
-    if pages_text:
-        # 提取第一页的文本
-        first_page_text = pages_text[0][1]
-        import re
-        import datetime
 
-        # 匹配发布日期
-        pub_patterns = [
-            r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:发布|公布|公开)',
-            r'(?:发布|公布|公开)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?'
-        ]
-        for pattern in pub_patterns:
-            match = re.search(pattern, first_page_text)
-            if match:
-                try:
-                    y = int(match.group(1))
-                    m = int(match.group(2))
-                    d = int(match.group(3))
-                    extracted_publish_date = datetime.date(y, m, d)
-                    break
-                except ValueError:
-                    pass
+    pub_patterns = [
+        r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:发布|公布|公开)',
+        r'(?:发布|公布|公开)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?',
+    ]
+    for pattern in pub_patterns:
+        match = re.search(pattern, first_page_text)
+        if match:
+            try:
+                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                extracted_publish_date = datetime.date(y, m, d)
+                break
+            except ValueError:
+                pass
 
-        # 匹配实施日期
-        imp_patterns = [
-            r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:实施|施行)',
-            r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?'
-        ]
-        for pattern in imp_patterns:
-            match = re.search(pattern, first_page_text)
-            if match:
-                try:
-                    y = int(match.group(1))
-                    m = int(match.group(2))
-                    d = int(match.group(3))
-                    extracted_implement_date = datetime.date(y, m, d)
-                    break
-                except ValueError:
-                    pass
+    imp_patterns = [
+        r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:实施|施行)',
+        r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?',
+    ]
+    for pattern in imp_patterns:
+        match = re.search(pattern, first_page_text)
+        if match:
+            try:
+                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                extracted_implement_date = datetime.date(y, m, d)
+                break
+            except ValueError:
+                pass
 
+    # 6. 批量保存全文内容并回填日期字段
     try:
         with transaction.atomic():
             # 先删除旧内容
             StandardContent.objects.filter(standard=standard).delete()
-            
+
             # 批量创建新内容
             content_objects = [
                 StandardContent(
@@ -637,7 +669,7 @@ def parse_standard_pdf_task(self, standard_id: int):
             if extracted_implement_date and not standard.implement_date:
                 standard.implement_date = extracted_implement_date
                 updated_fields.append('implement_date')
-            
+
             if updated_fields:
                 standard.save(update_fields=updated_fields)
                 # 清除列表缓存，确保前端能及时展示最新日期
@@ -647,6 +679,89 @@ def parse_standard_pdf_task(self, standard_id: int):
         return f"Successfully parsed {len(pages_text)} pages for Standard {standard.standard_no}."
     except Exception as e:
         raise self.retry(exc=e, countdown=5, max_retries=2)
+
+
+@shared_task(bind=False, name='standards.auto_scan_missing_dates')
+def auto_scan_missing_dates_task():
+    """
+    定时任务：自动检测发布时间缺失的企标并触发 PDF 扫描提取
+
+    运行时机：
+      - Celery Beat 每 30 分钟自动调度
+      - 后台管理员也可通过 Django shell 手动触发
+
+    处理逻辑：
+      1. 查询所有 publish_date 为空的企标记录
+      2. 过滤出在磁盘/共享盘上存在对应 PDF 文件的记录
+      3. 对每个匹配记录，异步触发 parse_standard_pdf_task 重新扫描首页
+    """
+    import os
+    import logging
+    from django.conf import settings
+    from standards.models import Standard
+
+    logger = logging.getLogger('standards')
+    shared_root = getattr(settings, 'SHARED_DISK_ROOT', r'Y:\磁盘阵列\标准文件下载\企标下载')
+
+    # --- 查询缺失发布时间的企业标准（有 pdf_file 或 disk_filename 之一即可） ---
+    from django.db.models import Q
+    candidates = Standard.objects.filter(
+        type='enterprise',
+        publish_date__isnull=True
+    ).filter(
+        Q(pdf_file__isnull=False) | Q(disk_filename__isnull=False)
+    ).exclude(
+        pdf_file='', disk_filename=''
+    ).values('id', 'standard_no', 'pdf_file', 'disk_filename')
+
+    dispatched = 0
+    skipped = 0
+
+    for std in candidates:
+        file_path = None
+        std_id = std['id']
+        std_no = std['standard_no']
+        disk_fn = (std['disk_filename'] or '').replace('\\', '/')
+        pdf_fn = ''
+        if std['pdf_file']:
+            try:
+                # pdf_file 是 FieldFile，values() 拿到的是字符串
+                pdf_fn = str(std['pdf_file']).replace('\\', '/')
+            except Exception:
+                pass
+
+        # 优先 disk_filename
+        if disk_fn:
+            p = os.path.join(shared_root, disk_fn)
+            if os.path.exists(p):
+                file_path = p
+
+        # 降级 pdf_file
+        if not file_path and pdf_fn:
+            for base in [shared_root, str(settings.MEDIA_ROOT)]:
+                p = os.path.join(base, pdf_fn)
+                if os.path.exists(p):
+                    file_path = p
+                    break
+            if not file_path and pdf_fn.startswith('media/'):
+                p = os.path.join(str(settings.MEDIA_ROOT), pdf_fn[len('media/'):])
+                if os.path.exists(p):
+                    file_path = p
+
+        if file_path:
+            # 异步触发 PDF 解析（包含日期提取逻辑）
+            parse_standard_pdf_task.delay(std_id)
+            dispatched += 1
+            logger.info(f'[auto_scan] Dispatched PDF scan for [{std_no}] (id={std_id})')
+        else:
+            skipped += 1
+
+    summary = (
+        f'[auto_scan_missing_dates] Done: dispatched={dispatched}, '
+        f'no_pdf_skipped={skipped}'
+    )
+    logger.info(summary)
+    return summary
 
 
 

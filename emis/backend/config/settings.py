@@ -152,7 +152,13 @@ CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TIMEZONE = 'Asia/Shanghai'
-CELERY_BEAT_SCHEDULE = {}
+CELERY_BEAT_SCHEDULE = {
+    # 每 30 分钟自动盘点一次缺失发布时间的企标并触发 PDF 封面扫描
+    'auto-scan-missing-dates-every-30m': {
+        'task': 'standards.auto_scan_missing_dates',
+        'schedule': 1800.0,  # 30 分钟
+    },
+}
 
 if REDIS_AVAILABLE:
     CELERY_BROKER_URL = REDIS_URL
