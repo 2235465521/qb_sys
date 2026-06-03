@@ -135,13 +135,155 @@ const StandardGraphPage: React.FC = () => {
     }
   };
 
+  // 动态处理图谱数据：增加二级引用（最新标准）节点与连线，计算扇叶化初始位置与 3D 特效
+  const processedGraphData = React.useMemo(() => {
+    if (!graphData) return null;
+
+    const nodes = [...graphData.nodes];
+    const links = [...graphData.links];
+    const categories = [
+      { name: '中心企标' },
+      { name: '引用标准' },
+      { name: '最新标准' }
+    ];
+
+    const existingNodeNames = new Set(nodes.map(n => n.name));
+
+    // 扫描一级引用节点，若存在最新标准则添加二级引用节点及连线
+    graphData.nodes.forEach(node => {
+      if (node.category === 1 && node.latest_standard_no && node.latest_standard_no !== node.name) {
+        const latestName = node.latest_standard_no;
+        let latestId = '';
+
+        const existingNode = nodes.find(n => n.name === latestName);
+        if (existingNode) {
+          latestId = existingNode.id;
+        }
+
+        if (!latestId) {
+          latestId = `latest_${node.id}`;
+          nodes.push({
+            id: latestId,
+            name: latestName,
+            symbolSize: 32,
+            category: 2,
+            title: '最新标准版本',
+            type_display: node.type_display,
+            status_display: '现行',
+            company_name: ''
+          });
+          existingNodeNames.add(latestName);
+        }
+
+        links.push({
+          source: node.id,
+          target: latestId,
+          label: {
+            show: true,
+            formatter: '最新标准'
+          }
+        });
+      }
+    });
+
+    const N1 = graphData.nodes.filter(n => n.category === 1).length;
+    let category1Index = 0;
+
+    // 计算入场时的“扇叶”或“花瓣”轨迹坐标位置，并配置 3D 径向渐变
+    const processedNodes = nodes.map(node => {
+      const isCenter = node.category === 0;
+
+      let x = 300;
+      let y = 300;
+      let fixed = false;
+
+      if (isCenter) {
+        fixed = true; // 中心企标固定在正中央
+      } else if (node.category === 1) {
+        const theta = (category1Index / N1) * 2 * Math.PI;
+        x = 300 + 100 * Math.cos(theta);
+        y = 300 + 100 * Math.sin(theta);
+        category1Index++;
+      } else if (node.category === 2) {
+        const parentLink = links.find(l => l.target === node.id);
+        const parentNode = parentLink ? nodes.find(n => n.id === parentLink.source) : null;
+        const parentIndex = parentNode ? graphData.nodes.filter(n => n.category === 1).findIndex(n => n.id === parentNode.id) : 0;
+
+        const theta = (parentIndex / N1) * 2 * Math.PI + 0.3; // 偏转角度形成扇叶延伸弧度
+        x = 300 + 220 * Math.cos(theta);
+        y = 300 + 220 * Math.sin(theta);
+      }
+
+      return {
+        ...node,
+        x,
+        y,
+        fixed,
+        itemStyle: {
+          // 利用径向渐变（Radial Gradient）为节点添加凸起的 3D 气泡视觉质感
+          color: isCenter
+            ? {
+                type: 'radial',
+                x: 0.3, y: 0.3, r: 0.6,
+                colorStops: [
+                  { offset: 0, color: '#e0f7fa' },
+                  { offset: 0.2, color: '#00e5ff' },
+                  { offset: 1, color: '#006064' }
+                ]
+              }
+            : (node.category === 1
+                ? {
+                    type: 'radial',
+                    x: 0.3, y: 0.3, r: 0.6,
+                    colorStops: [
+                      { offset: 0, color: '#e6f7ff' },
+                      { offset: 0.3, color: '#69c0ff' },
+                      { offset: 1, color: '#0050b3' }
+                    ]
+                  }
+                : {
+                    type: 'radial',
+                    x: 0.3, y: 0.3, r: 0.6,
+                    colorStops: [
+                      { offset: 0, color: '#fffbe6' },
+                      { offset: 0.3, color: '#ffe58f' },
+                      { offset: 1, color: '#d48806' }
+                    ]
+                  }
+              ),
+          shadowBlur: 15,
+          shadowColor: 'rgba(0, 0, 0, 0.18)',
+          shadowOffsetX: 3,
+          shadowOffsetY: 5
+        }
+      };
+    });
+
+    const processedLinks = links.map(link => {
+      const isLatest = link.label?.formatter === '最新标准';
+      return {
+        ...link,
+        lineStyle: {
+          color: isLatest ? '#fadb14' : '#1890ff',
+          width: 2,
+          type: 'solid',
+          curveness: isLatest ? 0.15 : 0.05
+        },
+        edgeSymbol: ['none', 'arrow'],
+        edgeSymbolSize: [4, 8]
+      };
+    });
+
+    return { nodes: processedNodes, links: processedLinks, categories };
+  }, [graphData]);
+
   // ECharts 图表配置
   const getOption = () => {
-    if (!graphData) return {};
+    if (!processedGraphData) return {};
 
     return {
       title: {
-        text: `${graphData.nodes[0].name.replace(' (中心企标)', '')} 引用图谱`,
+        text: `${processedGraphData.nodes[0].name.replace(' (中心企标)', '')} 引用图谱`,
         subtext: '点击节点查看明细，支持鼠标拖拽与滚轮缩放',
         top: 'bottom',
         left: 'right',
@@ -167,23 +309,29 @@ const StandardGraphPage: React.FC = () => {
           if (params.dataType === 'node') {
             const data = params.data;
             const isCenter = data.category === 0;
+            const isLatest = data.category === 2;
+            
+            let color = '#1890ff';
+            if (isCenter) color = '#00838f';
+            else if (isLatest) color = '#d48806';
+            
             return `
-              <div style="font-weight: bold; margin-bottom: 8px; color: ${isCenter ? '#00838f' : '#1890ff'}; font-size: 14px; border-bottom: 1px solid #f0f0f0; padding-bottom: 4px;">
-                ${data.name}
+              <div style="font-weight: bold; margin-bottom: 8px; color: ${color}; font-size: 14px; border-bottom: 1px solid #f0f0f0; padding-bottom: 4px;">
+                ${data.name} ${isCenter ? '(中心企标)' : (isLatest ? '(最新标准)' : '(引用标准)')}
               </div>
               <div style="margin-bottom: 4px;"><b>标准名称:</b> ${data.title || '--'}</div>
               <div style="margin-bottom: 4px;"><b>标准类型:</b> ${data.type_display || '--'}</div>
               <div style="margin-bottom: 4px;"><b>标准状态:</b> ${data.status_display || '--'}</div>
-              <div style="margin-bottom: 4px;"><b>起草企业:</b> ${data.company_name || '--'}</div>
+              ${data.company_name ? `<div style="margin-bottom: 4px;"><b>起草企业:</b> ${data.company_name}</div>` : ''}
               ${data.latest_standard_no ? `<div style="color: #fa8c16; font-weight: bold; margin-top: 6px; padding-top: 4px; border-top: 1px dashed #f0f0f0;"><b>最新标准号:</b> ${data.latest_standard_no}</div>` : ''}
             `;
           }
-          return `关系: <b>${params.name || '规范性引用'}</b>`;
+          return `关系: <b>${params.data.label?.formatter || '规范性引用'}</b>`;
         }
       },
       legend: [
         {
-          data: ['中心企标', '引用标准'],
+          data: ['中心企标', '引用标准', '最新标准'],
           orient: 'vertical',
           left: 'left',
           top: 'top',
@@ -193,45 +341,17 @@ const StandardGraphPage: React.FC = () => {
           }
         }
       ],
-      animationDuration: 1200,
-      animationEasingUpdate: 'quinticInOut',
+      // 扇叶与开花：设置顺次入场延迟动画与缓动特效
+      animationDuration: 1800,
+      animationEasing: 'elasticOut',
+      animationDelay: (idx: number) => idx * 60,
       series: [
         {
           type: 'graph',
           layout: 'force',
-          data: graphData.nodes.map(node => {
-            // 中心节点和普通节点渐变颜色配置
-            const isCenter = node.category === 0;
-            return {
-              ...node,
-              itemStyle: {
-                color: isCenter 
-                  ? {
-                      type: 'radial',
-                      x: 0.4, y: 0.4, r: 0.8,
-                      colorStops: [
-                        { offset: 0, color: '#00e5ff' },
-                        { offset: 1, color: '#00838f' }
-                      ]
-                    }
-                  : {
-                      type: 'radial',
-                      x: 0.4, y: 0.4, r: 0.8,
-                      colorStops: [
-                        { offset: 0, color: '#69c0ff' },
-                        { offset: 1, color: '#1890ff' }
-                      ]
-                    },
-                shadowBlur: 10,
-                shadowColor: isCenter ? 'rgba(0,131,143,0.3)' : 'rgba(24,144,255,0.2)'
-              }
-            };
-          }),
-          links: graphData.links,
-          categories: [
-            { name: '中心企标' },
-            { name: '引用标准' }
-          ],
+          data: processedGraphData.nodes,
+          links: processedGraphData.links,
+          categories: processedGraphData.categories,
           roam: true,
           label: {
             show: true,
@@ -246,18 +366,20 @@ const StandardGraphPage: React.FC = () => {
             borderRadius: 4
           },
           force: {
-            repulsion: 650,
-            edgeLength: 160,
-            gravity: 0.08,
+            repulsion: 800,
+            edgeLength: 150,
+            gravity: 0.05,
             layoutAnimation: true
           },
-          lineStyle: {
-            color: '#b3d4fc',
-            width: 2,
-            curveness: 0.08
+          edgeLabel: {
+            show: true,
+            position: 'middle',
+            formatter: (params: any) => {
+              return params.data.label?.formatter || '';
+            },
+            fontSize: 9,
+            color: '#8c8c8c'
           },
-          edgeSymbol: ['none', 'arrow'],
-          edgeSymbolSize: [4, 8],
           emphasis: {
             focus: 'adjacency',
             lineStyle: {
@@ -388,7 +510,7 @@ const StandardGraphPage: React.FC = () => {
             {/* 说明小提示 */}
             <div style={{ position: 'absolute', bottom: 10, left: 10, background: 'rgba(255,255,255,0.85)', padding: '6px 12px', borderRadius: 6, border: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', gap: 6 }}>
               <InfoCircleOutlined style={{ color: '#00bcd4' }} />
-              <span style={{ fontSize: 11, color: '#666' }}>中心企标呈青色大球，所引用的国标/行标呈蓝色小球。</span>
+              <span style={{ fontSize: 11, color: '#666' }}>中心企标呈青色球，规范性引用呈蓝色球，最新版本标准呈黄色球。</span>
             </div>
           </div>
         ) : (
