@@ -616,31 +616,72 @@ def parse_standard_pdf_task(self, standard_id: int):
     extracted_publish_date = None
     extracted_implement_date = None
 
+    # ── 预处理：修正 PDF/OCR 常见误识别字符 ──────────────────
+    # 仅对首页文本做字符级修正，避免影响正文语义
+    def _normalize_date_text(text):
+        """
+        针对日期识别的文本预处理：
+        - 大写字母 O → 数字 0（常见 OCR 错误，如 O8 → 08）
+        - 小写字母 l → 数字 1（l 与 1 形似）
+        - 全角数字 → 半角（０１２... → 012...）
+        - 全角连字符 → 半角（－ → -）
+        注意：仅替换处于数字上下文中的字符，不改动汉字区域
+        """
+        import re as _re
+        # 全角数字转半角
+        result = text.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+        # 全角连字符 → 半角
+        result = result.replace('－', '-').replace('—', '-')
+        # 将紧靠数字的大写 O 替换为 0（如 O8、2O24）
+        result = _re.sub(r'(?<=\d)O(?=\d)', '0', result)
+        result = _re.sub(r'(?<=\d)O(?!\d)', '0', result)
+        result = _re.sub(r'(?<!\d)O(?=\d)', '0', result)
+        # 将紧靠数字的小写 l 替换为 1
+        result = _re.sub(r'(?<=\d)l(?=\d)', '1', result)
+        result = _re.sub(r'(?<=\d)l(?!\d)', '1', result)
+        result = _re.sub(r'(?<!\d)l(?=\d)', '1', result)
+        return result
+
+    norm_text = _normalize_date_text(first_page_text)
+
+    # ── 发布日期匹配规则（优先级从高到低）──────────────────────
     pub_patterns = [
-        r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:发布|公布|公开)',
-        r'(?:发布|公布|公开)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?',
+        # 模式1：日期在前，关键词在后（如 "2024-03-10 发布"）
+        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:发布|公布|公开)',
+        # 模式2：关键词在前，日期在后（如 "发布日期：2024年03月10日"）
+        r'(?:发布|公布|公开)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
+        # 模式3：宽松兜底，提取第一个像日期的 YYYY-MM-DD（页面上有"发布"字样即可）
+        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
     ]
-    for pattern in pub_patterns:
-        match = re.search(pattern, first_page_text)
+    for i, pattern in enumerate(pub_patterns):
+        match = re.search(pattern, norm_text)
         if match:
             try:
                 y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                extracted_publish_date = datetime.date(y, m, d)
-                break
+                candidate = datetime.date(y, m, d)
+                # 兜底模式（模式3）：仅当页面明确包含"发布/公布/公开"字样时才采用
+                if i == 2 and '发布' not in norm_text and '公布' not in norm_text and '公开' not in norm_text:
+                    break
+                # 合理性校验：年份在 1980-2099 之间
+                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
+                    extracted_publish_date = candidate
+                    break
             except ValueError:
                 pass
 
+    # ── 实施日期匹配规则 ────────────────────────────────────────
     imp_patterns = [
-        r'(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?\s*(?:实施|施行)',
-        r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年]\s*(\d{1,2})\s*[-/月]\s*(\d{1,2})\s*日?',
+        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:实施|施行)',
+        r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
     ]
     for pattern in imp_patterns:
-        match = re.search(pattern, first_page_text)
+        match = re.search(pattern, norm_text)
         if match:
             try:
                 y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                extracted_implement_date = datetime.date(y, m, d)
-                break
+                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
+                    extracted_implement_date = datetime.date(y, m, d)
+                    break
             except ValueError:
                 pass
 
