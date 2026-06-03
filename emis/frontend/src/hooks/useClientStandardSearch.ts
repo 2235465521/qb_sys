@@ -11,6 +11,10 @@ export interface ClientStandardSearchParams {
   province_id?: number;
   city_id?: number;
   district_id?: number;
+  pub_start?: string;
+  pub_end?: string;
+  imp_start?: string;
+  imp_end?: string;
 }
 
 export const useClientStandardSearch = (params: ClientStandardSearchParams) => {

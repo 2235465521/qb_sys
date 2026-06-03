@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Button, Card, Row, Col, Cascader, Select, Checkbox, Space } from 'antd';
+import { Form, Input, Button, Card, Row, Col, Cascader, Select, Checkbox, Space, DatePicker } from 'antd';
 import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, CloudDownloadOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
 import apiClient from '@/api/client';
 import type { Province, City, District } from '@/types';
 
@@ -18,6 +20,103 @@ interface CascaderOption {
   children?: CascaderOption[];
   loading?: boolean;
 }
+
+interface DateValue {
+  mode: 'year' | 'date' | 'year_range' | 'date_range';
+  value: Dayjs | [Dayjs, Dayjs] | null;
+}
+
+interface FlexibleDateSelectorProps {
+  value?: DateValue;
+  onChange?: (value: DateValue) => void;
+}
+
+const FlexibleDateSelector: React.FC<FlexibleDateSelectorProps> = ({ value, onChange }) => {
+  const mode = value?.mode || 'year';
+  const val = value?.value || null;
+
+  const triggerChange = (newMode: typeof mode, newVal: typeof val) => {
+    onChange?.({ mode: newMode, value: newVal });
+  };
+
+  const handleModeChange = (newMode: typeof mode) => {
+    triggerChange(newMode, null);
+  };
+
+  const handleDateChange = (date: any) => {
+    triggerChange(mode, date);
+  };
+
+  return (
+    <Space style={{ display: 'flex', width: '100%' }}>
+      <Select
+        value={mode}
+        onChange={handleModeChange}
+        style={{ width: 110 }}
+        options={[
+          { value: 'year', label: '按年度' },
+          { value: 'date', label: '具体日期' },
+          { value: 'year_range', label: '年份范围' },
+          { value: 'date_range', label: '日期范围' },
+        ]}
+      />
+      {mode === 'year' && (
+        <DatePicker
+          picker="year"
+          value={val as Dayjs}
+          onChange={handleDateChange}
+          style={{ flex: 1, width: '100%', borderRadius: 8 }}
+          placeholder="选择年份"
+        />
+      )}
+      {mode === 'date' && (
+        <DatePicker
+          value={val as Dayjs}
+          onChange={handleDateChange}
+          style={{ flex: 1, width: '100%', borderRadius: 8 }}
+          placeholder="选择具体日期"
+        />
+      )}
+      {mode === 'year_range' && (
+        <DatePicker.RangePicker
+          picker="year"
+          value={val as [Dayjs, Dayjs]}
+          onChange={handleDateChange}
+          style={{ flex: 1, width: '100%', borderRadius: 8 }}
+          placeholder={['开始年份', '结束年份']}
+        />
+      )}
+      {mode === 'date_range' && (
+        <DatePicker.RangePicker
+          value={val as [Dayjs, Dayjs]}
+          onChange={handleDateChange}
+          style={{ flex: 1, width: '100%', borderRadius: 8 }}
+          placeholder={['开始日期', '结束日期']}
+        />
+      )}
+    </Space>
+  );
+};
+
+const serializeDateVal = (val: DateValue | undefined) => {
+  if (!val || !val.value) return { start: '', end: '' };
+  const { mode, value } = val;
+  if (mode === 'year' && value && !Array.isArray(value)) {
+    const y = value.format('YYYY');
+    return { start: y, end: y };
+  }
+  if (mode === 'date' && value && !Array.isArray(value)) {
+    const d = value.format('YYYY-MM-DD');
+    return { start: d, end: d };
+  }
+  if (mode === 'year_range' && Array.isArray(value) && value[0] && value[1]) {
+    return { start: value[0].format('YYYY'), end: value[1].format('YYYY') };
+  }
+  if (mode === 'date_range' && Array.isArray(value) && value[0] && value[1]) {
+    return { start: value[0].format('YYYY-MM-DD'), end: value[1].format('YYYY-MM-DD') };
+  }
+  return { start: '', end: '' };
+};
 
 const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack, onRandomPack100 }) => {
   const [form] = Form.useForm();
@@ -107,6 +206,20 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
       }
     }
 
+    // 已发布时间序列化
+    const pub = serializeDateVal(values.publishDate);
+    if (pub.start && pub.end) {
+      params.pub_start = pub.start;
+      params.pub_end = pub.end;
+    }
+
+    // 已实施时间序列化
+    const imp = serializeDateVal(values.implementDate);
+    if (imp.start && imp.end) {
+      params.imp_start = imp.start;
+      params.imp_end = imp.end;
+    }
+
     onSearch(params);
   };
 
@@ -119,6 +232,10 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
       province_id: undefined,
       city_id: undefined,
       district_id: undefined,
+      pub_start: undefined,
+      pub_end: undefined,
+      imp_start: undefined,
+      imp_end: undefined,
     });
   };
 
@@ -217,6 +334,18 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
                     <Checkbox value="pending_reference">待引用解析</Checkbox>
                     <Checkbox value="pending_indicator">待指标解析</Checkbox>
                   </Checkbox.Group>
+                </Form.Item>
+              </Col>
+            </Row>
+            <Row gutter={16} style={{ marginTop: 16 }} align="middle">
+              <Col xs={24} md={12}>
+                <Form.Item label="已发布时间" name="publishDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                  <FlexibleDateSelector />
+                </Form.Item>
+              </Col>
+              <Col xs={24} md={12}>
+                <Form.Item label="已实施时间" name="implementDate" style={{ marginBottom: 0 }} labelCol={{ span: 5 }}>
+                  <FlexibleDateSelector />
                 </Form.Item>
               </Col>
             </Row>

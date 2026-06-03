@@ -300,11 +300,17 @@ ${regionDetail}
   const fallbackCopy = (text: string) => {
     const textArea = document.createElement('textarea');
     textArea.value = text;
-    textArea.style.position = 'fixed';
-    textArea.style.opacity = '0';
+    textArea.style.position = 'absolute';
+    textArea.style.left = '-9999px';
+    textArea.style.top = '0';
+    textArea.setAttribute('readonly', '');
     document.body.appendChild(textArea);
+    
+    const activeElement = document.activeElement as HTMLElement | null;
     textArea.focus();
     textArea.select();
+    textArea.setSelectionRange(0, textArea.value.length);
+    
     try {
       const successful = document.execCommand('copy');
       if (successful) {
@@ -314,18 +320,28 @@ ${regionDetail}
       }
     } catch (err) {
       message.error('复制失败，请手动选择文字复制。');
+      console.error('Fallback copy failed:', err);
     }
+    
     document.body.removeChild(textArea);
+    if (activeElement) {
+      activeElement.focus();
+    }
   };
 
   const handleCopyReport = () => {
     const text = generateReportText();
-    if (navigator.clipboard && window.isSecureContext) {
+    if (!text) {
+      message.error('报告内容为空，无法复制！');
+      return;
+    }
+    if (navigator.clipboard) {
       navigator.clipboard.writeText(text)
         .then(() => {
           message.success('报告已成功复制到剪贴板，可直接粘贴使用！');
         })
-        .catch(() => {
+        .catch((err) => {
+          console.warn('Clipboard API failed, trying fallback:', err);
           fallbackCopy(text);
         });
     } else {

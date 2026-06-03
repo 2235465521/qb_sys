@@ -13,6 +13,24 @@ class StandardSearchPagination(PageNumberPagination):
     max_page_size = 100
 
 
+def parse_date_param(param_start, param_end):
+    from datetime import date, datetime
+    try:
+        if len(param_start) == 4:
+            start_date = date(int(param_start), 1, 1)
+        else:
+            start_date = datetime.strptime(param_start, '%Y-%m-%d').date()
+
+        if len(param_end) == 4:
+            end_date = date(int(param_end), 12, 31)
+        else:
+            end_date = datetime.strptime(param_end, '%Y-%m-%d').date()
+
+        return start_date, end_date
+    except Exception:
+        return None, None
+
+
 class StandardListView(generics.ListAPIView):
     """
     GET /api/client/standards/
@@ -50,6 +68,26 @@ class StandardListView(generics.ListAPIView):
             qs = qs.filter(company__city_id=city_id)
         if district_id:
             qs = qs.filter(company__district_id=district_id)
+
+        # 时间维度筛选 (AND 并列关系)
+        pub_start = params.get('pub_start')
+        pub_end = params.get('pub_end')
+        imp_start = params.get('imp_start')
+        imp_end = params.get('imp_end')
+
+        if (pub_start and pub_end) or (imp_start and imp_end):
+            from django.db.models import Q
+            time_filters = Q()
+            if pub_start and pub_end:
+                pub_s, pub_e = parse_date_param(pub_start, pub_end)
+                if pub_s and pub_e:
+                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
+            if imp_start and imp_end:
+                imp_s, imp_e = parse_date_param(imp_start, imp_end)
+                if imp_s and imp_e:
+                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
+            if time_filters:
+                qs = qs.filter(time_filters)
 
         # 2. 解析状态细化筛选
         parse_status = params.get('parse_status')
@@ -513,6 +551,26 @@ class StandardDownloadEstimateView(APIView):
         if district_id:
             qs = qs.filter(company__district_id=district_id)
 
+        # 时间维度筛选 (AND 并列关系)
+        pub_start = params.get('pub_start')
+        pub_end = params.get('pub_end')
+        imp_start = params.get('imp_start')
+        imp_end = params.get('imp_end')
+
+        if (pub_start and pub_end) or (imp_start and imp_end):
+            from django.db.models import Q
+            time_filters = Q()
+            if pub_start and pub_end:
+                pub_s, pub_e = parse_date_param(pub_start, pub_end)
+                if pub_s and pub_e:
+                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
+            if imp_start and imp_end:
+                imp_s, imp_e = parse_date_param(imp_start, imp_end)
+                if imp_s and imp_e:
+                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
+            if time_filters:
+                qs = qs.filter(time_filters)
+
         # 2. 解析状态筛选
         parse_status = params.get('parse_status')
         if parse_status:
@@ -581,6 +639,26 @@ class ExportStandardListView(APIView):
             qs = qs.filter(company__city_id=city_id)
         if district_id:
             qs = qs.filter(company__district_id=district_id)
+
+        # 时间维度筛选 (AND 并列关系)
+        pub_start = params.get('pub_start')
+        pub_end = params.get('pub_end')
+        imp_start = params.get('imp_start')
+        imp_end = params.get('imp_end')
+
+        if (pub_start and pub_end) or (imp_start and imp_end):
+            from django.db.models import Q
+            time_filters = Q()
+            if pub_start and pub_end:
+                pub_s, pub_e = parse_date_param(pub_start, pub_end)
+                if pub_s and pub_e:
+                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
+            if imp_start and imp_end:
+                imp_s, imp_e = parse_date_param(imp_start, imp_end)
+                if imp_s and imp_e:
+                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
+            if time_filters:
+                qs = qs.filter(time_filters)
 
         # 2. 解析状态筛选
         parse_status = params.get('parse_status')
