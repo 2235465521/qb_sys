@@ -29,3 +29,8 @@ python-decouple>=3.8,<4.0
 # 开发工具
 ipython
 gunicorn>=21.2.0,<22.0.0
+
+# PDF 文本解析与 OCR
+PyMuPDF>=1.23.0
+pdfplumber>=0.10.0
+
