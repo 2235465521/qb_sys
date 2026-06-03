@@ -29,7 +29,7 @@ const ClientLayout: React.FC = () => {
   const { user, isAdmin } = useAuth();
   const queryClient = useQueryClient();
   const {
-    token: { colorBgContainer, borderRadiusLG },
+    token: { borderRadiusLG },
   } = theme.useToken();
 
   const menuItems = [
@@ -133,15 +133,15 @@ const ClientLayout: React.FC = () => {
   );
 
   return (
-    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #f0f0f0' }}>
+    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto', background: '#f5f7fa' }}>
+      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #e8eef4', background: '#f5f7fa' }}>
         <div style={{ 
           height: 64, 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          borderBottom: '1px solid #f0f0f0',
-          background: '#fff'
+          borderBottom: '1px solid #e8eef4',
+          background: '#f5f7fa'
         }}>
           <BrandLogo width={collapsed ? 36 : 48} height={collapsed ? 36 : 48} />
         </div>
@@ -151,10 +151,11 @@ const ClientLayout: React.FC = () => {
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ background: '#f5f7fa', borderRight: 0 }}
         />
       </Sider>
-      <Layout>
-        <Header style={{ padding: '0 24px', background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f0f0f0' }}>
+      <Layout style={{ background: '#ffffff' }}>
+        <Header style={{ padding: '0 24px', background: '#f5f7fa', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e8eef4' }}>
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -188,7 +189,7 @@ const ClientLayout: React.FC = () => {
             </Button>
           </Space>
         </Header>
-        <Content style={{ margin: '24px 16px', padding: 24, minHeight: 280, background: colorBgContainer, borderRadius: borderRadiusLG }}>
+        <Content style={{ margin: '24px 16px', padding: 24, minHeight: 280, background: '#ffffff', borderRadius: borderRadiusLG }}>
           <Outlet />
         </Content>
       </Layout>
