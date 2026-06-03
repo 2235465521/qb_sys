@@ -3,9 +3,7 @@ import { Button, Space, message } from 'antd';
 import { ImportOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import DataTable from './components/DataTable';
-import ImportModal from './components/ImportModal';
-import ImportReferencesModal from './components/ImportReferencesModal';
-import ImportMixedModal from './components/ImportMixedModal';
+import SmartImportModal from './components/SmartImportModal';
 import EditModal from './components/EditModal';
 import { useStandardData } from '@/hooks/useStandardData';
 import type { StandardSearchParams } from '@/hooks/useStandardData';
@@ -14,9 +12,7 @@ import apiClient from '@/api/client';
 
 const StandardsManagerPage: React.FC = () => {
   const [params, setParams] = useState<StandardSearchParams>({ page: 1 });
-  const [importVisible, setImportVisible] = useState(false);
-  const [importRefVisible, setImportRefVisible] = useState(false);
-  const [importMixedVisible, setImportMixedVisible] = useState(false);
+  const [smartImportVisible, setSmartImportVisible] = useState(false);
   const [editVisible, setEditVisible] = useState(false);
   const [editingStandard, setEditingStandard] = useState<Standard | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -115,29 +111,11 @@ const StandardsManagerPage: React.FC = () => {
           </Button>
           <Button 
             type="primary" 
-            ghost
             icon={<ImportOutlined />} 
-            onClick={() => setImportRefVisible(true)}
+            onClick={() => setSmartImportVisible(true)}
             style={{ borderRadius: 6, fontWeight: 500 }}
           >
-            导入规范性引用
-          </Button>
-          <Button 
-            type="primary" 
-            ghost
-            icon={<ImportOutlined />} 
-            onClick={() => setImportMixedVisible(true)}
-            style={{ borderRadius: 6, fontWeight: 500 }}
-          >
-            一键导入企标与引用
-          </Button>
-          <Button 
-            type="primary" 
-            icon={<ImportOutlined />} 
-            onClick={() => setImportVisible(true)}
-            style={{ borderRadius: 6, fontWeight: 500 }}
-          >
-            一键导入企标
+            智能导入数据
           </Button>
         </Space>
       </div>
@@ -160,25 +138,9 @@ const StandardsManagerPage: React.FC = () => {
         onChange={handleTableChange}
       />
 
-      <ImportModal
-        open={importVisible}
-        onCancel={() => setImportVisible(false)}
-        onSuccess={() => {
-          standardQuery.refetch();
-        }}
-      />
-
-      <ImportReferencesModal
-        open={importRefVisible}
-        onCancel={() => setImportRefVisible(false)}
-        onSuccess={() => {
-          standardQuery.refetch();
-        }}
-      />
-
-      <ImportMixedModal
-        open={importMixedVisible}
-        onCancel={() => setImportMixedVisible(false)}
+      <SmartImportModal
+        open={smartImportVisible}
+        onCancel={() => setSmartImportVisible(false)}
         onSuccess={() => {
           standardQuery.refetch();
         }}

@@ -269,3 +269,89 @@ class StandardMixedImportTemplateView(APIView):
         except Exception as e:
             return Response({'error': f'生成模板失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+class StandardSmartImportView(APIView):
+    """
+    POST /api/admin/standards/import-smart/
+    智能探测表头，分发至不同的导入逻辑
+    """
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser]
+
+    def post(self, request):
+        import uuid
+        import os
+        import pandas as pd
+        from django.conf import settings
+        from standards.tasks import import_standards_and_references_task
+        from standards import services
+
+        file_obj = request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not file_obj.name.endswith(('.xlsx', '.xls')):
+            return Response({'error': '仅支持 .xlsx 或 .xls 格式的文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1. 尝试读取前几行提取表头
+        try:
+            df = pd.read_excel(file_obj, nrows=10)
+            columns = set(df.columns)
+        except Exception as e:
+            return Response({'error': f'读取文件失败: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 重置文件指针，供底层读取全量数据
+        file_obj.seek(0)
+
+        # 2. 探测关键字段
+        company_keys = ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码', '起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称']
+        reference_keys = ['引用的国标/行标编号*', '引用的国标/行标编号', '被引用标准号*', '被引用标准号', '引用的标准号']
+        std_no_keys = ['企标编号*', '企标编号', '标准编号*', '标准编号', '企标号']
+
+        has_company = any(k in columns for k in company_keys)
+        has_reference = any(k in columns for k in reference_keys)
+        has_std_no = any(k in columns for k in std_no_keys)
+
+        # 3. 决策路由
+        if has_company and has_reference:
+            # 混合导入 -> 走 Celery 异步
+            task_token = str(uuid.uuid4())
+            temp_dir = settings.MEDIA_ROOT / 'temp_uploads'
+            temp_dir.mkdir(parents=True, exist_ok=True)
+            file_path = temp_dir / f'{task_token}.xlsx'
+            try:
+                with open(file_path, 'wb') as f:
+                    for chunk in file_obj.chunks():
+                        f.write(chunk)
+            except Exception as e:
+                return Response({'error': f'文件写入临时盘失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+            import_standards_and_references_task.delay(str(file_path), task_token)
+            return Response({
+                'type': 'async',
+                'task_id': task_token,
+                'message': '文件包含企业、企标与引用关系，已提交后台异步排队处理。'
+            }, status=status.HTTP_202_ACCEPTED)
+
+        elif has_reference and not has_company:
+            # 纯引用导入 -> 走同步
+            result = services.import_references_from_excel_v2(file_obj)
+            return Response({
+                'type': 'sync',
+                'data': result,
+                'message': '解析完成，纯引用关系导入成功。'
+            }, status=status.HTTP_200_OK)
+
+        elif has_company or (has_std_no and not has_reference):
+            # 纯企标及企业导入 -> 走同步
+            result = services.import_standards_from_excel(file_obj)
+            return Response({
+                'type': 'sync',
+                'data': result,
+                'message': '解析完成，企业与企标资产导入成功。'
+            }, status=status.HTTP_200_OK)
+
+        else:
+            return Response({'error': '无法识别文件内容，未发现有效的企业、企标编号或引用号列，请使用官方模板'}, status=status.HTTP_400_BAD_REQUEST)
+
+

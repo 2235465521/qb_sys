@@ -13,7 +13,8 @@ from standards.views.admin_views import (
     StandardReferenceImportTemplateView,
     StandardMixedImportView,
     StandardMixedImportStatusView,
-    StandardMixedImportTemplateView
+    StandardMixedImportTemplateView,
+    StandardSmartImportView
 )
 
 urlpatterns = [
@@ -27,5 +28,6 @@ urlpatterns = [
     path('import-mixed/', StandardMixedImportView.as_view(), name='admin-standard-import-mixed'),
     path('import-mixed/status/', StandardMixedImportStatusView.as_view(), name='admin-standard-import-mixed-status'),
     path('import-mixed/template/', StandardMixedImportTemplateView.as_view(), name='admin-standard-import-mixed-template'),
+    path('import-smart/', StandardSmartImportView.as_view(), name='admin-standard-import-smart'),
 ]
 
