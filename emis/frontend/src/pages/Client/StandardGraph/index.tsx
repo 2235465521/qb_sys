@@ -101,15 +101,15 @@ const StandardGraphPage: React.FC = () => {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
 
-      // 第一阶段：延时 60ms 触发一级节点向外生长，二级节点紧随其父节点移动
+      // 第一阶段：延时 200ms 触发一级节点向外生长（此时中心节点已完成 150ms 极速稳定加载）
       stageTimer1Ref.current = setTimeout(() => {
         setAnimationStage(1);
-      }, 60);
+      }, 200);
 
-      // 第二阶段：延时 1100ms（此时一级节点已稳定），触发二级节点自一级节点向外“开花展叶”
+      // 第二阶段：延时 1500ms（此时一级节点已稳定），触发二级节点自一级节点向外“开花展叶”
       stageTimer2Ref.current = setTimeout(() => {
         setAnimationStage(2);
-      }, 1100);
+      }, 1500);
 
     } catch (err: any) {
       console.error(err);
@@ -435,17 +435,19 @@ const StandardGraphPage: React.FC = () => {
           }
         }
       ],
-      // 树枝与萌芽动效：如果处于初始阶段 0 则禁用动画（使中心主节点以正常大小稳定出现，避免大小闪烁）
-      // 阶段 1 和 2 开启丝滑生长动画，促使枝叶依次从中心和父节点向外绽放
-      animation: animationStage !== 0,
-      animationDuration: animationStage === 1 ? 1600 : 2000,
-      animationEasing: 'cubicInOut',
-      animationDelay: (idx: number) => idx * 100, // 顺次慢速开花展开
+      // 树枝与萌芽动效：如果处于初始阶段 0 则进行极速 150ms 的线性显示，防止主节点从小变大弹性抖动
+      // 阶段 1 和 2 开启 1.6秒 / 2.0秒 丝滑生长动画，促使枝叶依次从中心和父节点向外绽放
+      animation: true,
+      animationDuration: animationStage === 0 ? 150 : (animationStage === 1 ? 1600 : 2000),
+      animationEasing: animationStage === 0 ? 'linear' : 'cubicInOut',
+      animationDelay: animationStage === 0 ? 0 : (idx: number) => idx * 100, // 顺次慢速开花展开
        series: [
         {
           type: 'graph',
           layout: 'none', // 使用自定义预计算的扇形坐标系统，摆脱 force 的杂乱无章与无序抖动
-          animation: animationStage !== 0, // 系列级别亦同步禁用/开启，防止主节点闪烁
+          animation: true,
+          animationDuration: animationStage === 0 ? 150 : (animationStage === 1 ? 1600 : 2000),
+          animationEasing: animationStage === 0 ? 'linear' : 'cubicInOut',
           data: processedGraphData.nodes,
           links: processedGraphData.links,
           categories: processedGraphData.categories,
