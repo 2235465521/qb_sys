@@ -584,8 +584,23 @@ const StandardGraphPage: React.FC = () => {
               
               {/* 任务一：毛玻璃悬浮统计看板 (Floating Stats Card) */}
               <div 
-                className="absolute top-4 left-4 z-10 w-64 backdrop-blur-md bg-white/70 border border-white/30 shadow-lg rounded-2xl p-4 transition-all duration-300 select-none"
-                style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
+                style={{
+                  position: 'absolute',
+                  top: 16,
+                  left: 16,
+                  zIndex: 10,
+                  width: 256,
+                  backdropFilter: 'blur(12px)',
+                  WebkitBackdropFilter: 'blur(12px)', // 增强对 WebKit 浏览器的兼容
+                  backgroundColor: 'rgba(255, 255, 255, 0.75)',
+                  border: '1px solid rgba(255, 255, 255, 0.4)',
+                  boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+                  borderRadius: 16,
+                  padding: 16,
+                  transition: 'all 0.3s ease',
+                  userSelect: 'none',
+                  fontFamily: 'Inter, system-ui, sans-serif'
+                }}
               >
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#1f2937', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <span style={{ display: 'inline-block', width: 6, height: 6, borderRadius: '50%', background: '#009688' }}></span>
@@ -629,7 +644,24 @@ const StandardGraphPage: React.FC = () => {
               />
 
               {/* 任务二：右下角悬浮操作工具栏 (Floating Toolbar) */}
-              <div className="absolute bottom-4 right-4 z-10 flex gap-2 bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-md p-1.5 rounded-xl select-none">
+              <div 
+                style={{
+                  position: 'absolute',
+                  bottom: 16,
+                  right: 16,
+                  zIndex: 10,
+                  display: 'flex',
+                  gap: 8,
+                  backgroundColor: 'rgba(255, 255, 255, 0.85)',
+                  backdropFilter: 'blur(8px)',
+                  WebkitBackdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(229, 231, 235, 0.6)',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.05)',
+                  padding: '6px',
+                  borderRadius: 12,
+                  userSelect: 'none'
+                }}
+              >
                 <Tooltip title="放大">
                   <Button type="text" icon={<ZoomInOutlined />} onClick={() => handleZoom('in')} />
                 </Tooltip>
