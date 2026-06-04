@@ -449,15 +449,26 @@ const StandardGraphPage: React.FC = () => {
           label: {
             position: 'outside',
             rotate: 'radial',
-            fontSize: 10.5,
-            color: '#262626',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            borderWidth: 1,
-            borderColor: '#e8e8e8',
-            padding: [4, 7],
-            borderRadius: 6,
-            shadowBlur: 5,
-            shadowColor: 'rgba(0, 0, 0, 0.04)'
+            fontSize: 9.5,
+            fontWeight: 500,
+            color: '#374151',
+            textShadowColor: 'rgba(255, 255, 255, 0.95)',
+            textShadowBlur: 4,
+            padding: [2, 4],
+            formatter: (params: any) => {
+              const name = params.name;
+              if (!name) return '';
+              // 中心企标节点保持尊贵的单行水平排列，不进行年份换行
+              if (params.data && params.data.category === 0) {
+                return name;
+              }
+              // 匹配标准号末尾的破折号、连字符或冒号+4位年份，自动折行并括号化 (使用 $1 捕获组避免 TS 参数隐式 any 与未读取声明错误)
+              const regex = /[-—:](\d{4})$/;
+              if (regex.test(name)) {
+                return name.replace(regex, '\n($1)');
+              }
+              return name;
+            }
           },
           leaves: {
             label: {
