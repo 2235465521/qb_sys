@@ -217,14 +217,20 @@ class StandardContent(models.Model):
         return f'{self.standard.standard_no} - P.{self.page_number}'
 
 
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
+from django.core.cache import cache
 
 @receiver(post_save, sender=Standard)
 def standard_post_save(sender, instance, created, **kwargs):
     """
-    当企标记录保存时，如果存在关联文件，则异步触发 PDF 解析任务
+    当企标记录保存时，清除列表缓存并异步触发 PDF 解析任务
     """
+    try:
+        cache.clear()
+    except Exception:
+        pass
+
     # 仅企标才需要全文解析，国标等一般不需要
     if instance.type != 'enterprise':
         return
@@ -233,4 +239,16 @@ def standard_post_save(sender, instance, created, **kwargs):
         # 异步调用 Celery 任务解析 PDF
         from standards.tasks import parse_standard_pdf_task
         parse_standard_pdf_task.delay(instance.id)
+
+
+@receiver(post_delete, sender=Standard)
+def standard_post_delete(sender, instance, **kwargs):
+    """
+    当企标记录删除时，清除列表缓存
+    """
+    try:
+        cache.clear()
+    except Exception:
+        pass
+
 

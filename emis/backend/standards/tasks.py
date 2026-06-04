@@ -472,6 +472,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             pass
 
         # 4. 成功完结更新缓存
+        try:
+            cache.clear()
+        except Exception:
+            pass
+
         cache.set(f'import_task_{task_token}', {
             'status': 'done',
             'progress': 100,

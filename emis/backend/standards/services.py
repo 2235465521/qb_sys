@@ -589,6 +589,11 @@ def import_standards_from_excel(file_obj) -> dict:
             
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+            from django.core.cache import cache
+            try:
+                cache.clear()
+            except Exception:
+                pass
             
     # 自动进行 Y:\ 磁盘扫盘匹配对齐，补全 relative_path (pdf_file)
     try:
@@ -766,6 +771,11 @@ def import_standards_by_type(file_obj, std_type: str) -> dict:
 
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+            from django.core.cache import cache
+            try:
+                cache.clear()
+            except Exception:
+                pass
 
     result['success'] = len(standards_to_create)
     result['skipped'] = skipped_count
