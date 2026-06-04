@@ -55,7 +55,7 @@ const StandardGraphPage: React.FC = () => {
   // ECharts 实例引用与容器 DOM 引用
   const echartsRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState<number>(1);
+  const [zoom, setZoom] = useState<number>(1.05); // 稍微放大初始缩放，增加舒展度
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
   // 1. 缩放逻辑 (通过 ECharts Option 的 zoom 属性受控更新)
@@ -70,7 +70,7 @@ const StandardGraphPage: React.FC = () => {
   const handleFitView = () => {
     if (echartsRef.current) {
       const chartInstance = echartsRef.current.getEchartsInstance();
-      setZoom(1);
+      setZoom(1.05);
       chartInstance.dispatchAction({ type: 'restore' });
       message.success('视图已平滑重置并适应屏幕');
     }
@@ -114,7 +114,7 @@ const StandardGraphPage: React.FC = () => {
     
     const dataUrl = chartInstance.getDataURL({
       type: 'png',
-      pixelRatio: 2,
+      pixelRatio: 2.5,
       backgroundColor: '#ffffff'
     });
 
@@ -163,7 +163,7 @@ const StandardGraphPage: React.FC = () => {
     }
   };
 
-  // 6. 初始化加载与联想搜索
+  // 6. 数据初始化与联想查询
   useEffect(() => {
     const loadDefaultStandard = async () => {
       setIsLoading(true);
@@ -201,7 +201,7 @@ const StandardGraphPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setExpandStage(0);
-    setZoom(1); // 切换标准重置缩放
+    setZoom(1.05); // 切换标准重置缩放
 
     if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
     if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
@@ -210,10 +210,12 @@ const StandardGraphPage: React.FC = () => {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
 
+      // 第一阶段：500毫秒后平滑长出第一级引用标准
       expandTimer1Ref.current = setTimeout(() => {
         setExpandStage(1);
       }, 500);
 
+      // 第二阶段：2000毫秒后平滑长出第二级最新版本替代标准
       expandTimer2Ref.current = setTimeout(() => {
         setExpandStage(2);
       }, 2000);
@@ -265,28 +267,23 @@ const StandardGraphPage: React.FC = () => {
     }
   };
 
-  // 7. 动态生成力导向图 Option 选项 (Force Layout Option)
+  // 7. 径向树图 ECharts Option 发生器 (Radial Tree Option Builder)
   const getOption = () => {
     if (!graphData || !graphData.nodes.length) return {};
 
-    const rawNodes = graphData.nodes;
-    const centerNode = rawNodes.find(n => n.category === 0);
-    if (!centerNode) return {};
+    const rootNode = graphData.nodes.find(n => n.category === 0);
+    if (!rootNode) return {};
 
-    // 严谨保留原始字符编码（破折号 ‘—’ 与连字符 ‘-’），构建节点数据
-    const chartNodes: any[] = [];
-    const chartLinks: any[] = [];
-
-    // 添加中心节点
-    chartNodes.push({
-      id: centerNode.id,
-      name: centerNode.name,
-      symbolSize: 62,
+    // 严密保留原始字符（连字符 & 破折号）进行结构化嵌套数据拼装
+    const treeData: any = {
+      id: rootNode.id,
+      name: rootNode.name,
+      symbolSize: 64,
       category: 0,
-      title: centerNode.title,
-      type_display: centerNode.type_display,
-      status_display: centerNode.status_display,
-      company_name: centerNode.company_name,
+      title: rootNode.title,
+      type_display: rootNode.type_display,
+      status_display: rootNode.status_display,
+      company_name: rootNode.company_name,
       itemStyle: {
         color: {
           type: 'radial', x: 0.5, y: 0.5, r: 0.5,
@@ -301,14 +298,18 @@ const StandardGraphPage: React.FC = () => {
         shadowBlur: 20,
         shadowColor: 'rgba(0, 150, 136, 0.5)'
       },
-      label: { show: true, fontSize: 13, fontWeight: 'bold', color: '#004d40' }
-    });
+      label: {
+        show: true, position: 'top', fontSize: 13, fontWeight: 'bold', color: '#004d40'
+      },
+      children: []
+    };
 
-    // 展开第一阶段：加入引用标准 (category === 1)
     if (expandStage >= 1) {
-      const refNodes = rawNodes.filter(n => n.category === 1);
+      const refNodes = graphData.nodes.filter(n => n.category === 1);
       refNodes.forEach(n => {
-        chartNodes.push({
+        const hasLatest = n.latest_standard_no && n.latest_standard_no.trim() !== n.name.trim();
+        
+        const childNode: any = {
           id: n.id,
           name: n.name,
           symbolSize: 42,
@@ -332,22 +333,13 @@ const StandardGraphPage: React.FC = () => {
             shadowBlur: 12,
             shadowColor: 'rgba(33, 150, 243, 0.4)'
           },
-          label: { show: true, fontSize: 10, color: '#333' }
-        });
+          children: []
+        };
 
-        // 连线：中心节点 ➔ 引用标准
-        chartLinks.push({
-          source: centerNode.id,
-          target: n.id,
-          lineStyle: { width: 2, color: '#b3e5fc', curveness: 0 }
-        });
-
-        // 展开第二阶段：加入替代/更新标准 (category === 2)
-        const hasLatest = n.latest_standard_no && n.latest_standard_no.trim() !== n.name.trim();
-        if (expandStage >= 2 && hasLatest) {
-          const latestId = `latest_${n.id}`;
-          chartNodes.push({
-            id: latestId,
+        // 第二阶段：当存在更替版本并且expandStage达到2时，继续向下长出末梢叶子
+        if (hasLatest && expandStage >= 2) {
+          childNode.children.push({
+            id: `latest_${n.id}`,
             name: n.latest_standard_no,
             symbolSize: 34,
             category: 2,
@@ -367,23 +359,17 @@ const StandardGraphPage: React.FC = () => {
               borderWidth: 2,
               shadowBlur: 10,
               shadowColor: 'rgba(255, 193, 7, 0.4)'
-            },
-            label: { show: true, fontSize: 9, color: '#555' }
-          });
-
-          // 连线：引用标准 ➔ 替代最新标准 (红色连接线警示废止更新)
-          chartLinks.push({
-            source: n.id,
-            target: latestId,
-            lineStyle: { width: 1.5, type: 'dashed', color: '#ff7043' }
+            }
           });
         }
+        treeData.children.push(childNode);
       });
     }
 
     return {
       tooltip: {
         trigger: 'item',
+        triggerOn: 'mousemove',
         backgroundColor: 'rgba(255, 255, 255, 0.98)',
         borderColor: '#00bcd4',
         borderWidth: 1,
@@ -392,7 +378,6 @@ const StandardGraphPage: React.FC = () => {
         extraCssText: 'box-shadow: 0 4px 16px rgba(0,0,0,0.08); border-radius: 8px;',
         formatter: (params: any) => {
           const d = params.data;
-          if (params.dataType === 'edge') return '';
           const isCenter = d.category === 0;
           const isLatest = d.category === 2;
           const label = isCenter ? '中心企标' : (isLatest ? '替代最新标准' : '规范引用标准');
@@ -411,23 +396,46 @@ const StandardGraphPage: React.FC = () => {
       },
       series: [
         {
-          type: 'graph',
-          layout: 'force',
+          type: 'tree',
+          data: [treeData],
+          layout: 'radial',
+          symbol: 'circle',
           roam: true,
-          draggable: true,
           zoom: zoom,
-          data: chartNodes,
-          links: chartLinks,
-          categories: [{ name: '中心企标' }, { name: '引用标准' }, { name: '替代标准' }],
-          force: {
-            repulsion: 2200,      // 大幅调大排斥力使叶子舒展
-            edgeLength: 160,     // 增长连线，腾出留白空间
-            gravity: 0.06,       // 微调重力防止飞散
-            layoutAnimation: true
+          initialTreeDepth: 3,
+          // 精准分配画布四角留白，彻底封死超出卡片边缘的可能性
+          top: '12%',
+          bottom: '12%',
+          left: '12%',
+          right: '12%',
+          // 2秒极致平滑的树枝绽放发散动效，让前台体验富有科技呼吸感
+          animationDurationInitial: 1000,
+          animationEasingInitial: 'cubicOut',
+          animationDurationUpdate: 2000,
+          animationEasingUpdate: 'cubicInOut',
+          lineStyle: {
+            color: '#b3e5fc',
+            width: 1.8,
+            curveness: 0.5
           },
-          emphasis: {
-            focus: 'adjacency',
-            lineStyle: { width: 3, color: '#03a9f4' }
+          label: {
+            position: 'outside',
+            rotate: 'radial',
+            fontSize: 10.5,
+            color: '#262626',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderWidth: 1,
+            borderColor: '#e8e8e8',
+            padding: [4, 7],
+            borderRadius: 6,
+            shadowBlur: 5,
+            shadowColor: 'rgba(0, 0, 0, 0.04)'
+          },
+          leaves: {
+            label: {
+              position: 'outside',
+              rotate: 'radial'
+            }
           }
         }
       ]
@@ -537,7 +545,7 @@ const StandardGraphPage: React.FC = () => {
           {isLoading ? (
             <div style={{ height: '70vh', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 16 }}>
               <Spin size="large" />
-              <Text type="secondary">正在获取并分析标准层级，生成力导向图谱中...</Text>
+              <Text type="secondary">正在获取并分析标准层级，生成图谱中...</Text>
             </div>
           ) : error ? (
             <div style={{ padding: '24px 0', height: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -583,7 +591,7 @@ const StandardGraphPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* 核心 ECharts 图谱组件 */}
+              {/* 核心 ECharts 树图组件 */}
               <ReactECharts
                 ref={echartsRef}
                 key={`graph-chart-${selectedId}`}
