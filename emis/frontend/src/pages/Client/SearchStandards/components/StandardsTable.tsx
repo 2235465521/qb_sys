@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Tag, Button, Space, message, Modal, Empty, Tooltip, Drawer, Typography } from 'antd';
-import { DownloadOutlined, EyeOutlined, FileExcelOutlined } from '@ant-design/icons';
+import { DownloadOutlined, EyeOutlined, FileExcelOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
 import apiClient from '@/api/client';
@@ -336,6 +336,19 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
           rowExpandable: () => true,
           expandedRowKeys: expandedKeys,
           onExpandedRowsChange: (keys) => setExpandedKeys(keys as React.Key[]),
+          expandIcon: ({ expanded, onExpand, record }) => {
+            return expanded ? (
+              <DownOutlined 
+                style={{ fontSize: 11, marginRight: 8, cursor: 'pointer', color: '#00acc1' }} 
+                onClick={e => onExpand(record, e)} 
+              />
+            ) : (
+              <RightOutlined 
+                style={{ fontSize: 11, marginRight: 8, cursor: 'pointer', color: '#bfbfbf' }} 
+                onClick={e => onExpand(record, e)} 
+              />
+            );
+          }
         }}
         style={{
           background: '#fff',

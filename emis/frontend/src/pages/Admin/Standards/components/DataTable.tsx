@@ -26,13 +26,14 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '标准编号',
       dataIndex: 'standard_no',
       key: 'standard_no',
+      width: 170,
       render: (text: string) => <span style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace' }}>{text}</span>,
     },
     {
       title: '标准名称',
       dataIndex: 'title',
       key: 'title',
-      width: '35%',
+      width: 300,
       ellipsis: true,
       render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
     },
@@ -40,6 +41,7 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '起草单位/企业名称',
       dataIndex: 'company_name',
       key: 'company_name',
+      width: 240,
       ellipsis: true,
       render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag> : '--',
     },
@@ -47,6 +49,8 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '标准状态',
       dataIndex: 'status',
       key: 'status',
+      width: 100,
+      align: 'center' as const,
       render: (status: string, record: any) => {
         if (status === 'active') {
           return <Tag color="success" style={{ borderRadius: 4 }}>{record.status_display || '现行'}</Tag>;
@@ -61,23 +65,32 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '发布时间',
       dataIndex: 'publish_date',
       key: 'publish_date',
+      width: 120,
+      align: 'center' as const,
       render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
     },
     {
       title: '实施时间',
       dataIndex: 'implement_date',
       key: 'implement_date',
+      width: 120,
+      align: 'center' as const,
       render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
     },
     {
       title: '同步入库时间',
       dataIndex: 'created_at',
       key: 'created_at',
+      width: 150,
+      align: 'center' as const,
       render: (date: string) => dayjs(date).format('YYYY-MM-DD HH:mm'),
     },
     {
       title: '操作',
       key: 'action',
+      width: 150,
+      align: 'center' as const,
+      fixed: 'right' as const,
       render: (_: any, record: Standard) => (
         <Space size="middle">
           <Button 
@@ -116,6 +129,7 @@ const DataTable: React.FC<DataTableProps> = ({
       dataSource={data}
       rowKey="id"
       loading={loading}
+      scroll={{ x: 1350 }}
       pagination={{ showQuickJumper: true,
         ...pagination,
         showSizeChanger: false,

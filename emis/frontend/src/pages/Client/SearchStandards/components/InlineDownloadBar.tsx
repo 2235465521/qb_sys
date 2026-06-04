@@ -1,10 +1,10 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Select, InputNumber, Button, Space, message, Typography, Tooltip } from 'antd';
+import { Select, InputNumber, Button, Space, message, Tooltip } from 'antd';
 import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
 
-const { Text } = Typography;
+// Removed unused Text declaration
 
 interface InlineDownloadBarProps {
   /** 当前检索条件返回的总记录数 */
@@ -57,7 +57,7 @@ const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filte
 
       if (split_count === 1) {
         // 单个分片，直接轮询下载
-        const { token, count: partCount } = parts[0];
+        const { token } = parts[0];
         message.success(
           `已锁定 ${total_sampled} 个企标，打包任务已提交，您可继续浏览...`
         );
