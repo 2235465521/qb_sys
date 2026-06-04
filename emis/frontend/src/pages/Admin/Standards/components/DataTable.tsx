@@ -58,6 +58,18 @@ const DataTable: React.FC<DataTableProps> = ({
       },
     },
     {
+      title: '发布时间',
+      dataIndex: 'publish_date',
+      key: 'publish_date',
+      render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
+    },
+    {
+      title: '实施时间',
+      dataIndex: 'implement_date',
+      key: 'implement_date',
+      render: (date: string) => date ? dayjs(date).format('YYYY-MM-DD') : '--',
+    },
+    {
       title: '同步入库时间',
       dataIndex: 'created_at',
       key: 'created_at',
