@@ -164,7 +164,7 @@ const CompanySearchPage: React.FC = () => {
       )}
 
       <List
-        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3 }}
+        grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3, column: 3 }}
         dataSource={currentPageResults}
         loading={isLoading}
         locale={{ emptyText: <Empty description="暂无符合条件的企业记录" /> }}
