@@ -442,9 +442,9 @@ const StandardGraphPage: React.FC = () => {
           animationDurationUpdate: 2000,
           animationEasingUpdate: 'cubicInOut',
           lineStyle: {
-            color: '#b3e5fc',
-            width: 1.8,
-            curveness: 0.5
+            color: 'rgba(144, 202, 249, 0.38)', // 优雅半透明星空蓝，降低线条杂乱感
+            width: 1.5, // 纤细线条，更具科技感
+            curveness: 0.15 // 极轻微优雅弯曲，避免菊花状折角
           },
           label: {
             position: 'outside',
