@@ -88,11 +88,11 @@ const DataTable: React.FC<DataTableProps> = ({
     {
       title: '操作',
       key: 'action',
-      width: 150,
+      width: 170,
       align: 'center' as const,
       fixed: 'right' as const,
       render: (_: any, record: Standard) => (
-        <Space size="middle">
+        <Space size="middle" style={{ paddingRight: 8 }}>
           <Button 
             type="text" 
             icon={<EditOutlined />} 
@@ -129,7 +129,7 @@ const DataTable: React.FC<DataTableProps> = ({
       dataSource={data}
       rowKey="id"
       loading={loading}
-      scroll={{ x: 1350 }}
+      scroll={{ x: 1370 }}
       pagination={{ showQuickJumper: true,
         ...pagination,
         showSizeChanger: false,
