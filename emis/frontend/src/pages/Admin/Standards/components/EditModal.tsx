@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
-import { Modal, Form, Input, Select } from 'antd';
+import { Modal, Form, Input, Select, DatePicker } from 'antd';
 import type { Standard } from '@/types';
+import dayjs from 'dayjs';
 
 interface EditModalProps {
   open: boolean;
@@ -21,7 +22,12 @@ const EditModal: React.FC<EditModalProps> = ({
 
   useEffect(() => {
     if (open && editingStandard) {
-      form.setFieldsValue(editingStandard);
+      const values = {
+        ...editingStandard,
+        publish_date: editingStandard.publish_date ? dayjs(editingStandard.publish_date) : null,
+        implement_date: editingStandard.implement_date ? dayjs(editingStandard.implement_date) : null,
+      };
+      form.setFieldsValue(values);
     } else {
       form.resetFields();
     }
@@ -30,7 +36,12 @@ const EditModal: React.FC<EditModalProps> = ({
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
-      onSave({ ...editingStandard, ...values });
+      const formattedValues = {
+        ...values,
+        publish_date: values.publish_date ? values.publish_date.format('YYYY-MM-DD') : null,
+        implement_date: values.implement_date ? values.implement_date.format('YYYY-MM-DD') : null,
+      };
+      onSave({ ...editingStandard, ...formattedValues });
     } catch (e) {
       // Form validation failed
     }
@@ -77,6 +88,18 @@ const EditModal: React.FC<EditModalProps> = ({
             <Select.Option value="deprecated">已废止</Select.Option>
             <Select.Option value="draft">草案</Select.Option>
           </Select>
+        </Form.Item>
+        <Form.Item
+          name="publish_date"
+          label="发布时间"
+        >
+          <DatePicker style={{ width: '100%', borderRadius: 8 }} placeholder="请选择发布时间" />
+        </Form.Item>
+        <Form.Item
+          name="implement_date"
+          label="实施时间"
+        >
+          <DatePicker style={{ width: '100%', borderRadius: 8 }} placeholder="请选择实施时间" />
         </Form.Item>
         <Form.Item
           name="ics"
