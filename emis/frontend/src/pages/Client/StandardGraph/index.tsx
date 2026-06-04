@@ -302,20 +302,20 @@ const StandardGraphPage: React.FC = () => {
       company_name: rootNode.company_name,
       itemStyle: {
         color: {
-          type: 'radial', x: 0.5, y: 0.5, r: 0.5,
+          type: 'radial', x: 0.4, y: 0.4, r: 0.6,
           colorStops: [
-            { offset: 0, color: '#e0f2f1' },
-            { offset: 0.7, color: '#009688' },
-            { offset: 1, color: '#004d40' }
+            { offset: 0, color: '#60a5fa' }, // 柔和星空蓝
+            { offset: 0.8, color: '#1e40af' }, // 经典科技蓝
+            { offset: 1, color: '#1e1b4b' }   // 深邃蓝底色
           ]
         },
-        borderColor: '#80cbc4',
-        borderWidth: 3,
-        shadowBlur: 20,
-        shadowColor: 'rgba(0, 150, 136, 0.5)'
+        borderColor: 'rgba(96, 165, 250, 0.8)',
+        borderWidth: 2.5,
+        shadowBlur: 25,
+        shadowColor: 'rgba(30, 64, 175, 0.45)' // 弥散暗蓝光晕
       },
       label: {
-        show: true, position: 'top', fontSize: 13, fontWeight: 'bold', color: '#004d40'
+        show: true, position: 'top', fontSize: 13, fontWeight: 'bold', color: '#1e3a8a'
       },
       children: []
     };
