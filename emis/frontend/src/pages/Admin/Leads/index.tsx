@@ -701,7 +701,7 @@ const AdminLeadsPage: React.FC = () => {
             <CustomerServiceOutlined style={{ fontSize: 24, color: '#ffffff' }} />
           </div>
           <div>
-            <h2 style={{ margin: 0, fontSize: 18, color: '#ffffff', fontWeight: 'bold' }}>线索与商机管理 (CRM 销售漏斗)</h2>
+            <h2 style={{ margin: 0, fontSize: 18, color: '#ffffff', fontWeight: 'bold' }}>客户与商机管理 (CRM 销售漏斗)</h2>
             <p style={{ margin: '4px 0 0 0', fontSize: 12, color: 'rgba(255,255,255,0.85)' }}>
               统一分配意向客户。管理并记录从前台质询，数据纠错至签约转化的全生命周期跟进事件、凭证存档与日志留痕。
             </p>
@@ -728,7 +728,7 @@ const AdminLeadsPage: React.FC = () => {
             }}
             style={{ backgroundColor: '#52c41a', borderColor: '#52c41a', fontWeight: 500 }}
           >
-            新建客户线索
+            新建客户
           </Button>
           <Button 
             icon={<DownloadOutlined />}
@@ -806,7 +806,7 @@ const AdminLeadsPage: React.FC = () => {
             total: data?.count || 0,
             onChange: (page) => setParams({ ...params, page }),
             showSizeChanger: false,
-            showTotal: (total) => `共 ${total} 条销售线索`
+            showTotal: (total) => `共 ${total} 个客户`
           }}
           scroll={{ x: 1200 }}
         />
@@ -817,7 +817,7 @@ const AdminLeadsPage: React.FC = () => {
         title={
           <Space>
             <PlusOutlined style={{ color: '#52c41a' }} />
-            <span style={{ fontWeight: 'bold' }}>新建 CRM 客户销售线索</span>
+            <span style={{ fontWeight: 'bold' }}>新建 CRM 客户</span>
           </Space>
         }
         open={createModalOpen}
@@ -1517,7 +1517,7 @@ const AdminLeadsPage: React.FC = () => {
         title={
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16, fontWeight: 600 }}>
             <SettingOutlined style={{ color: '#1890ff' }} />
-            <span>线索参数与配置管理</span>
+            <span>客户参数与配置管理</span>
           </div>
         }
         open={configModalOpen}
@@ -1531,7 +1531,7 @@ const AdminLeadsPage: React.FC = () => {
         bodyStyle={{ padding: '12px 24px 24px 24px' }}
       >
         <Typography.Paragraph type="secondary" style={{ fontSize: 13, marginBottom: 16 }}>
-          在这里自定义设置线索客户的渠道来源、诉求类型、跟进状态，以及自定义指派负责人名单（无需在系统注册亦可指派跟进）。
+          在这里自定义设置客户的渠道来源、诉求类型、跟进状态，以及自定义指派负责人名单（无需在系统注册亦可指派跟进）。
         </Typography.Paragraph>
 
         <Tabs 
