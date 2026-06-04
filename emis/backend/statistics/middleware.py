@@ -36,6 +36,8 @@ def get_action_desc(method, path):
     elif '/api/client/search/leads/' in path:
         return '前台提交营销线索'
     elif '/api/client/standards/' in path:
+        if 'sampled-pack' in path:
+            return '前台批量抽样打包下载'
         if 'download' in path:
             return '前台下载企标PDF'
         elif 'preview' in path:

@@ -4,7 +4,7 @@ standards.urls.standard_urls — 标准路由（模块一）
 
 from django.urls import path
 from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView, ExportStandardReferencesView, StandardGraphView, StandardDownloadEstimateView, ExportStandardListView
-from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView
+from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView, SampledPackRequestView
 
 urlpatterns = [
     path('', StandardListView.as_view(), name='client-standard-list'),
@@ -24,4 +24,6 @@ urlpatterns = [
     path('scan-pdf-sync/', ScanPdfSyncView.as_view(), name='client-standard-scan-pdf-sync'),
     path('pack-enterprises/', EnterprisePackRequestView.as_view(), name='client-enterprise-pack'),
     path('pack-tasks/<str:task_id>/', PackTaskStatusView.as_view(), name='client-pack-task-status'),
+    # 新增：内联操作栏「抽样打包」接口（替代旧的随机下载 + 自定义选择下载）
+    path('sampled-pack/', SampledPackRequestView.as_view(), name='client-standard-sampled-pack'),
 ]

@@ -389,3 +389,175 @@ class PackTaskStatusView(APIView):
 
         return Response(response_data)
 
+
+
+class SampledPackRequestView(APIView):
+    """
+    POST /api/client/standards/sampled-pack/
+    按搜索条件进行内存抽样，然后提交 Celery 打包任务。
+    若预估 ZIP 体积 > 1 GB，则自动拆分为多批次，每批次均返回独立 token。
+
+    Body:
+      {
+        "strategy":  "random" | "latest",   // 抽样策略，默认 random
+        "count":     100,                    // 抽样数量，默认 100
+        "filters":   { ...与搜索页相同的参数 }
+      }
+
+    Returns:
+      {
+        "parts": [
+          {"token": "xxx", "count": 50, "status": "pending"},
+          {"token": "yyy", "count": 50, "status": "pending"}
+        ],
+        "total_sampled": 100,
+        "split_count": 2
+      }
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    # 单批次体积上限：1 GB
+    MAX_BYTES_PER_PART = 1 * 1024 * 1024 * 1024
+
+    def post(self, request):
+        import random
+        from standards.models import Standard
+        from django.db.models import Q
+        from django.conf import settings
+        import os
+
+        strategy = request.data.get('strategy', 'random')
+        try:
+            count = int(request.data.get('count', 100))
+        except (ValueError, TypeError):
+            return Response({'error': 'count 必须为整数'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if count < 1:
+            return Response({'error': 'count 最小为 1'}, status=status.HTTP_400_BAD_REQUEST)
+        if count > 5000:
+            return Response({'error': 'count 最大为 5000'}, status=status.HTTP_400_BAD_REQUEST)
+
+        filters = request.data.get('filters', {})
+
+        # ── 1. 构建基础 QuerySet（与搜索页过滤逻辑保持一致）──────────
+        qs = Standard.objects.filter(type='enterprise').filter(
+            (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) |
+            (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
+        )
+
+        province_id = filters.get('province_id')
+        city_id = filters.get('city_id')
+        district_id = filters.get('district_id')
+        if province_id:
+            qs = qs.filter(company__province_id=province_id)
+        if city_id:
+            qs = qs.filter(company__city_id=city_id)
+        if district_id:
+            qs = qs.filter(company__district_id=district_id)
+
+        parse_status = filters.get('parse_status', '')
+        if parse_status and parse_status != 'all':
+            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+            q_status = Q()
+            if 'pending_reference' in statuses:
+                q_status |= Q(is_parsed='unparsed')
+            if 'pending_indicator' in statuses:
+                q_status |= Q(is_parsed='references_parsed')
+            if q_status:
+                qs = qs.filter(q_status)
+
+        keyword = filters.get('keyword', '')
+        search_mode = filters.get('search_mode', 'title')
+        if keyword:
+            if search_mode == 'full_text':
+                from standards.models import StandardContent
+                matching_ids = StandardContent.objects.filter(
+                    content__icontains=keyword
+                ).values_list('standard_id', flat=True).distinct()
+                qs = qs.filter(id__in=matching_ids)
+            else:
+                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+
+        pub_start = filters.get('pub_start')
+        pub_end = filters.get('pub_end')
+        if pub_start:
+            qs = qs.filter(publish_date__gte=pub_start)
+        if pub_end:
+            qs = qs.filter(publish_date__lte=pub_end)
+
+        # ── 2. 内存抽样（严禁 order_by('?')）───────────────────────
+        if strategy == 'latest':
+            # 按发布日期倒序取前 count 条
+            id_list = list(
+                qs.order_by('-publish_date', '-id').values_list('id', flat=True)[:count]
+            )
+        else:
+            # 默认：随机抽样
+            all_ids = list(qs.values_list('id', flat=True))
+            sample_size = min(count, len(all_ids))
+            id_list = random.sample(all_ids, sample_size) if all_ids else []
+
+        if not id_list:
+            return Response(
+                {'error': '未找到符合条件的企标文件，请调整搜索条件后重试'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ── 3. 预估文件大小并按 1 GB 拆分批次 ───────────────────────
+        shared_root = getattr(settings, 'SHARED_DISK_ROOT', r'Y:\磁盘阵列\标准文件下载\企标下载')
+        standards = Standard.objects.filter(id__in=id_list).only(
+            'id', 'pdf_file', 'disk_filename'
+        )
+
+        # 按文件大小分批
+        parts = []          # [[id, ...], [id, ...]]
+        current_part = []
+        current_size = 0
+
+        for std in standards:
+            file_size = 0
+            # 优先检查 disk_filename
+            if std.disk_filename:
+                fp = os.path.join(shared_root, std.disk_filename.replace('\\', '/'))
+                if os.path.exists(fp):
+                    file_size = os.path.getsize(fp)
+            # 降级检查 pdf_file
+            if file_size == 0 and std.pdf_file:
+                rel = std.pdf_file.name.replace('\\', '/')
+                for base in [shared_root, str(settings.MEDIA_ROOT)]:
+                    fp = os.path.join(base, rel)
+                    if os.path.exists(fp):
+                        file_size = os.path.getsize(fp)
+                        break
+            # 若无法获取大小，以 5 MB 估算
+            if file_size == 0:
+                file_size = 5 * 1024 * 1024
+
+            if current_size + file_size > self.MAX_BYTES_PER_PART and current_part:
+                parts.append(current_part)
+                current_part = [std.id]
+                current_size = file_size
+            else:
+                current_part.append(std.id)
+                current_size += file_size
+
+        if current_part:
+            parts.append(current_part)
+
+        # ── 4. 为每个分片提交 Celery 任务 ───────────────────────────
+        from standards.tasks import pack_standards_zip
+        result_parts = []
+        for part_ids in parts:
+            token = str(uuid.uuid4()).replace('-', '')
+            pack_standards_zip.delay(standard_ids=part_ids, download_token=token)
+            result_parts.append({
+                'token': token,
+                'count': len(part_ids),
+                'status': 'pending',
+            })
+
+        return Response({
+            'parts': result_parts,
+            'total_sampled': len(id_list),
+            'split_count': len(result_parts),
+        }, status=status.HTTP_202_ACCEPTED)

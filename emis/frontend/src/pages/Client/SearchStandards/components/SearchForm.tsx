@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Form, Input, Button, Card, Row, Col, Cascader, Select, Checkbox, Space, DatePicker } from 'antd';
-import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined, CloudDownloadOutlined } from '@ant-design/icons';
+import { SearchOutlined, DownOutlined, UpOutlined, ReloadOutlined } from '@ant-design/icons';
 import type { Dayjs } from 'dayjs';
 import apiClient from '@/api/client';
 import type { Province, City, District } from '@/types';
@@ -8,8 +8,6 @@ import type { Province, City, District } from '@/types';
 interface SearchFormProps {
   onSearch: (params: any) => void;
   loading: boolean;
-  onCustomPack: () => void;
-  onRandomPack100: () => void;
 }
 
 interface CascaderOption {
@@ -117,7 +115,7 @@ const serializeDateVal = (val: DateValue | undefined) => {
   return { start: '', end: '' };
 };
 
-const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack, onRandomPack100 }) => {
+const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
   const [form] = Form.useForm();
   const [expanded, setExpanded] = useState(false);
   const [cascaderOptions, setCascaderOptions] = useState<CascaderOption[]>([]);
@@ -349,40 +347,8 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading, onCustomPack
               </Col>
             </Row>
 
-            {/* 第三排 - 高级操作按钮与重置按钮 */}
-            <Row gutter={[16, 16]} style={{ marginTop: 20 }} justify="space-between" align="middle">
-              <Col xs={24} sm={18} md={20}>
-                <Space size={12} wrap style={{ width: '100%' }}>
-                  <Button
-                    onClick={onCustomPack}
-                    style={{
-                      borderRadius: 8,
-                      height: 40,
-                      fontWeight: 'bold',
-                      color: '#00838f',
-                      borderColor: '#00838f',
-                      background: 'transparent'
-                    }}
-                  >
-                    自定义选择下载
-                  </Button>
-                  <Button
-                    type="primary"
-                    icon={<CloudDownloadOutlined />}
-                    onClick={onRandomPack100}
-                    style={{
-                      borderRadius: 8,
-                      background: 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
-                      borderColor: '#00acc1',
-                      fontWeight: 'bold',
-                      height: 40,
-                      boxShadow: '0 4px 12px rgba(0, 131, 143, 0.2)'
-                    }}
-                  >
-                    一键随机下载 100 个企标
-                  </Button>
-                </Space>
-              </Col>
+            {/* 第三排 - 重置按钮 */}
+            <Row gutter={[16, 16]} style={{ marginTop: 20 }} justify="end" align="middle">
               <Col xs={24} sm={6} md={4} style={{ textAlign: 'right' }}>
                 <Button
                   icon={<ReloadOutlined />}
