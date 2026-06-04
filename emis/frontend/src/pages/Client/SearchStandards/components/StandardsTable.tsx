@@ -135,24 +135,23 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       width: 180,
       align: 'center' as const,
       render: (text: string, record: Standard) => (
-        <Tooltip title={text} placement="topLeft">
-          <Typography.Link
-            style={{ 
-              fontWeight: 'bold', 
-              fontFamily: 'Courier New, monospace', 
-              display: 'block',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap' 
-            }}
-            onClick={() => {
-              setSelectedStandard(record);
-              setDrawerVisible(true);
-            }}
-          >
-            {text}
-          </Typography.Link>
-        </Tooltip>
+        <Typography.Link
+          title={text}
+          style={{ 
+            fontWeight: 'bold', 
+            fontFamily: 'Courier New, monospace', 
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap' 
+          }}
+          onClick={() => {
+            setSelectedStandard(record);
+            setDrawerVisible(true);
+          }}
+        >
+          {text}
+        </Typography.Link>
       ),
     },
     {

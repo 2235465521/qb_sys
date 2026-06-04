@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Tag, Button, Space, Popconfirm, Tooltip } from 'antd';
+import { Table, Tag, Button, Space, Popconfirm } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -28,20 +28,19 @@ const DataTable: React.FC<DataTableProps> = ({
       key: 'standard_no',
       width: 170,
       render: (text: string) => (
-        <Tooltip title={text} placement="topLeft">
-          <span 
-            style={{ 
-              fontWeight: 'bold', 
-              fontFamily: 'Courier New, monospace',
-              display: 'block',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {text}
-          </span>
-        </Tooltip>
+        <span 
+          title={text}
+          style={{ 
+            fontWeight: 'bold', 
+            fontFamily: 'Courier New, monospace',
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {text}
+        </span>
       ),
     },
     {

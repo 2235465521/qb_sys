@@ -37,20 +37,19 @@ const ExpandedStandardList: React.FC<{ companyId: number }> = ({ companyId }) =>
       key: 'standard_no',
       width: 250,
       render: (text: string) => (
-        <Tooltip title={text} placement="topLeft">
-          <span 
-            style={{ 
-              fontWeight: 'bold', 
-              color: '#13c2c2',
-              display: 'block',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {text}
-          </span>
-        </Tooltip>
+        <span 
+          title={text}
+          style={{ 
+            fontWeight: 'bold', 
+            color: '#13c2c2',
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}
+        >
+          {text}
+        </span>
       ),
     },
     {
