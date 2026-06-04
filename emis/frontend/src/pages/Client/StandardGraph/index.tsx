@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Select, Button, Space, Typography, Spin, Empty, Alert } from 'antd';
-import { ClusterOutlined, SearchOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import apiClient from '@/api/client';
 import type { Standard, PaginatedResponse } from '@/types';
@@ -332,32 +332,6 @@ const StandardGraphPage: React.FC = () => {
 
   return (
     <div className="standard-graph-page" style={{ padding: '4px' }}>
-      {/* 渐变标题 Banner */}
-      <div 
-        style={{ 
-          marginBottom: 20, 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          background: 'linear-gradient(135deg, #e0f2f1 0%, #b2dfdb 100%)',
-          padding: '16px 24px',
-          borderRadius: 12,
-          boxShadow: '0 4px 15px rgba(0,0,0,0.02)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ background: '#009688', padding: 8, borderRadius: 8, color: '#fff', display: 'flex', alignItems: 'center' }}>
-            <ClusterOutlined style={{ fontSize: 20 }} />
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, color: '#004d40', fontWeight: 'bold' }}>标准知识图谱</h2>
-            <p style={{ margin: 0, fontSize: 12, color: '#00796b' }}>
-              通过数据挖掘与可视化关系网络，直观探寻本系统内企业标准与其对应引用国标/行标之间的关联体系结构。
-            </p>
-          </div>
-        </div>
-      </div>
-
       {/* 检索卡片 */}
       <Card
         bordered={false}

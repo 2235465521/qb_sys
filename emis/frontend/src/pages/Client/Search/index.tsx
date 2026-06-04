@@ -124,11 +124,6 @@ const CompanySearchPage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-      <div style={{ marginBottom: 32 }}>
-        <Title level={2}>企业标准资源检索</Title>
-        <Text type="secondary">支持全国企业标准化数据多维度实时检索与企业标准资产展示。</Text>
-      </div>
-
       <LbsSearchBar onSearch={handleSearch} loading={isFetching} />
 
       {result && (

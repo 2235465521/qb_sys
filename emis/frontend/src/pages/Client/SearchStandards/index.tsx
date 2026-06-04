@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Button, Pagination, message } from 'antd';
-import { FileTextOutlined, CloudDownloadOutlined } from '@ant-design/icons';
+import { CloudDownloadOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import StandardsTable from './components/StandardsTable';
 import CustomPackModal from './components/CustomPackModal';
@@ -166,32 +166,6 @@ const SearchStandardsPage: React.FC = () => {
 
   return (
     <div className="search-standards-page" style={{ padding: '4px' }}>
-      {/* 渐变标题 Banner */}
-      <div 
-        style={{ 
-          marginBottom: 20, 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center',
-          background: 'linear-gradient(135deg, #e0f7fa 0%, #b2ebf2 100%)',
-          padding: '16px 24px',
-          borderRadius: 12,
-          boxShadow: '0 4px 15px rgba(0,0,0,0.03)'
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ background: '#00bcd4', padding: 8, borderRadius: 8, color: '#fff', display: 'flex', alignItems: 'center' }}>
-            <FileTextOutlined style={{ fontSize: 20 }} />
-          </div>
-          <div>
-            <h2 style={{ margin: 0, fontSize: 18, color: '#006064', fontWeight: 'bold' }}>检索企业标准</h2>
-            <p style={{ margin: 0, fontSize: 12, color: '#00838f' }}>
-              支持根据标准编号或名称进行快速模糊检索，与管理后台标准资产完全映射，并可直接下载关联的标准 PDF 附件。
-            </p>
-          </div>
-        </div>
-      </div>
-
       <SearchForm
         onSearch={handleSearch}
         loading={isFetching}

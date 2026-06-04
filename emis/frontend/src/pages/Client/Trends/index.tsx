@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { Row, Col, Card, Typography, Select, Spin, Empty, Tag, Modal, Button } from 'antd';
-import { RadarChartOutlined, FireOutlined, RiseOutlined, EnvironmentOutlined, FileTextOutlined } from '@ant-design/icons';
+import { Row, Col, Card, Select, Spin, Empty, Tag, Modal, Button } from 'antd';
+import { FireOutlined, RiseOutlined, EnvironmentOutlined, FileTextOutlined } from '@ant-design/icons';
 import ReactECharts from 'echarts-for-react';
 import 'echarts-wordcloud';
 import { useTrendData } from '@/hooks/useTrendData';
 import { makeAnalyticsPieChartPair } from '@/utils/chart';
-
-const { Title } = Typography;
 
 const TrendDashboard: React.FC = () => {
   const [days, setDays] = useState<number>(30);
@@ -225,12 +223,8 @@ ${regionDetail}
   );
 
   return (
-    <div style={{ padding: 24, minHeight: '100vh', background: '#f0f2f5' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={3} style={{ margin: 0 }}>
-          <RadarChartOutlined style={{ marginRight: 8, color: '#1677ff' }} />
-          产业研发风向标洞察大屏
-        </Title>
+    <div className="trends-page" style={{ padding: '4px' }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <Select 
           value={days} 
           onChange={setDays}
