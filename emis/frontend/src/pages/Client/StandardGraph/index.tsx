@@ -47,6 +47,8 @@ const StandardGraphPage: React.FC = () => {
   const [expandStage, setExpandStage] = useState<number>(0);
   const expandTimer1Ref = useRef<any>(null);
   const expandTimer2Ref = useRef<any>(null);
+  const expandTimer3Ref = useRef<any>(null);
+  const expandTimer4Ref = useRef<any>(null);
 
   const [options, setOptions] = useState<{ value: number; label: string }[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -194,6 +196,8 @@ const StandardGraphPage: React.FC = () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
       if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
+      if (expandTimer3Ref.current) clearTimeout(expandTimer3Ref.current);
+      if (expandTimer4Ref.current) clearTimeout(expandTimer4Ref.current);
     };
   }, []);
 
@@ -205,20 +209,32 @@ const StandardGraphPage: React.FC = () => {
 
     if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
     if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
+    if (expandTimer3Ref.current) clearTimeout(expandTimer3Ref.current);
+    if (expandTimer4Ref.current) clearTimeout(expandTimer4Ref.current);
 
     try {
       const { data } = await apiClient.get<GraphResponse>(`/client/standards/${id}/graph/`);
       setGraphData(data);
 
-      // 第一阶段：500毫秒后平滑长出第一级引用标准
+      // 阶段一：500ms 后，平滑伸展出第一级引用标准的枝干线条
       expandTimer1Ref.current = setTimeout(() => {
         setExpandStage(1);
       }, 500);
 
-      // 第二阶段：2000毫秒后平滑长出第二级最新版本替代标准
+      // 阶段二：1700ms 后（给线条 1200ms 舒展空间），第一级节点的球体和标签文字如绿叶般绽放变大
       expandTimer2Ref.current = setTimeout(() => {
         setExpandStage(2);
-      }, 2000);
+      }, 1700);
+
+      // 阶段三：3200ms 后（给第一级节点绽放预留 1500ms 稳定展示），继续向末梢伸展出第二级最新版本标准的线条
+      expandTimer3Ref.current = setTimeout(() => {
+        setExpandStage(3);
+      }, 3200);
+
+      // 阶段四：4400ms 后（给第二级线条 1200ms 舒展空间），第二级黄球和标签文字如金色花朵般破土绽放
+      expandTimer4Ref.current = setTimeout(() => {
+        setExpandStage(4);
+      }, 4400);
 
     } catch (err: any) {
       console.error(err);
@@ -309,10 +325,13 @@ const StandardGraphPage: React.FC = () => {
       refNodes.forEach(n => {
         const hasLatest = n.latest_standard_no && n.latest_standard_no.trim() !== n.name.trim();
         
+        // 判定第一层节点自身的显示状态
+        const isFirstLayerBlooming = expandStage >= 2;
+        
         const childNode: any = {
           id: n.id,
           name: n.name,
-          symbolSize: 42,
+          symbolSize: isFirstLayerBlooming ? 42 : 0.001, // 线条先长（size接近0），之后变大绽放
           category: 1,
           title: n.title,
           type_display: n.type_display,
@@ -320,6 +339,7 @@ const StandardGraphPage: React.FC = () => {
           company_name: n.company_name,
           latest_standard_no: n.latest_standard_no,
           itemStyle: {
+            opacity: isFirstLayerBlooming ? 1 : 0, // 线条长出阶段球体透明，绽放后显现
             color: {
               type: 'radial', x: 0.5, y: 0.5, r: 0.5,
               colorStops: [
@@ -330,23 +350,28 @@ const StandardGraphPage: React.FC = () => {
             },
             borderColor: '#90caf9',
             borderWidth: 2,
-            shadowBlur: 12,
+            shadowBlur: isFirstLayerBlooming ? 12 : 0,
             shadowColor: 'rgba(33, 150, 243, 0.4)'
+          },
+          label: {
+            show: isFirstLayerBlooming // 绽放后才展示标签文字
           },
           children: []
         };
 
-        // 第二阶段：当存在更替版本并且expandStage达到2时，继续向下长出末梢叶子
-        if (hasLatest && expandStage >= 2) {
+        // 第二层最新版本替代（黄球）
+        if (hasLatest && expandStage >= 3) {
+          const isSecondLayerBlooming = expandStage >= 4;
           childNode.children.push({
             id: `latest_${n.id}`,
             name: n.latest_standard_no,
-            symbolSize: 34,
+            symbolSize: isSecondLayerBlooming ? 34 : 0.001, // 同理，最新版本线条先长，之后绽放
             category: 2,
             title: '替代最新标准版本',
             type_display: n.type_display,
             status_display: '现行',
             itemStyle: {
+              opacity: isSecondLayerBlooming ? 1 : 0,
               color: {
                 type: 'radial', x: 0.5, y: 0.5, r: 0.5,
                 colorStops: [
@@ -357,8 +382,11 @@ const StandardGraphPage: React.FC = () => {
               },
               borderColor: '#ffe082',
               borderWidth: 2,
-              shadowBlur: 10,
+              shadowBlur: isSecondLayerBlooming ? 10 : 0,
               shadowColor: 'rgba(255, 193, 7, 0.4)'
+            },
+            label: {
+              show: isSecondLayerBlooming
             }
           });
         }
@@ -451,7 +479,7 @@ const StandardGraphPage: React.FC = () => {
     let otherCount = 0;
     let outdatedCount = 0;
 
-    if (expandStage >= 1) {
+    if (expandStage >= 2) {
       refNodes.forEach(n => {
         // 严格精确核对前缀格式，防止因连字符造成的错判
         const nameTrimmed = n.name.trim();
@@ -463,7 +491,7 @@ const StandardGraphPage: React.FC = () => {
         }
 
         const hasLatest = n.latest_standard_no && n.latest_standard_no.trim() !== nameTrimmed;
-        if (hasLatest && expandStage >= 2) {
+        if (hasLatest && expandStage >= 4) {
           outdatedCount++;
         }
       });
