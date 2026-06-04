@@ -103,7 +103,7 @@ const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filte
         style={{ width: 148 }}
         options={[
           { value: 'random', label: '随机抽样' },
-          { value: 'latest', label: '按最新发布' },
+          { value: 'latest', label: '按最新发布时间' },
         ]}
         size="middle"
       />

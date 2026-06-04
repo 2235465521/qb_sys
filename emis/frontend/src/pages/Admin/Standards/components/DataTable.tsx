@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Tag, Button, Space, Popconfirm } from 'antd';
+import { Table, Tag, Button, Space, Popconfirm, Tooltip } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -27,7 +27,22 @@ const DataTable: React.FC<DataTableProps> = ({
       dataIndex: 'standard_no',
       key: 'standard_no',
       width: 170,
-      render: (text: string) => <span style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace' }}>{text}</span>,
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft">
+          <span 
+            style={{ 
+              fontWeight: 'bold', 
+              fontFamily: 'Courier New, monospace',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
+      ),
     },
     {
       title: '标准名称',

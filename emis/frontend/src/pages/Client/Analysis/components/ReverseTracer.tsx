@@ -87,10 +87,23 @@ const ReverseTracer: React.FC = () => {
       title: '标准编号',
       dataIndex: 'standard_no',
       key: 'standard_no',
+      width: 180,
       render: (text: string) => (
-        <span style={{ fontWeight: 'bold', color: '#13c2c2', fontFamily: 'Courier New, monospace' }}>
-          {text}
-        </span>
+        <Tooltip title={text} placement="topLeft">
+          <span 
+            style={{ 
+              fontWeight: 'bold', 
+              color: '#13c2c2', 
+              fontFamily: 'Courier New, monospace',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
       ),
     },
     {

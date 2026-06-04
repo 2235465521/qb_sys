@@ -12,6 +12,7 @@ interface StandardsTableProps {
   onSelectionChange: (keys: React.Key[]) => void;
   keyword?: string;
   searchMode?: 'title' | 'full_text';
+  onChange?: (pagination: any, filters: any, sorter: any) => void;
 }
 
 const StandardsTable: React.FC<StandardsTableProps> = ({
@@ -21,6 +22,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
   onSelectionChange,
   keyword,
   searchMode,
+  onChange,
 }) => {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -133,15 +135,24 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       width: 180,
       align: 'center' as const,
       render: (text: string, record: Standard) => (
-        <Typography.Link
-          style={{ fontWeight: 'bold', fontFamily: 'Courier New, monospace', whiteSpace: 'nowrap' }}
-          onClick={() => {
-            setSelectedStandard(record);
-            setDrawerVisible(true);
-          }}
-        >
-          {text}
-        </Typography.Link>
+        <Tooltip title={text} placement="topLeft">
+          <Typography.Link
+            style={{ 
+              fontWeight: 'bold', 
+              fontFamily: 'Courier New, monospace', 
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap' 
+            }}
+            onClick={() => {
+              setSelectedStandard(record);
+              setDrawerVisible(true);
+            }}
+          >
+            {text}
+          </Typography.Link>
+        </Tooltip>
       ),
     },
     {
@@ -184,6 +195,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       key: 'implement_date',
       width: 130,
       align: 'center' as const,
+      sorter: true,
       render: (date: string) => (
         <span style={{ whiteSpace: 'nowrap' }}>
           {date ? dayjs(date).format('YYYY-MM-DD') : '--'}
@@ -196,6 +208,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       key: 'publish_date',
       width: 130,
       align: 'center' as const,
+      sorter: true,
       render: (date: string) => (
         <span style={{ whiteSpace: 'nowrap' }}>
           {date ? dayjs(date).format('YYYY-MM-DD') : '--'}
@@ -331,6 +344,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
         pagination={false}
         bordered
         rowSelection={rowSelection}
+        onChange={onChange}
         expandable={{
           expandedRowRender,
           rowExpandable: () => true,

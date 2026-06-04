@@ -161,7 +161,7 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
         rowKey="id"
         loading={loading}
         pagination={{ showQuickJumper: true,
-          pageSize: 10,
+          pageSize: 12,
           showSizeChanger: false,
           showTotal: (total) => `共计 ${total} 条高频引用国标`,
         }}

@@ -46,6 +46,18 @@ const SearchStandardsPage: React.FC = () => {
     // 翻页不清空勾选，以支持跨页勾选
   };
 
+  const handleTableChange = (_pagination: any, _filters: any, sorter: any) => {
+    let ordering = undefined;
+    if (sorter && sorter.order) {
+      ordering = sorter.order === 'descend' ? `-${sorter.field}` : sorter.field;
+    }
+    setParams({
+      ...params,
+      page: 1, // 排序发生变化时回到第一页
+      ordering
+    });
+  };
+
   // 批量下载已选标准
   const handleBatchDownload = async () => {
     if (selectedRowKeys.length === 0) return;
@@ -204,6 +216,7 @@ const SearchStandardsPage: React.FC = () => {
         onSelectionChange={setSelectedRowKeys}
         keyword={params.keyword}
         searchMode={params.search_mode}
+        onChange={handleTableChange}
       />
 
       {data && data.count > 0 && (

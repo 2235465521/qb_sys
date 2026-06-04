@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Card, Select, Button, Space, Typography, Spin, Empty, Alert, Tooltip, message } from 'antd';
 import { 
-  SearchOutlined, ZoomInOutlined, ZoomOutOutlined, 
+  SearchOutlined, 
   CompressOutlined, FullscreenOutlined, FullscreenExitOutlined, 
   PictureOutlined, FilePdfOutlined, CheckCircleOutlined, WarningOutlined
 } from '@ant-design/icons';
@@ -54,25 +54,14 @@ const StandardGraphPage: React.FC = () => {
   const [searchLoading, setSearchLoading] = useState(false);
   const timeoutRef = useRef<any>(null);
 
-  // ECharts 实例引用与容器 DOM 引用
   const echartsRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState<number>(1.05); // 稍微放大初始缩放，增加舒展度
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
-  // 1. 缩放逻辑 (通过 ECharts Option 的 zoom 属性受控更新)
-  const handleZoom = (type: 'in' | 'out') => {
-    setZoom(prev => {
-      const nextZoom = type === 'in' ? prev * 1.2 : prev / 1.2;
-      return Math.min(Math.max(nextZoom, 0.3), 5); // 限制缩放区间
-    });
-  };
-
-  // 2. 适应屏幕 (利用 ECharts 的 restore Action 实现平滑恢复，重置 React zoom 状态)
+  // 1. 适应屏幕 (利用 ECharts 的 restore Action 实现平滑恢复)
   const handleFitView = () => {
     if (echartsRef.current) {
       const chartInstance = echartsRef.current.getEchartsInstance();
-      setZoom(1.05);
       chartInstance.dispatchAction({ type: 'restore' });
       message.success('视图已平滑重置并适应屏幕');
     }
@@ -205,7 +194,6 @@ const StandardGraphPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     setExpandStage(0);
-    setZoom(1.05); // 切换标准重置缩放
 
     if (expandTimer1Ref.current) clearTimeout(expandTimer1Ref.current);
     if (expandTimer2Ref.current) clearTimeout(expandTimer2Ref.current);
@@ -429,7 +417,6 @@ const StandardGraphPage: React.FC = () => {
           layout: 'radial',
           symbol: 'circle',
           roam: true,
-          zoom: zoom,
           initialTreeDepth: 3,
           // 精准分配画布四角留白，彻底封死超出卡片边缘的可能性
           top: '12%',
@@ -673,12 +660,6 @@ const StandardGraphPage: React.FC = () => {
                   userSelect: 'none'
                 }}
               >
-                <Tooltip title="放大">
-                  <Button type="text" icon={<ZoomInOutlined />} onClick={() => handleZoom('in')} />
-                </Tooltip>
-                <Tooltip title="缩小">
-                  <Button type="text" icon={<ZoomOutOutlined />} onClick={() => handleZoom('out')} />
-                </Tooltip>
                 <Tooltip title="适应屏幕">
                   <Button type="text" icon={<CompressOutlined />} onClick={handleFitView} />
                 </Tooltip>
