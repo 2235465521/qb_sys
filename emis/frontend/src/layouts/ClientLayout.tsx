@@ -133,15 +133,15 @@ const ClientLayout: React.FC = () => {
   );
 
   return (
-    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto', background: '#f5f7fa' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #e8eef4', background: '#f5f7fa' }}>
+    <Layout style={{ minHeight: '100vh', minWidth: 1200, overflowX: 'auto', background: '#f8fafc' }}>
+      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #e2e8f0', background: '#ffffff' }}>
         <div style={{ 
           height: 64, 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          borderBottom: '1px solid #e8eef4',
-          background: '#f5f7fa'
+          borderBottom: '1px solid #f1f5f9',
+          background: '#ffffff'
         }}>
           <BrandLogo width={collapsed ? 36 : 48} height={collapsed ? 36 : 48} />
         </div>
@@ -151,11 +151,23 @@ const ClientLayout: React.FC = () => {
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
-          style={{ background: '#f5f7fa', borderRight: 0 }}
+          style={{ background: '#ffffff', borderRight: 0, padding: '12px 8px' }}
         />
       </Sider>
-      <Layout style={{ background: '#ffffff' }}>
-        <Header style={{ padding: '0 24px', background: '#f5f7fa', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e8eef4' }}>
+      <Layout style={{ background: '#f8fafc' }}>
+        <Header style={{ 
+          padding: '0 24px', 
+          background: 'rgba(255, 255, 255, 0.75)', 
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100
+        }}>
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
@@ -168,7 +180,7 @@ const ClientLayout: React.FC = () => {
                 type="primary" 
                 ghost 
                 onClick={() => navigate('/admin')}
-                style={{ borderRadius: 6 }}
+                style={{ borderRadius: 8 }}
               >
                 进入管理后台
               </Button>
@@ -179,7 +191,7 @@ const ClientLayout: React.FC = () => {
               </Badge>
             </Popover>
             <Space>
-              <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#1677ff' }} />
+              <Avatar icon={<UserOutlined />} style={{ backgroundColor: '#0d9488' }} />
               <span style={{ color: '#333', fontWeight: 500 }}>
                 {user?.real_name || user?.username || '会员用户'}
               </span>
@@ -189,7 +201,7 @@ const ClientLayout: React.FC = () => {
             </Button>
           </Space>
         </Header>
-        <Content style={{ margin: '24px 16px', padding: 24, minHeight: 280, background: '#ffffff', borderRadius: borderRadiusLG }}>
+        <Content style={{ margin: '24px', padding: 24, minHeight: 280, background: '#ffffff', borderRadius: borderRadiusLG, boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)' }}>
           <Outlet />
         </Content>
       </Layout>

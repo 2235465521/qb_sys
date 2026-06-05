@@ -34,21 +34,24 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
       bordered={false} 
       style={{ 
         background: '#fff', 
-        borderRadius: 12, 
+        borderRadius: 16, 
         marginBottom: 24, 
-        boxShadow: '0 2px 10px rgba(0,0,0,0.02)',
-        border: '1px solid #e8e8e8'
+        boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)',
+        border: '1px solid #f1f5f9'
       }}
-      bodyStyle={{ padding: '16px 20px' }}
+      bodyStyle={{ padding: '20px 24px' }}
     >
       <Form
         form={form}
         layout="vertical"
         onFinish={handleFinish}
       >
-        <div style={{ fontWeight: 'bold', fontSize: 13, color: '#595959', marginBottom: 12 }}>检索条件</div>
+        <div style={{ fontWeight: 600, fontSize: 14, color: '#0f172a', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-block', width: 4, height: 14, borderRadius: 2, background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)' }}></span>
+          检索条件
+        </div>
 
-        <Row gutter={[10, 10]} align="middle">
+        <Row gutter={[12, 12]} align="middle">
           {/* 1. 关键词输入框 */}
           <Col xs={24} sm={24} md={7} lg={7} xl={7}>
             <Form.Item name="keyword" style={{ marginBottom: 0 }}>
@@ -56,7 +59,7 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
                 placeholder="企业名称 / 信用代码 / 模糊检索..." 
                 prefix={<SearchOutlined style={{ color: '#bfbfbf' }} />} 
                 allowClear 
-                style={{ borderRadius: 6, height: 38 }}
+                style={{ borderRadius: 8, height: 38 }}
               />
             </Form.Item>
           </Col>
@@ -67,7 +70,7 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
               <Select
                 placeholder="省份"
                 style={{ width: '100%', height: 38 }}
-                dropdownStyle={{ borderRadius: 6 }}
+                dropdownStyle={{ borderRadius: 8 }}
                 allowClear
                 onChange={(val) => {
                   setSelectedProvince(val);
@@ -87,7 +90,7 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
               <Select
                 placeholder="城市"
                 style={{ width: '100%', height: 38 }}
-                dropdownStyle={{ borderRadius: 6 }}
+                dropdownStyle={{ borderRadius: 8 }}
                 allowClear
                 onChange={(val) => {
                   setSelectedCity(val);
@@ -107,7 +110,7 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
               <Select
                 placeholder="区/县"
                 style={{ width: '100%', height: 38 }}
-                dropdownStyle={{ borderRadius: 6 }}
+                dropdownStyle={{ borderRadius: 8 }}
                 allowClear
                 disabled={!selectedCity}
                 loading={districtsLoading}
@@ -124,14 +127,14 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
                 onClick={handleReset} 
                 icon={<ReloadOutlined />} 
                 style={{ 
-                  borderRadius: 6, 
+                  borderRadius: 8, 
                   height: 38, 
                   flex: 1, 
                   display: 'flex', 
                   alignItems: 'center', 
                   justifyContent: 'center',
-                  borderColor: '#d9d9d9',
-                  color: '#595959'
+                  borderColor: '#cbd5e1',
+                  color: '#475569'
                 }}
               >
                 清空
@@ -142,11 +145,12 @@ const AdvancedSearchBar: React.FC<AdvancedSearchBarProps> = ({ onSearch, loading
                 loading={loading} 
                 icon={<SearchOutlined />} 
                 style={{ 
-                  borderRadius: 6, 
+                  borderRadius: 8, 
                   height: 38, 
                   flex: 1, 
-                  background: '#0b1d33', 
-                  borderColor: '#0b1d33',
+                  background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)', 
+                  borderColor: '#0d9488',
+                  boxShadow: '0 4px 12px rgba(13, 148, 120, 0.2)',
                   fontWeight: 'bold',
                   display: 'flex', 
                   alignItems: 'center', 

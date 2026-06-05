@@ -1,15 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap');
+
 :root {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
   font-weight: 400;
+  background-color: #f8fafc;
 }
 
 body {
   margin: 0;
   padding: 0;
-  background-color: #f5f5f5;
+  background-color: #f8fafc;
+  color: #1e293b;
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* 优雅的自定义窄版滚动条 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* 全局过渡效果 */
+.transition-all-300 {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 全局渐入向上微动效 */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in-up {
+  animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 提升 Antd Table Hover 底色与圆角体验 */
+.ant-table-wrapper .ant-table {
+  border-radius: 12px !important;
+}
+
+.ant-table-tbody > tr.ant-table-row:hover > td {
+  background-color: #f0fdfa !important; /* Teal ultra light */
+  transition: background-color 0.2s ease;
+}
+
+/* 表格链接下划线微动效 */
+.hover-underline-link {
+  position: relative;
+  text-decoration: none !important;
+}
+
+.hover-underline-link::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  transform: scaleX(0);
+  height: 2px;
+  bottom: -2px;
+  left: 0;
+  background-color: #0d9488; /* Primary teal */
+  transform-origin: bottom right;
+  transition: transform 0.25s ease-out;
+}
+
+.hover-underline-link:hover::after {
+  transform: scaleX(1);
+  transform-origin: bottom left;
 }

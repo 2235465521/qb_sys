@@ -20,7 +20,43 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TaskProvider>
-        <ConfigProvider locale={zhCN}>
+        <ConfigProvider 
+          locale={zhCN}
+          theme={{
+            token: {
+              colorPrimary: '#0d9488', // Teal 600
+              colorSuccess: '#10b981', // Emerald 500
+              colorWarning: '#f59e0b', // Amber 500
+              colorError: '#ef4444', // Red 500
+              colorInfo: '#0ea5e9', // Sky 500
+              borderRadius: 10,
+              fontFamily: "'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+              colorBgLayout: '#f8fafc', // Slate 50 layout background
+            },
+            components: {
+              Card: {
+                borderRadiusLG: 16,
+                boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)',
+              },
+              Button: {
+                controlHeight: 38,
+                borderRadius: 8,
+              },
+              Input: {
+                controlHeight: 38,
+                borderRadius: 8,
+              },
+              Select: {
+                controlHeight: 38,
+                borderRadius: 8,
+              },
+              Table: {
+                borderRadius: 12,
+                headerBg: '#f8fafc',
+              },
+            }
+          }}
+        >
           <RouterProvider router={router} />
         </ConfigProvider>
       </TaskProvider>

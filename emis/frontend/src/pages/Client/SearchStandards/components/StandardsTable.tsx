@@ -137,13 +137,15 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       render: (text: string, record: Standard) => (
         <Typography.Link
           title={text}
+          className="hover-underline-link"
           style={{ 
             fontWeight: 'bold', 
             fontFamily: 'Courier New, monospace', 
             display: 'block',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap' 
+            whiteSpace: 'nowrap',
+            color: '#0d9488'
           }}
           onClick={() => {
             setSelectedStandard(record);
@@ -180,12 +182,54 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       align: 'center' as const,
       render: (status: string, record: any) => {
         if (status === 'active') {
-          return <Tag color="success" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '现行'}</Tag>;
+          return (
+            <Tag 
+              style={{ 
+                borderRadius: 6, 
+                whiteSpace: 'nowrap',
+                border: '1px solid #a7f3d0',
+                background: '#ecfdf5',
+                color: '#047857',
+                padding: '2px 8px',
+                fontWeight: 500
+              }}
+            >
+              {record.status_display || '现行'}
+            </Tag>
+          );
         }
         if (status === 'deprecated') {
-          return <Tag color="error" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '已废止'}</Tag>;
+          return (
+            <Tag 
+              style={{ 
+                borderRadius: 6, 
+                whiteSpace: 'nowrap',
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+                color: '#b91c1c',
+                padding: '2px 8px',
+                fontWeight: 500
+              }}
+            >
+              {record.status_display || '已废止'}
+            </Tag>
+          );
         }
-        return <Tag color="warning" style={{ borderRadius: 4, whiteSpace: 'nowrap' }}>{record.status_display || '草案'}</Tag>;
+        return (
+          <Tag 
+            style={{ 
+              borderRadius: 6, 
+              whiteSpace: 'nowrap',
+              border: '1px solid #fef08a',
+              background: '#fefce8',
+              color: '#a16207',
+              padding: '2px 8px',
+              fontWeight: 500
+            }}
+          >
+            {record.status_display || '草案'}
+          </Tag>
+        );
       },
     },
     {
@@ -352,7 +396,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
           expandIcon: ({ expanded, onExpand, record }) => {
             return expanded ? (
               <DownOutlined 
-                style={{ fontSize: 11, marginRight: 8, cursor: 'pointer', color: '#00acc1' }} 
+                style={{ fontSize: 11, marginRight: 8, cursor: 'pointer', color: '#0d9488' }} 
                 onClick={e => onExpand(record, e)} 
               />
             ) : (
@@ -363,11 +407,13 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
             );
           }
         }}
+        className="fade-in-up"
         style={{
           background: '#fff',
-          borderRadius: 12,
+          borderRadius: 16,
           overflow: 'hidden',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.02)'
+          boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)',
+          border: '1px solid #f1f5f9'
         }}
       />
 

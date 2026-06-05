@@ -145,24 +145,24 @@ const SearchStandardsPage: React.FC = () => {
         loading={isFetching}
       />
 
-      {/* 玻璌浮雕质感的操作工具栏 */}
+      {/* 玻离浮雕质感的操作工具栏 */}
       <div 
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: 'rgba(255, 255, 255, 0.65)',
-          backdropFilter: 'blur(12px)',
-          border: '1px solid rgba(255, 255, 255, 0.5)',
-          boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 4px 16px rgba(0, 0, 0, 0.04)',
-          padding: '12px 24px',
-          borderRadius: 12,
+          background: 'rgba(255, 255, 255, 0.8)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid #f1f5f9',
+          boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)',
+          padding: '16px 24px',
+          borderRadius: 16,
           marginBottom: 16,
           transition: 'all 0.3s ease'
         }}
       >
-        <div style={{ fontSize: 14, color: '#006064', fontWeight: 500 }}>
-          当前条件共检索到 <span style={{ fontSize: 16, fontWeight: 'bold', color: '#00acc1' }}>{data?.count || 0}</span> 条企业标准
+        <div style={{ fontSize: 14, color: '#475569', fontWeight: 500 }}>
+          当前条件共检索到 <span style={{ fontSize: 16, fontWeight: 'bold', color: '#0d9488' }}>{data?.count || 0}</span> 条企业标准
         </div>
 
         {/* 内联操作栏：抽样策略 + 数量 + 打包下载 */}

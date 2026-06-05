@@ -169,17 +169,24 @@ const CompanySearchPage: React.FC = () => {
         loading={isLoading}
         locale={{ emptyText: <Empty description="暂无符合条件的企业记录" /> }}
         renderItem={(item: Company) => (
-          <List.Item>
+          <List.Item className="fade-in-up">
             <Card 
               hoverable 
-              style={{ borderRadius: 12, border: '1px solid #f0f0f0' }}
+              style={{ border: '1px solid #f1f5f9', overflow: 'hidden' }}
               bodyStyle={{ padding: 20 }}
               actions={[
                 <Button 
                   type="link" 
-                  icon={<FileTextOutlined />} 
+                  icon={<FileTextOutlined style={{ color: '#0d9488' }} />} 
                   onClick={() => openStandards(item)}
-                  style={{ width: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}
+                  style={{ 
+                    width: '100%', 
+                    display: 'flex', 
+                    justifyContent: 'center', 
+                    alignItems: 'center',
+                    color: '#0d9488',
+                    fontWeight: 500
+                  }}
                 >
                   查看标准资产 ({item.standards_count || 0})
                 </Button>
@@ -191,7 +198,7 @@ const CompanySearchPage: React.FC = () => {
                     checked={isSelected(item.id)}
                     onChange={(e) => handleSelectCompany(item, e.target.checked)}
                   />
-                  <Tag color={item.status === 'active' ? 'blue' : 'default'} style={{ margin: 0 }}>
+                  <Tag color={item.status === 'active' ? 'processing' : 'default'} style={{ margin: 0, borderRadius: 4 }}>
                     {item.status === 'active' ? '正常运行' : '停业/异常'}
                   </Tag>
                 </Space>
@@ -202,8 +209,8 @@ const CompanySearchPage: React.FC = () => {
                 )}
               </div>
               
-              <Title level={5} ellipsis={{ tooltip: item.name }} style={{ marginTop: 0, marginBottom: 8 }}>
-                <BankOutlined /> {item.name}
+              <Title level={5} ellipsis={{ tooltip: item.name }} style={{ marginTop: 0, marginBottom: 8, color: '#0f172a' }}>
+                <BankOutlined style={{ color: '#0d9488', marginRight: 6 }} /> {item.name}
               </Title>
               
               <Space direction="vertical" size={4} style={{ width: '100%' }}>

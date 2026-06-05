@@ -34,8 +34,8 @@ const StatsCards: React.FC<StatsProps> = ({
       value: totalCompanies,
       subValue: `活跃运行: ${activeCompanies}`,
       icon: <BankOutlined style={{ fontSize: 24, color: '#fff' }} />,
-      grad: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
-      shadow: 'rgba(24, 144, 255, 0.2)',
+      grad: 'linear-gradient(135deg, #0d9488 0%, #0f172a 100%)',
+      shadow: 'rgba(13, 148, 136, 0.15)',
       path: '/admin/companies',
     },
     {
@@ -43,8 +43,8 @@ const StatsCards: React.FC<StatsProps> = ({
       value: totalMembers,
       subValue: `活跃会员: ${activeMembers}`,
       icon: <TeamOutlined style={{ fontSize: 24, color: '#fff' }} />,
-      grad: 'linear-gradient(135deg, #52c41a 0%, #13c2c2 100%)',
-      shadow: 'rgba(82, 196, 26, 0.2)',
+      grad: 'linear-gradient(135deg, #10b981 0%, #0f766e 100%)',
+      shadow: 'rgba(16, 185, 129, 0.15)',
       path: '/admin/members',
     },
     {
@@ -52,8 +52,8 @@ const StatsCards: React.FC<StatsProps> = ({
       value: totalStandards,
       subValue: `企标 ${enterpriseStandards} | 国标 ${nationalStandards}`,
       icon: <FileProtectOutlined style={{ fontSize: 24, color: '#fff' }} />,
-      grad: 'linear-gradient(135deg, #faad14 0%, #ff4d4f 100%)',
-      shadow: 'rgba(250, 173, 20, 0.2)',
+      grad: 'linear-gradient(135deg, #f59e0b 0%, #ca8a04 100%)',
+      shadow: 'rgba(245, 158, 11, 0.15)',
       path: '/admin/standards',
     },
     {
@@ -61,8 +61,8 @@ const StatsCards: React.FC<StatsProps> = ({
       value: totalSmsTasks,
       subValue: `累计发送: ${totalSentSms} 条`,
       icon: <SendOutlined style={{ fontSize: 24, color: '#fff' }} />,
-      grad: 'linear-gradient(135deg, #f759ab 0%, #722ed1 100%)',
-      shadow: 'rgba(247, 89, 171, 0.2)',
+      grad: 'linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)',
+      shadow: 'rgba(236, 72, 153, 0.15)',
       path: '/admin/sms-templates',
     },
   ];
@@ -70,7 +70,7 @@ const StatsCards: React.FC<StatsProps> = ({
   return (
     <Row gutter={[24, 24]}>
       {cardData.map((c, idx) => (
-        <Col xs={24} sm={12} md={6} key={idx}>
+        <Col xs={24} sm={12} md={6} key={idx} className="fade-in-up" style={{ animationDelay: `${idx * 0.1}s` }}>
           <Card
             bordered={false}
             style={{
@@ -79,7 +79,7 @@ const StatsCards: React.FC<StatsProps> = ({
               boxShadow: `0 8px 24px ${c.shadow}`,
               overflow: 'hidden',
               position: 'relative',
-              transition: 'transform 0.3s',
+              transition: 'transform 0.3s, box-shadow 0.3s',
               cursor: 'pointer',
             }}
             bodyStyle={{ padding: '24px 20px' }}

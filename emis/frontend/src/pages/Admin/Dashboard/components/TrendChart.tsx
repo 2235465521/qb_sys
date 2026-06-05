@@ -35,51 +35,52 @@ const TrendChart: React.FC<TrendChartProps> = ({ trend = [] }) => {
 
   return (
     <Card 
-      title={<span style={{ fontWeight: 'bold', fontSize: 16 }}><LineChartOutlined /> 企业入库增长趋势</span>} 
-      style={{ borderRadius: 16, boxShadow: '0 4px 20px rgba(0,0,0,0.05)', border: '1px solid #f0f0f0' }}
+      title={<span style={{ fontWeight: 600, fontSize: 16, color: '#0f172a' }}><LineChartOutlined style={{ color: '#0d9488', marginRight: 6 }} /> 企业入库增长趋势</span>} 
+      className="fade-in-up"
+      style={{ borderRadius: 16, boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)', border: '1px solid #f1f5f9' }}
     >
       <div style={{ position: 'relative', width: '100%', overflow: 'hidden' }}>
         <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} style={{ overflow: 'visible' }}>
           <defs>
             <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#1890ff" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#1890ff" stopOpacity="0.0" />
+              <stop offset="0%" stopColor="#0d9488" stopOpacity="0.3" />
+              <stop offset="100%" stopColor="#0d9488" stopOpacity="0.0" />
             </linearGradient>
             <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#1890ff" />
-              <stop offset="100%" stopColor="#722ed1" />
+              <stop offset="0%" stopColor="#0d9488" />
+              <stop offset="100%" stopColor="#0f766e" />
             </linearGradient>
           </defs>
-
+ 
           {/* Grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, idx) => {
             const y = paddingY + ratio * (height - 2 * paddingY);
             const gridVal = Math.round(maxVal - ratio * range);
             return (
               <g key={idx}>
-                <line x1={paddingX} y1={y} x2={width - paddingX} y2={y} stroke="#f0f0f0" strokeDasharray="3,3" />
-                <text x={paddingX - 10} y={y + 4} fontSize={10} fill="#999" textAnchor="end">{gridVal}</text>
+                <line x1={paddingX} y1={y} x2={width - paddingX} y2={y} stroke="#f1f5f9" strokeDasharray="3,3" />
+                <text x={paddingX - 10} y={y + 4} fontSize={10} fill="#94a3b8" textAnchor="end">{gridVal}</text>
               </g>
             );
           })}
-
+ 
           {/* Area Fill */}
           <path d={areaPath} fill="url(#areaGrad)" />
-
+ 
           {/* Trend Line */}
           <path d={linePath} fill="none" stroke="url(#lineGrad)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-
+ 
           {/* Glow spots */}
           {points.map((p, idx) => (
             <g key={idx}>
-              <circle cx={p.x} cy={p.y} r={5} fill="#fff" stroke="#1890ff" strokeWidth={2} />
-              <circle cx={p.x} cy={p.y} r={10} fill="#1890ff" fillOpacity={0.15} />
+              <circle cx={p.x} cy={p.y} r={5} fill="#fff" stroke="#0d9488" strokeWidth={2} />
+              <circle cx={p.x} cy={p.y} r={10} fill="#0d9488" fillOpacity={0.15} />
               
               {/* X Axis labels */}
-              <text x={p.x} y={height - 10} fontSize={11} fill="#666" textAnchor="middle">{p.label}</text>
+              <text x={p.x} y={height - 10} fontSize={11} fill="#64748b" textAnchor="middle">{p.label}</text>
               
               {/* Floating value labels */}
-              <text x={p.x} y={p.y - 12} fontSize={10} fontWeight="bold" fill="#1890ff" textAnchor="middle">{p.value}</text>
+              <text x={p.x} y={p.y - 12} fontSize={10} fontWeight="bold" fill="#0f766e" textAnchor="middle">{p.value}</text>
             </g>
           ))}
         </svg>

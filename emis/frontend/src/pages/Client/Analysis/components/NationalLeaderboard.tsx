@@ -58,17 +58,55 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
       dataIndex: "rank",
       key: "rank",
       width: 80,
-      render: (rank: number) => (
-        <span
-          style={{
-            fontSize: 16,
-            fontWeight: "bold",
-            color: rank <= 3 ? "#fadb14" : "#bfbfbf",
-          }}
-        >
-          {rank}
-        </span>
-      ),
+      render: (rank: number) => {
+        const isTop3 = rank <= 3;
+        const top3Colors = [
+          { border: '#fef08a', bg: 'linear-gradient(135deg, #fef08a 0%, #eab308 100%)', text: '#854d0e' }, // Gold
+          { border: '#cbd5e1', bg: 'linear-gradient(135deg, #f8fafc 0%, #cbd5e1 100%)', text: '#334155' }, // Silver
+          { border: '#fed7aa', bg: 'linear-gradient(135deg, #ffedd5 0%, #ca8a04 100%)', text: '#713f12' }  // Bronze
+        ];
+        
+        if (isTop3) {
+          const styleConfig = top3Colors[rank - 1];
+          return (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 26,
+                height: 26,
+                borderRadius: '50%',
+                background: styleConfig.bg,
+                color: styleConfig.text,
+                border: `1px solid ${styleConfig.border}`,
+                fontSize: 13,
+                fontWeight: 'bold',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.06)'
+              }}
+            >
+              {rank}
+            </span>
+          );
+        }
+        
+        return (
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 26,
+              height: 26,
+              fontSize: 13,
+              fontWeight: 'bold',
+              color: '#94a3b8',
+            }}
+          >
+            {rank}
+          </span>
+        );
+      },
     },
     {
       title: "标准号",
@@ -115,8 +153,8 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
     <Card
       title={
         <Space>
-          <TrophyOutlined style={{ color: "#fadb14", fontSize: 18 }} />
-          <span style={{ fontWeight: "bold" }}>国标引用热度排行榜</span>
+          <TrophyOutlined style={{ color: "#eab308", fontSize: 18 }} />
+          <span style={{ fontWeight: 600, color: '#0f172a' }}>国标引用热度排行榜</span>
         </Space>
       }
       extra={
@@ -138,22 +176,28 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
             icon={<FileExcelOutlined />}
             onClick={handleExport}
             loading={exporting}
+            style={{
+              background: 'linear-gradient(135deg, #0d9488 0%, #0f766e 100%)',
+              borderColor: '#0d9488',
+              boxShadow: '0 4px 10px rgba(13, 148, 120, 0.15)'
+            }}
           >
             导出 Excel
           </Button>
         </Space>
       }
       bordered={false}
+      className="fade-in-up"
       style={{
         borderRadius: 16,
-        boxShadow: "0 6px 20px rgba(0,0,0,0.04)",
-        border: "1px solid #f0f0f0",
+        boxShadow: "0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)",
+        border: "1px solid #f1f5f9",
         background: "#fff",
         height: '100%',
         display: 'flex',
         flexDirection: 'column'
       }}
-      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
+      bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '16px 20px' }}
     >
       <Table
         dataSource={mappedData}
@@ -166,8 +210,7 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
           showTotal: (total) => `共计 ${total} 条高频引用国标`,
         }}
         size="middle"
-        bordered
-        style={{ borderRadius: 8, overflow: "hidden" }}
+        style={{ borderRadius: 12, overflow: "hidden", border: '1px solid #f1f5f9' }}
       />
     </Card>
   );

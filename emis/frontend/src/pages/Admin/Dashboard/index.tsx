@@ -61,16 +61,28 @@ const DashboardPage: React.FC = () => {
   return (
     <div style={{ padding: '0 0 24px 0', display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Welcome Header Banner */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', background: '#fff', padding: 24, borderRadius: 16, border: '1px solid #f0f0f0', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
+      <div 
+        className="fade-in-up"
+        style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'flex-start', 
+          background: '#fff', 
+          padding: '24px 32px', 
+          borderRadius: 16, 
+          border: '1px solid #f1f5f9', 
+          boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05), 0 2px 8px -1px rgba(0,0,0,0.02)' 
+        }}
+      >
         <div>
-          <Title level={3} style={{ margin: 0, fontWeight: 'bold' }}>{getGreeting()} 超级管理员</Title>
-          <Paragraph type="secondary" style={{ margin: '8px 0 0 0' }}>
+          <Title level={3} style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{getGreeting()} 超级管理员</Title>
+          <Paragraph type="secondary" style={{ margin: '8px 0 0 0', color: '#475569' }}>
             欢迎回来！当前平台运行一切正常。您可以在这里总览企业资质信息、标准库分布、会员系统运行状态以及自动化短信群发任务。
           </Paragraph>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <span style={{ color: '#999', fontSize: 13 }}>当前系统时间</span>
-          <div style={{ fontSize: 15, fontWeight: 500, color: '#333', marginTop: 4 }}>{currentDate}</div>
+          <span style={{ color: '#94a3b8', fontSize: 13, fontWeight: 500 }}>当前系统时间</span>
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#0f172a', marginTop: 4 }}>{currentDate}</div>
         </div>
       </div>
 

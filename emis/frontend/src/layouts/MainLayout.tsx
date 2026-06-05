@@ -22,7 +22,7 @@ const MainLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const {
-    token: { colorBgContainer, borderRadiusLG },
+    token: { borderRadiusLG },
   } = theme.useToken();
 
   const menuItems: any[] = [
@@ -83,15 +83,15 @@ const MainLayout: React.FC = () => {
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ boxShadow: '2px 0 8px 0 rgba(29,33,41,.05)' }}>
+    <Layout style={{ minHeight: '100vh', background: '#f8fafc' }}>
+      <Sider trigger={null} collapsible collapsed={collapsed} theme="light" style={{ borderRight: '1px solid #e2e8f0', background: '#ffffff' }}>
         <div style={{ 
           height: 64, 
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          borderBottom: '1px solid #f0f0f0',
-          background: '#fff'
+          borderBottom: '1px solid #f1f5f9',
+          background: '#ffffff'
         }}>
           <BrandLogo width={collapsed ? 36 : 48} height={collapsed ? 36 : 48} />
         </div>
@@ -101,27 +101,41 @@ const MainLayout: React.FC = () => {
           selectedKeys={[location.pathname]}
           items={menuItems}
           onClick={({ key }) => navigate(key)}
+          style={{ background: '#ffffff', borderRight: 0, padding: '12px 8px' }}
         />
       </Sider>
-      <Layout>
-        <Header style={{ padding: 0, background: colorBgContainer, display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingRight: 24 }}>
+      <Layout style={{ background: '#f8fafc' }}>
+        <Header style={{ 
+          padding: '0 24px 0 0', 
+          background: 'rgba(255, 255, 255, 0.75)', 
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'space-between', 
+          borderBottom: '1px solid rgba(226, 232, 240, 0.8)',
+          position: 'sticky',
+          top: 0,
+          zIndex: 100
+        }}>
           <Button
             type="text"
             icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
             onClick={() => setCollapsed(!collapsed)}
             style={{ fontSize: '16px', width: 64, height: 64 }}
           />
-          <Button type="link" icon={<LogoutOutlined />} onClick={handleLogout}>
+          <Button type="link" icon={<LogoutOutlined />} onClick={handleLogout} danger>
             退出登录
           </Button>
         </Header>
         <Content
           style={{
-            margin: '24px 16px',
+            margin: '24px',
             padding: 24,
             minHeight: 280,
-            background: colorBgContainer,
+            background: '#ffffff',
             borderRadius: borderRadiusLG,
+            boxShadow: '0 4px 20px -2px rgba(0,0,0,0.05)',
             overflow: 'auto'
           }}
         >
