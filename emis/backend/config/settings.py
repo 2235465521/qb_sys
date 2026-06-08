@@ -161,6 +161,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'standards.auto_scan_missing_dates',
         'schedule': 1800.0,  # 30 分钟
     },
+    # 每 24 小时刷新一次省市区字典缓存（数据几乎不变，24小时足够）
+    'warm-area-dict-daily': {
+        'task': 'companies.tasks.warm_area_dict_task',
+        'schedule': 86400.0,  # 24 小时
+    },
+    # 每 30 分钟刷新一次 Dashboard 统计数据缓存
+    'warm-dashboard-stats-30m': {
+        'task': 'companies.tasks.warm_dashboard_stats_task',
+        'schedule': 1800.0,  # 30 分钟
+    },
 }
 
 if REDIS_AVAILABLE:

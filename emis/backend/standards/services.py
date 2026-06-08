@@ -590,8 +590,9 @@ def import_standards_from_excel(file_obj) -> dict:
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
             from django.core.cache import cache
+            from standards.models import _invalidate_search_cache
             try:
-                cache.clear()
+                _invalidate_search_cache()
             except Exception:
                 pass
             
@@ -771,9 +772,9 @@ def import_standards_by_type(file_obj, std_type: str) -> dict:
 
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
-            from django.core.cache import cache
+            from standards.models import _invalidate_search_cache
             try:
-                cache.clear()
+                _invalidate_search_cache()
             except Exception:
                 pass
 

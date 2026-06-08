@@ -471,9 +471,10 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
         except Exception:
             pass
 
-        # 4. 成功完结更新缓存
+        # 4. 成功完结，精准失效搜索缓存（保留任务进度 key 不受影响）
         try:
-            cache.clear()
+            from standards.models import _invalidate_search_cache
+            _invalidate_search_cache()
         except Exception:
             pass
 
@@ -718,9 +719,12 @@ def parse_standard_pdf_task(self, standard_id: int):
 
             if updated_fields:
                 standard.save(update_fields=updated_fields)
-                # 清除列表缓存，确保前端能及时展示最新日期
-                from django.core.cache import cache
-                cache.clear()
+                # 精准失效搜索缓存，不影响其他业务缓存
+                from standards.models import _invalidate_search_cache
+                try:
+                    _invalidate_search_cache()
+                except Exception:
+                    pass
 
         return f"Successfully parsed {len(pages_text)} pages for Standard {standard.standard_no}."
     except Exception as e:

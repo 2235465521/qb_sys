@@ -43,32 +43,52 @@ def import_companies_task(file_path, task_id):
         # Step 1: 缓存预热
         # ==========================================
         _update_progress(task_id, status="processing", progress=5)
-        
-        # 预加载省市区字典
-        provinces = {p.name: p for p in Province.objects.all()}
-        cities = {(c.province_id, c.name): c for c in City.objects.all()}
-        districts = {(d.city_id, d.name): d for d in District.objects.all()}
-        
+
+        # 从预热缓存加载省市区字典（相比每次直接查库，这里短路 3 次 DB Query 就变成 0 次）
+        from companies.warmup import get_area_data_from_cache
+        _provinces, _cities, _districts = get_area_data_from_cache()
+
+        # 将列表转为查找字典
+        provinces  = {p['name']: p for p in _provinces}
+        cities     = {(c['province_id'], c['name']): c for c in _cities}
+        districts  = {(d['city_id'], d['name']): d for d in _districts}
+
+        def _find_obj(model_cls, data_dict, pk):
+            """根据 id 从模型层返回实例（懒加载已命中的）"""
+            return model_cls.objects.get(pk=pk)
+
+        _prov_cache = {}
+        _city_cache = {}
+        _dist_cache = {}
+
         def find_province(name):
             if not name: return None
-            # 简单模糊匹配
-            for p_name, p in provinces.items():
+            for p_name, p_data in provinces.items():
                 if name in p_name or p_name in name:
-                    return p
+                    pid = p_data['id']
+                    if pid not in _prov_cache:
+                        _prov_cache[pid] = Province.objects.get(pk=pid)
+                    return _prov_cache[pid]
             return None
 
         def find_city(p_id, name):
             if not name or not p_id: return None
-            for (pid, c_name), c in cities.items():
+            for (pid, c_name), c_data in cities.items():
                 if pid == p_id and (name in c_name or c_name in name):
-                    return c
+                    cid = c_data['id']
+                    if cid not in _city_cache:
+                        _city_cache[cid] = City.objects.get(pk=cid)
+                    return _city_cache[cid]
             return None
 
         def find_district(c_id, name):
             if not name or not c_id: return None
-            for (cid, d_name), d in districts.items():
+            for (cid, d_name), d_data in districts.items():
                 if cid == c_id and (name in d_name or d_name in name):
-                    return d
+                    did = d_data['id']
+                    if did not in _dist_cache:
+                        _dist_cache[did] = District.objects.get(pk=did)
+                    return _dist_cache[did]
             return None
 
         # 预加载现有信用代码，用于查重
@@ -232,3 +252,38 @@ def import_companies_task(file_path, task_id):
         traceback.print_exc()
         errors.append(f"系统错误: {str(e)}")
         _update_progress(task_id, status="failed", progress=100, success=success_count, skipped=skipped_count, errors=errors, total=total_count)
+
+
+# ============================================================
+# Celery Beat 定时预热任务
+# ============================================================
+
+@shared_task(name='companies.tasks.warm_area_dict_task')
+def warm_area_dict_task():
+    """
+    Celery Beat 定时任务：每 24 小时刷新省市区字典缓存。
+    对应 settings.CELERY_BEAT_SCHEDULE 中的 'warm-area-dict-daily'。
+    """
+    from companies.warmup import warm_area_dict
+    warm_area_dict()
+    return 'area dict cache warmed'
+
+
+@shared_task(name='companies.tasks.warm_dashboard_stats_task')
+def warm_dashboard_stats_task():
+    """
+    Celery Beat 定时任务：每 30 分钟刷新 Dashboard 统计数据缓存。
+    对应 settings.CELERY_BEAT_SCHEDULE 中的 'warm-dashboard-stats-30m'。
+    """
+    from django.core.cache import cache
+    try:
+        total_companies  = Company.objects.filter(is_deleted=False).count()
+        active_companies = Company.objects.filter(is_deleted=False, status='active').count()
+        cache.set('dashboard:stats', {
+            'total_companies':  total_companies,
+            'active_companies': active_companies,
+        }, timeout=1800)  # 30 分钟
+    except Exception as e:
+        import logging
+        logging.getLogger('companies.tasks').warning(f'[warm_dashboard] 失败: {e}')
+    return 'dashboard stats cache warmed'

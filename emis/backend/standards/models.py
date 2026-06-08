@@ -221,13 +221,28 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from django.core.cache import cache
 
+
+def _invalidate_search_cache():
+    """
+    精准清除与搜索/统计相关的缓存 key，
+    保留任务进度、ZIP 下载状态等业务关键数据。
+    """
+    try:
+        # django-redis 支持通配符删除
+        cache.delete_pattern("company_search:*")
+    except (AttributeError, Exception):
+        # 文件缓存降级模式：只删默认页 key，其他 key 在 TTL 5分钟后自然过期
+        cache.delete("company_search:default")
+    cache.delete("dashboard:stats")
+
+
 @receiver(post_save, sender=Standard)
 def standard_post_save(sender, instance, created, **kwargs):
     """
-    当企标记录保存时，清除列表缓存并异步触发 PDF 解析任务
+    当企标记录保存时，精准清除搜索缓存并异步触发 PDF 解析任务
     """
     try:
-        cache.clear()
+        _invalidate_search_cache()
     except Exception:
         pass
 
@@ -244,10 +259,10 @@ def standard_post_save(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=Standard)
 def standard_post_delete(sender, instance, **kwargs):
     """
-    当企标记录删除时，清除列表缓存
+    当企标记录删除时，精准清除搜索缓存
     """
     try:
-        cache.clear()
+        _invalidate_search_cache()
     except Exception:
         pass
 
