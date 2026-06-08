@@ -18,6 +18,11 @@ from companies.serializers import (
     FollowUpSerializer, AttachmentSerializer, LeadOptionSerializer
 )
 from companies import services
+from companies.tasks import import_companies_task
+import uuid
+import os
+from django.core.cache import cache
+from django.conf import settings
 
 
 class CompanyAdminListCreateView(generics.ListCreateAPIView):
@@ -121,7 +126,7 @@ class CompanyAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class CompanyImportView(APIView):
     """
-    POST /api/admin/companies/import/ — Excel 批量导入
+    POST /api/admin/companies/import/ — Excel 批量导入 (异步)
     """
     permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser]
@@ -134,8 +139,47 @@ class CompanyImportView(APIView):
         if not file_obj.name.endswith(('.xlsx', '.xls')):
             return Response({'error': '仅支持 .xlsx 或 .xls 格式'}, status=status.HTTP_400_BAD_REQUEST)
 
-        result = services.import_companies_from_excel(file_obj)
-        return Response(result, status=status.HTTP_200_OK)
+        task_id = uuid.uuid4().hex
+        
+        # 将文件保存到临时目录
+        temp_dir = os.path.join(settings.MEDIA_ROOT, 'imports')
+        os.makedirs(temp_dir, exist_ok=True)
+        file_path = os.path.join(temp_dir, f"{task_id}_{file_obj.name}")
+        
+        with open(file_path, 'wb+') as destination:
+            for chunk in file_obj.chunks():
+                destination.write(chunk)
+                
+        # 初始化缓存进度
+        cache.set(f"import_task_{task_id}", {
+            "status": "queued",
+            "progress": 0,
+            "success": 0,
+            "skipped": 0,
+            "errors": [],
+            "total": 0
+        }, timeout=3600)
+
+        # 触发 Celery 异步任务
+        import_companies_task.delay(file_path, task_id)
+        
+        return Response({'task_id': task_id, 'status': 'queued'}, status=status.HTTP_200_OK)
+
+
+class CompanyImportStatusView(APIView):
+    """
+    GET /api/admin/companies/import/status/<task_id>/ — 查询批量导入进度
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, task_id):
+        cache_key = f"import_task_{task_id}"
+        task_data = cache.get(cache_key)
+        
+        if not task_data:
+            return Response({'error': '任务不存在或已过期'}, status=status.HTTP_404_NOT_FOUND)
+            
+        return Response(task_data, status=status.HTTP_200_OK)
 
 
 class CompanyImportTemplateView(APIView):
