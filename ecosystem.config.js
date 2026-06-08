@@ -2,7 +2,7 @@
  * ecosystem.config.js — PM2 进程管理配置
  *
  * 用法：
- *   pm2 start ecosystem.config.js          # 启动所有进程
+ *   pm2 start ecosystem.config.js          # 首次启动所有进程
  *   pm2 reload ecosystem.config.js         # 热重载（零停机）
  *   pm2 stop ecosystem.config.js           # 停止所有进程
  *
@@ -11,70 +11,77 @@
  *   4核服务器 → workers: 9
  *   8核服务器 → workers: 17
  *
- * 请根据实际服务器 CPU 核数修改 --workers 参数。
+ * 请根据实际 nproc 输出修改 --workers 参数。
  */
 
-const VENV_PYTHON = '/home/zkbz01/emis_v2/venv/bin/python';  // ← 根据实际虚拟环境路径修改
-const BACKEND_CWD = './emis/backend';
+// ─── 路径配置（Conda 环境）───────────────────────────────────────────
+const CONDA_ENV  = '/home/zkbz01/anaconda3/envs/qb_system/bin';
+const GUNICORN   = `${CONDA_ENV}/gunicorn`;
+const CELERY     = `${CONDA_ENV}/celery`;
+
+// 绝对路径，避免 PM2 因 CWD 变化找不到项目
+const BACKEND_CWD = '/home/zkbz01/emis_v2/xiangmu/emis/backend';
 
 module.exports = {
   apps: [
-    // ─── Django API 服务（Gunicorn 多 Worker）───────────────────────
+    // ─── Django API 服务（Gunicorn 多 Worker）────────────────────────
     {
       name: 'emis-backend',
-      script: 'gunicorn',
+      script: GUNICORN,
       args: [
         'config.wsgi:application',
-        '--workers', '5',          // ← 根据 CPU 核数调整（公式：核数×2+1）
+        '--workers', '5',           // ← nproc 输出核数 × 2 + 1，2核填5，4核填9
         '--worker-class', 'gthread',
-        '--threads', '4',          // 每 worker 4 线程 → 5×4=20 并发
-        '--timeout', '120',        // 请求超时 120s（批量导入已改为异步，不影响）
+        '--threads', '4',           // 每 worker 4 线程 → 5×4=20 并发
+        '--timeout', '120',
         '--bind', '0.0.0.0:8000',
         '--access-logfile', '-',
         '--error-logfile', '-',
       ].join(' '),
       cwd: BACKEND_CWD,
-      interpreter: VENV_PYTHON,
+      interpreter: 'none',          // 可执行文件直接运行，不需要 Python 解释器包装
       env: {
         DJANGO_SETTINGS_MODULE: 'config.settings',
-        SERVER_GATEWAY_INTERFACE: 'wsgi',   // 让 AppConfig.ready() 触发预热
+        SERVER_GATEWAY_INTERFACE: 'wsgi',   // 触发 AppConfig.ready() 缓存预热
         PYTHONUNBUFFERED: '1',
+        PATH: `${CONDA_ENV}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
       },
       watch: false,
       max_memory_restart: '512M',
       restart_delay: 3000,
     },
 
-    // ─── Celery Worker（异步任务：批量导入、PDF解析、短信）──────────
+    // ─── Celery Worker（异步任务：批量导入、PDF解析、短信）─────────────
     {
       name: 'emis-celery-worker',
-      script: 'celery',
+      script: CELERY,
       args: '-A config worker -Q emis --concurrency=4 --loglevel=info',
       cwd: BACKEND_CWD,
-      interpreter: VENV_PYTHON,
+      interpreter: 'none',
       env: {
         DJANGO_SETTINGS_MODULE: 'config.settings',
         PYTHONUNBUFFERED: '1',
+        PATH: `${CONDA_ENV}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
       },
       watch: false,
       max_memory_restart: '512M',
       restart_delay: 5000,
     },
 
-    // ─── Celery Beat（定时任务调度：PDF扫描、缓存预热）────────────────
+    // ─── Celery Beat（定时任务调度：PDF扫描、缓存预热）──────────────────
     {
       name: 'emis-celery-beat',
-      script: 'celery',
-      args: '-A config beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler',
+      script: CELERY,
+      args: '-A config beat --loglevel=info',   // 使用 settings.CELERY_BEAT_SCHEDULE
       cwd: BACKEND_CWD,
-      interpreter: VENV_PYTHON,
+      interpreter: 'none',
       env: {
         DJANGO_SETTINGS_MODULE: 'config.settings',
         PYTHONUNBUFFERED: '1',
+        PATH: `${CONDA_ENV}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
       },
       watch: false,
-      // Beat 只能单实例运行！不要设置 instances > 1
-      instances: 1,
+      instances: 1,                 // Beat 只能单实例！
       restart_delay: 5000,
     },
   ],
