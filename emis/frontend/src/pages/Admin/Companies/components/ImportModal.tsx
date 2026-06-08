@@ -25,7 +25,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ open, onCancel, onSuccess }) 
   const [uploading, setUploading] = useState(false);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<number | null>(null);
 
   const startPolling = (id: string) => {
     if (pollingIntervalRef.current) {
