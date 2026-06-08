@@ -73,6 +73,7 @@ const ImportModal: React.FC<ImportModalProps> = ({ open, onCancel, onSuccess }) 
     try {
       const { data } = await apiClient.post('/admin/companies/import/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 300000, // 5分钟，应对超大文件上传
       });
       if (data.task_id) {
         setTaskId(data.task_id);

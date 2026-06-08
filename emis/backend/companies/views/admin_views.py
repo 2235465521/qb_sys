@@ -132,6 +132,8 @@ class CompanyImportView(APIView):
     parser_classes = [MultiPartParser]
 
     def post(self, request):
+        import threading
+
         file_obj = request.FILES.get('file')
         if not file_obj:
             return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
@@ -140,16 +142,16 @@ class CompanyImportView(APIView):
             return Response({'error': '仅支持 .xlsx 或 .xls 格式'}, status=status.HTTP_400_BAD_REQUEST)
 
         task_id = uuid.uuid4().hex
-        
+
         # 将文件保存到临时目录
         temp_dir = os.path.join(settings.MEDIA_ROOT, 'imports')
         os.makedirs(temp_dir, exist_ok=True)
         file_path = str(os.path.join(temp_dir, f"{task_id}_{file_obj.name}"))
-        
+
         with open(file_path, 'wb+') as destination:
             for chunk in file_obj.chunks():
                 destination.write(chunk)
-                
+
         # 初始化缓存进度
         cache.set(f"import_task_{task_id}", {
             "status": "queued",
@@ -160,9 +162,17 @@ class CompanyImportView(APIView):
             "total": 0
         }, timeout=3600)
 
-        # 触发 Celery 异步任务
-        import_companies_task.delay(file_path, task_id)
-        
+        # 触发异步任务
+        # 如果 Redis 不可用，CELERY_TASK_ALWAYS_EAGER=True 会使 .delay() 变成同步阅塞请求。
+        # 此处判断：若为同步模式，改用后台线程保证异步，确保 HTTP 响应在 < 1 秒内返回。
+        if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
+            def run_in_thread():
+                import_companies_task(file_path, task_id)
+            t = threading.Thread(target=run_in_thread, daemon=True)
+            t.start()
+        else:
+            import_companies_task.delay(file_path, task_id)
+
         return Response({'task_id': task_id, 'status': 'queued'}, status=status.HTTP_200_OK)
 
 
