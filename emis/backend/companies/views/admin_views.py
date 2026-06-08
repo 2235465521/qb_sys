@@ -144,7 +144,7 @@ class CompanyImportView(APIView):
         # 将文件保存到临时目录
         temp_dir = os.path.join(settings.MEDIA_ROOT, 'imports')
         os.makedirs(temp_dir, exist_ok=True)
-        file_path = os.path.join(temp_dir, f"{task_id}_{file_obj.name}")
+        file_path = str(os.path.join(temp_dir, f"{task_id}_{file_obj.name}"))
         
         with open(file_path, 'wb+') as destination:
             for chunk in file_obj.chunks():
