@@ -56,8 +56,8 @@ class CompanyFederatedStandardsAPIView(APIView):
                         v.std_chinesename, 
                         v.std_type, 
                         v.release_date, 
-                        v.impl_date as implement_date, 
-                        v.status, 
+                        v.implement_date, 
+                        v.ex_state as status, 
                         h.draft_unit as drafter,
                         f.file_path,
                         r.rank_order
