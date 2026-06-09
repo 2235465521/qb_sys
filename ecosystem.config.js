@@ -34,7 +34,7 @@ module.exports = {
         '--worker-class', 'gthread',
         '--threads', '4',           // 每 worker 4 线程 → 5×4=20 并发
         '--timeout', '120',
-        '--bind', '0.0.0.0:8000',
+        '--bind', '0.0.0.0:8003',
         '--access-logfile', '-',
         '--error-logfile', '-',
       ].join(' '),
