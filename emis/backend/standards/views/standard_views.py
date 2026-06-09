@@ -46,76 +46,8 @@ class StandardListView(generics.ListAPIView):
     pagination_class = StandardSearchPagination
 
     def get_queryset(self):
-        params = self.request.query_params
-        qs = Standard.objects.select_related('company').prefetch_related('normative_references')
-
-        if params.get('type'):
-            qs = qs.filter(type=params['type'])
-
-        if params.get('is_parsed') in ('true', 'false'):
-            qs = qs.filter(is_parsed=params['is_parsed'] == 'true')
-
-        if params.get('company_id'):
-            qs = qs.filter(company_id=params['company_id'])
-
-        # 1. 地域筛选
-        province_id = params.get('province_id')
-        city_id = params.get('city_id')
-        district_id = params.get('district_id')
-        if province_id:
-            qs = qs.filter(company__province_id=province_id)
-        if city_id:
-            qs = qs.filter(company__city_id=city_id)
-        if district_id:
-            qs = qs.filter(company__district_id=district_id)
-
-        # 时间维度筛选 (AND 并列关系)
-        pub_start = params.get('pub_start')
-        pub_end = params.get('pub_end')
-        imp_start = params.get('imp_start')
-        imp_end = params.get('imp_end')
-
-        if (pub_start and pub_end) or (imp_start and imp_end):
-            from django.db.models import Q
-            time_filters = Q()
-            if pub_start and pub_end:
-                pub_s, pub_e = parse_date_param(pub_start, pub_end)
-                if pub_s and pub_e:
-                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
-            if imp_start and imp_end:
-                imp_s, imp_e = parse_date_param(imp_start, imp_end)
-                if imp_s and imp_e:
-                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
-            if time_filters:
-                qs = qs.filter(time_filters)
-
-        # 2. 解析状态细化筛选
-        parse_status = params.get('parse_status')
-        if parse_status:
-            from django.db.models import Q
-            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
-            q_status = Q()
-            if 'pending_reference' in statuses:
-                q_status |= Q(is_parsed='unparsed')
-            if 'pending_indicator' in statuses:
-                q_status |= Q(is_parsed='references_parsed')
-            if q_status:
-                qs = qs.filter(q_status)
-
-        if params.get('keyword'):
-
-            from django.db.models import Q
-            kw = params['keyword']
-            if params.get('search_mode') == 'full_text':
-                from standards.models import StandardContent
-                matching_std_ids = StandardContent.objects.filter(
-                    content__icontains=kw
-                ).values_list('standard_id', flat=True).distinct()
-                qs = qs.filter(id__in=matching_std_ids)
-            else:
-                qs = qs.filter(Q(standard_no__icontains=kw) | Q(title__icontains=kw))
-
-        return qs.order_by('-created_at')
+        from standards.services import search_standards_service
+        return search_standards_service(self.request.query_params)
 
     def list(self, request, *args, **kwargs):
         params = request.query_params

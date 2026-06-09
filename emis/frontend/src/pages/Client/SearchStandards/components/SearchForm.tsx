@@ -183,10 +183,12 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
 
   const handleFinish = (values: any) => {
     const params: any = {
-      keyword: values.keyword || '',
-      search_mode: values.search_mode || 'title',
+      keyword: values.keyword,
+      search_mode: values.search_mode,
+      exact_match: values.exact_match
     };
 
+    // 解析状态转换
     if (values.parse_statuses && values.parse_statuses.length > 0) {
       params.parse_status = values.parse_statuses.join(',');
     } else {
@@ -225,6 +227,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
     onSearch({
       keyword: '',
       search_mode: 'title',
+      exact_match: false,
       parse_status: '',
       province_id: undefined,
       city_id: undefined,
@@ -253,7 +256,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
         form={form}
         layout="horizontal"
         onFinish={handleFinish}
-        initialValues={{ search_mode: 'title', parse_statuses: [] }}
+        initialValues={{ search_mode: 'title', exact_match: false, parse_statuses: [] }}
       >
         {/* 第一排 */}
         <Row gutter={16} align="middle">
@@ -268,6 +271,11 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, loading }) => {
                       <Select.Option value="title">检索名称</Select.Option>
                       <Select.Option value="full_text">PDF正文</Select.Option>
                     </Select>
+                  </Form.Item>
+                }
+                addonAfter={
+                  <Form.Item name="exact_match" valuePropName="checked" noStyle>
+                    <Checkbox style={{ padding: '0 8px', color: '#00838f', fontWeight: 500 }}>精确匹配</Checkbox>
                   </Form.Item>
                 }
                 allowClear

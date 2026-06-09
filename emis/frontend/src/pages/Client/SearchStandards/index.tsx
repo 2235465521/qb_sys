@@ -14,6 +14,7 @@ const SearchStandardsPage: React.FC = () => {
     page: 1,
     keyword: '',
     search_mode: 'title',
+    exact_match: false,
     parse_status: 'all',
     province_id: undefined,
     city_id: undefined,

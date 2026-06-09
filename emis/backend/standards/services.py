@@ -78,6 +78,112 @@ def validate_standard_no(standard_no: str) -> bool:
 
 
 # ============================================================
+# 规范化查询服务 (Exact / Fuzzy Search with Fault Tolerance)
+# ============================================================
+
+def parse_date_param(param_start, param_end):
+    from datetime import date, datetime
+    try:
+        if len(param_start) == 4:
+            start_date = date(int(param_start), 1, 1)
+        else:
+            start_date = datetime.strptime(param_start, '%Y-%m-%d').date()
+
+        if len(param_end) == 4:
+            end_date = date(int(param_end), 12, 31)
+        else:
+            end_date = datetime.strptime(param_end, '%Y-%m-%d').date()
+
+        return start_date, end_date
+    except Exception:
+        return None, None
+
+def search_standards_service(params):
+    """
+    分离自 StandardListView 的标准检索核心逻辑。
+    支持：地域、状态、时间过滤，并且针对关键词做了基于 clean_id 的多级容错与精确查询。
+    """
+    qs = Standard.objects.select_related('company').prefetch_related('normative_references')
+
+    if params.get('type'):
+        qs = qs.filter(type=params['type'])
+
+    if params.get('is_parsed') in ('true', 'false'):
+        qs = qs.filter(is_parsed=params['is_parsed'] == 'true')
+
+    if params.get('company_id'):
+        qs = qs.filter(company_id=params['company_id'])
+
+    # 1. 地域筛选
+    province_id = params.get('province_id')
+    city_id = params.get('city_id')
+    district_id = params.get('district_id')
+    if province_id:
+        qs = qs.filter(company__province_id=province_id)
+    if city_id:
+        qs = qs.filter(company__city_id=city_id)
+    if district_id:
+        qs = qs.filter(company__district_id=district_id)
+
+    # 2. 时间维度筛选
+    pub_start = params.get('pub_start')
+    pub_end = params.get('pub_end')
+    imp_start = params.get('imp_start')
+    imp_end = params.get('imp_end')
+
+    if (pub_start and pub_end) or (imp_start and imp_end):
+        time_filters = Q()
+        if pub_start and pub_end:
+            pub_s, pub_e = parse_date_param(pub_start, pub_end)
+            if pub_s and pub_e:
+                time_filters &= Q(publish_date__range=(pub_s, pub_e))
+        if imp_start and imp_end:
+            imp_s, imp_e = parse_date_param(imp_start, imp_end)
+            if imp_s and imp_e:
+                time_filters &= Q(implement_date__range=(imp_s, imp_e))
+        if time_filters:
+            qs = qs.filter(time_filters)
+
+    # 3. 解析状态细化筛选
+    parse_status = params.get('parse_status')
+    if parse_status:
+        statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+        q_status = Q()
+        if 'pending_reference' in statuses:
+            q_status |= Q(is_parsed='unparsed')
+        if 'pending_indicator' in statuses:
+            q_status |= Q(is_parsed='references_parsed')
+        if q_status:
+            qs = qs.filter(q_status)
+
+    # 4. 关键词容错与精确查询
+    keyword = params.get('keyword')
+    if keyword:
+        keyword = keyword.strip()
+        search_mode = params.get('search_mode', 'title')
+        exact_match = params.get('exact_match') == 'true'
+
+        if search_mode == 'full_text':
+            from standards.models import StandardContent
+            # PDF正文检索暂不使用 clean_id 容错，直接使用原生
+            matching_std_ids = StandardContent.objects.filter(
+                content__icontains=keyword
+            ).values_list('standard_id', flat=True).distinct()
+            qs = qs.filter(id__in=matching_std_ids)
+        else:
+            # 使用 clean_id 容错处理
+            kw_clean = generate_clean_id(keyword)
+            if exact_match:
+                # 精确匹配：在清洗后的 clean_id 严格相等，或者 title 完全匹配
+                qs = qs.filter(Q(clean_id=kw_clean) | Q(title__iexact=keyword))
+            else:
+                # 模糊匹配：在清洗后的 clean_id 做包含查询，或者 title 模糊匹配
+                qs = qs.filter(Q(clean_id__icontains=kw_clean) | Q(title__icontains=keyword))
+
+    return qs.order_by('-created_at')
+
+
+# ============================================================
 # 规范性引用 Excel 解析（模块二核心）
 # ============================================================
 
