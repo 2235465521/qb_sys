@@ -79,7 +79,9 @@ class CompanyFederatedStandardsAPIView(APIView):
                     ORDER BY v.release_date DESC
                     LIMIT 500
                 """
-                cursor.execute(query, [f"%{search_name}%"])
+                # 将参数转换为 utf-8 bytes，强制绕过 pymysql 底层的 latin-1 编码校验报错
+                search_param = f"%{search_name}%".encode('utf-8')
+                cursor.execute(query, [search_param])
                 columns = [col[0] for col in cursor.description]
                 results = [dict(zip(columns, row)) for row in cursor.fetchall()]
         except Exception as e:
