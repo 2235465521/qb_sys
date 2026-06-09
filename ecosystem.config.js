@@ -55,7 +55,7 @@ module.exports = {
     {
       name: 'emis-celery-worker',
       script: CELERY,
-      args: '-A config worker -Q emis --concurrency=4 --loglevel=info',
+      args: '-A config worker -Q emis -n emis_worker@%h --concurrency=4 --loglevel=info',
       cwd: BACKEND_CWD,
       interpreter: 'none',
       env: {
