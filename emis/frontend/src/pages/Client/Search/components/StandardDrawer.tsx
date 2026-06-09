@@ -26,16 +26,27 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
     if (federatedData && federatedData.standards) {
       const mappedFed = federatedData.standards.map((s: any) => {
         let mappedType = 'industry'; // Default unclassified to industry
-        const rawType = String(s.type || '').toUpperCase();
-        if (rawType.includes('GB') || rawType === '国标') mappedType = 'national';
-        else if (rawType.includes('DB') || rawType === '地标') mappedType = 'local';
-        else if (rawType.includes('TB') || rawType === '团标') mappedType = 'group';
+        const stdNo = String(s.standard_no || '').toUpperCase();
+        
+        // 自动提取标准号前缀作为展示标签 (e.g. GB/T, DB, T)
+        let displayTag = '标准';
+        const match = stdNo.match(/^([A-Z]+(\/[A-Z]+)?)/);
+        if (match) {
+           displayTag = match[1];
+        } else {
+           displayTag = s.type || '标准';
+        }
+
+        // 归类到对应的 Tab
+        if (stdNo.startsWith('GB')) mappedType = 'national';
+        else if (stdNo.startsWith('DB')) mappedType = 'local';
+        else if (stdNo.startsWith('TB') || stdNo.startsWith('T/') || stdNo.match(/^T\s/)) mappedType = 'group';
         
         return {
           ...s,
           id: `fed_${s.standard_no}`, // string ID for React keys, but not selectable for ZIP
           type: mappedType,
-          type_display: s.type, 
+          type_display: displayTag, 
           is_parsed: 'unparsed',
           is_local: false,
           title: s.title || '无标题'
@@ -216,7 +227,18 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
                   }}
                 />
               ] : [
-                 <Tooltip title="起草单位"><Tag color="orange" style={{ margin: 0 }}>参与起草</Tag></Tooltip>
+                 item.file_path && (
+                   <Tooltip title="下载原文" key="download">
+                     <Button 
+                       type="text" 
+                       size="small" 
+                       icon={<DownloadOutlined style={{color: '#13c2c2'}} />} 
+                       href={`/api/client/search/federated_download/?file_path=${encodeURIComponent(item.file_path)}`} 
+                       target="_blank"
+                     />
+                   </Tooltip>
+                 ),
+                 <Tooltip title="起草单位" key="tag"><Tag color="orange" style={{ margin: 0 }}>参与起草</Tag></Tooltip>
               ]}
             >
               <List.Item.Meta
