@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table, Tag, Button, Space, Popconfirm } from 'antd';
+import { Table, Tag, Button, Space, Popconfirm, Tooltip } from 'antd';
 import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -28,19 +28,20 @@ const DataTable: React.FC<DataTableProps> = ({
       key: 'standard_no',
       width: 170,
       render: (text: string) => (
-        <span 
-          title={text}
-          style={{ 
-            fontWeight: 'bold', 
-            fontFamily: 'Courier New, monospace',
-            display: 'block',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {text}
-        </span>
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span 
+            style={{ 
+              fontWeight: 'bold', 
+              fontFamily: 'Courier New, monospace',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
       ),
     },
     {
@@ -48,16 +49,24 @@ const DataTable: React.FC<DataTableProps> = ({
       dataIndex: 'title',
       key: 'title',
       width: 300,
-      ellipsis: true,
-      render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
+      ellipsis: { showTitle: false },
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span style={{ fontWeight: 500, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text || '--'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '起草单位/企业名称',
       dataIndex: 'company_name',
       key: 'company_name',
       width: 240,
-      ellipsis: true,
-      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</Tag> : '--',
+      ellipsis: { showTitle: false },
+      render: (text: string) => text ? (
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <Tag color="blue" style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</Tag>
+        </Tooltip>
+      ) : '--',
     },
     {
       title: '标准状态',

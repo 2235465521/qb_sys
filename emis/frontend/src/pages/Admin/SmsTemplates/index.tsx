@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Table, Button, Space, Card, Modal, Form, Input, Switch, Popconfirm, Tag, Typography } from 'antd';
+import { Table, Button, Space, Card, Modal, Form, Input, Switch, Popconfirm, Tag, Typography, Tooltip } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useSmsData } from '@/hooks/useSmsData';
 import type { SmsTemplate } from '@/types';
@@ -44,7 +44,12 @@ const SmsTemplatesPage: React.FC = () => {
       title: '短信内容',
       dataIndex: 'content',
       key: 'content',
-      ellipsis: true,
+      ellipsis: { showTitle: false },
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{text}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '状态',

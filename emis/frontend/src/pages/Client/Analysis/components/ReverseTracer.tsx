@@ -89,35 +89,41 @@ const ReverseTracer: React.FC = () => {
       key: 'standard_no',
       width: 180,
       render: (text: string) => (
-        <span 
-          title={text}
-          style={{ 
-            fontWeight: 'bold', 
-            color: '#13c2c2', 
-            fontFamily: 'Courier New, monospace',
-            display: 'block',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {text}
-        </span>
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span 
+            style={{ 
+              fontWeight: 'bold', 
+              color: '#13c2c2', 
+              fontFamily: 'Courier New, monospace',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
       ),
     },
     {
       title: '标准名称',
       dataIndex: 'title',
       key: 'title',
-      ellipsis: true,
+      ellipsis: { showTitle: false },
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{text}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '起草单位',
       dataIndex: ['company_detail', 'name'],
       key: 'company_name',
-      ellipsis: true,
+      ellipsis: { showTitle: false },
       render: (text: string) => text ? (
-        <Tooltip title={text} placement="topLeft">
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
           <Tag 
             color="cyan" 
             style={{ 

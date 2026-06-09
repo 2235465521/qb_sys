@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Card, Table, Typography, Statistic, Space, Select, Button, message } from "antd";
+import { Card, Table, Typography, Statistic, Space, Select, Button, message, Tooltip } from "antd";
 import { TrophyOutlined, BarChartOutlined, ArrowUpOutlined, FileExcelOutlined } from "@ant-design/icons";
 import apiClient from "@/api/client";
 
@@ -127,11 +127,13 @@ const NationalLeaderboard: React.FC<NationalLeaderboardProps> = ({
       ),
       dataIndex: "title",
       key: "title",
-      ellipsis: true,
+      ellipsis: { showTitle: false },
       render: (text: string) => (
-        <Text style={{ fontFamily: "Courier New, monospace", color: '#595959' }}>
-          {text || '--'}
-        </Text>
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <Text style={{ fontFamily: "Courier New, monospace", color: '#595959', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {text || '--'}
+          </Text>
+        </Tooltip>
       ),
     },
     {

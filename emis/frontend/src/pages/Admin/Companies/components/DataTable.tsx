@@ -37,19 +37,20 @@ const ExpandedStandardList: React.FC<{ companyId: number }> = ({ companyId }) =>
       key: 'standard_no',
       width: 250,
       render: (text: string) => (
-        <span 
-          title={text}
-          style={{ 
-            fontWeight: 'bold', 
-            color: '#13c2c2',
-            display: 'block',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}
-        >
-          {text}
-        </span>
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span 
+            style={{ 
+              fontWeight: 'bold', 
+              color: '#13c2c2',
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {text}
+          </span>
+        </Tooltip>
       ),
     },
     {
@@ -106,7 +107,12 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '企业名称',
       dataIndex: 'name',
       key: 'name',
-      ellipsis: true,
+      ellipsis: { showTitle: false },
+      render: (text: string) => (
+        <Tooltip title={text} placement="topLeft" color="rgba(0,0,0,0.85)">
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{text}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '信用代码',

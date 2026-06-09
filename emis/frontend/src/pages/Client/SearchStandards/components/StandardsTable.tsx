@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Tag, Button, Space, message, Modal, Empty, Tooltip, Drawer, Typography } from 'antd';
+import { Table, Button, Space, Tag, Drawer, Empty, Typography, message, Tooltip, Modal } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileExcelOutlined, RightOutlined, DownOutlined } from '@ant-design/icons';
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
@@ -135,25 +135,26 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       width: 180,
       align: 'center' as const,
       render: (text: string, record: Standard) => (
-        <Typography.Link
-          title={text}
-          className="hover-underline-link"
-          style={{ 
-            fontWeight: 'bold', 
-            fontFamily: 'Courier New, monospace', 
-            display: 'block',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            color: '#0d9488'
-          }}
-          onClick={() => {
-            setSelectedStandard(record);
-            setDrawerVisible(true);
-          }}
-        >
-          {text}
-        </Typography.Link>
+        <Tooltip title={text} color="rgba(0,0,0,0.85)" placement="topLeft">
+          <Typography.Link
+            className="hover-underline-link"
+            style={{ 
+              fontWeight: 'bold', 
+              fontFamily: 'Courier New, monospace', 
+              display: 'block',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: '#0d9488'
+            }}
+            onClick={() => {
+              setSelectedStandard(record);
+              setDrawerVisible(true);
+            }}
+          >
+            {text}
+          </Typography.Link>
+        </Tooltip>
       ),
     },
     {
@@ -162,8 +163,12 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       key: 'title',
       width: '20%',
       align: 'center' as const,
-      ellipsis: true,
-      render: (text: string) => <span title={text} style={{ fontWeight: 500 }}>{text || '--'}</span>,
+      ellipsis: { showTitle: false },
+      render: (text: string) => (
+        <Tooltip title={text} color="rgba(0,0,0,0.85)" placement="topLeft">
+          <span style={{ fontWeight: 500 }}>{text || '--'}</span>
+        </Tooltip>
+      ),
     },
     {
       title: '企业名称',
@@ -171,8 +176,14 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
       key: 'company_name',
       width: '25%',
       align: 'center' as const,
-      ellipsis: true,
-      render: (text: string) => text ? <Tag color="blue" title={text} style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{text}</Tag> : '--',
+      ellipsis: { showTitle: false },
+      render: (text: string) => text ? (
+        <Tooltip title={text} color="rgba(0,0,0,0.85)" placement="topLeft">
+          <Tag color="blue" style={{ borderRadius: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {text}
+          </Tag>
+        </Tooltip>
+      ) : '--',
     },
     {
       title: '标准状态',

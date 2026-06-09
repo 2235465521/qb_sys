@@ -15,7 +15,7 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
-import { Badge, Popover, List, Progress } from 'antd';
+import { Badge, Popover, List, Progress, Tooltip } from 'antd';
 import { BellOutlined } from '@ant-design/icons';
 import { useTaskContext } from '@/store/TaskContext';
 import BrandLogo from '@/components/BrandLogo';
@@ -88,7 +88,9 @@ const ClientLayout: React.FC = () => {
           <List.Item>
             <div style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 500 }} title={item.name}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
+                <Tooltip title={item.name} color="rgba(0,0,0,0.85)">
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{item.name.length > 15 ? item.name.substring(0, 15) + '...' : item.name}</span>
+                </Tooltip>
                 <Space size="small">
                   <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
                     {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
