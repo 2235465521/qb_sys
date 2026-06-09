@@ -84,6 +84,21 @@ DATABASES = {
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
+    },
+    'stsc_db': {
+        'ENGINE': 'django.db.backends.mysql',
+        # 本地开发测试环境默认为 mydate，线上为 STSC_standard_database
+        'NAME': config('STSC_DB_NAME', default='mydate'),
+        'USER': config('STSC_DB_USER', default='root'),
+        'PASSWORD': config('STSC_DB_PASSWORD', default=''),
+        'HOST': config('STSC_DB_HOST', default='127.0.0.1'),
+        'PORT': config('STSC_DB_PORT', default='3306'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+        },
+        'TEST': {
+            'MIRROR': 'default',
+        }
     }
 }
 

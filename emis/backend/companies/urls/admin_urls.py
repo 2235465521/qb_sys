@@ -16,11 +16,13 @@ from companies.views.admin_views import (
     AdminAttachmentViewSet,
     AdminLeadOptionViewSet,
 )
+from companies.views.standard_sync_views import CompanyFederatedStandardsAPIView
 
 urlpatterns = [
     path('', CompanyAdminListCreateView.as_view(), name='admin-company-list'),
     path('quick_create/', CompanyQuickCreateView.as_view(), name='admin-company-quick-create'),
     path('<int:pk>/', CompanyAdminDetailView.as_view(), name='admin-company-detail'),
+    path('<int:pk>/federated_standards/', CompanyFederatedStandardsAPIView.as_view(), name='admin-company-federated-standards'),
     path('import/', CompanyImportView.as_view(), name='admin-company-import'),
     path('import/status/<str:task_id>/', CompanyImportStatusView.as_view(), name='admin-company-import-status'),
     path('import/template/', CompanyImportTemplateView.as_view(), name='admin-company-import-template'),
