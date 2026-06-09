@@ -12,13 +12,24 @@ export const useSearchData = () => {
     },
   });
 
-  // 获取企业名下的标准
+  // 获取企业名下的企标
   const useCompanyStandards = (companyId?: number) => useQuery({
     queryKey: ['company_standards', companyId],
     queryFn: async () => {
       if (!companyId) return [];
       const { data } = await apiClient.get<PaginatedResponse<Standard> | Standard[]>(`/client/search/companies/${companyId}/standards/`);
       return Array.isArray(data) ? data : (data.results || []);
+    },
+    enabled: !!companyId,
+  });
+
+  // 获取企业联邦查询的标准（国标、行标等）
+  const useCompanyFederatedStandards = (companyId?: number) => useQuery({
+    queryKey: ['company_federated_standards', companyId],
+    queryFn: async () => {
+      if (!companyId) return { standards: [], total_standards: 0 };
+      const { data } = await apiClient.get<{standards: Standard[], total_standards: number}>(`/client/search/companies/${companyId}/federated_standards/`);
+      return data;
     },
     enabled: !!companyId,
   });
@@ -42,5 +53,5 @@ export const useSearchData = () => {
     return data;
   };
 
-  return { useCompanySearch, useCompanyStandards, zipMutation, checkZipStatus };
+  return { useCompanySearch, useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus };
 };

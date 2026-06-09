@@ -17,8 +17,36 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const { useCompanyStandards, zipMutation, checkZipStatus } = useSearchData();
-  const { data: standards, isLoading } = useCompanyStandards(company?.id);
+  const { useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus } = useSearchData();
+  const { data: localStandards, isLoading: localLoading } = useCompanyStandards(company?.id);
+  const { data: federatedData, isLoading: fedLoading } = useCompanyFederatedStandards(company?.id);
+
+  const standards = React.useMemo(() => {
+    const arr: any[] = [...(localStandards || [])].map(s => ({ ...s, is_local: true }));
+    if (federatedData && federatedData.standards) {
+      const mappedFed = federatedData.standards.map((s: any) => {
+        let mappedType = 'industry'; // Default unclassified to industry
+        const rawType = String(s.type || '').toUpperCase();
+        if (rawType.includes('GB') || rawType === '国标') mappedType = 'national';
+        else if (rawType.includes('DB') || rawType === '地标') mappedType = 'local';
+        else if (rawType.includes('TB') || rawType === '团标') mappedType = 'group';
+        
+        return {
+          ...s,
+          id: `fed_${s.standard_no}`, // string ID for React keys, but not selectable for ZIP
+          type: mappedType,
+          type_display: s.type, 
+          is_parsed: 'unparsed',
+          is_local: false,
+          title: s.title || '无标题'
+        };
+      });
+      arr.push(...mappedFed);
+    }
+    return arr;
+  }, [localStandards, federatedData]);
+
+  const isLoading = localLoading || fedLoading;
 
   // 1. 根据标签过滤当前展示的标准列表
   const filteredStandards = React.useMemo(() => {
@@ -27,9 +55,9 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
     return standards.filter((s) => s.type === activeTab);
   }, [standards, activeTab]);
 
-  // 2. 一键全选/取消全选当前可见列表
+  // 2. 一键全选/取消全选当前可见列表 (仅支持本地企标)
   const handleToggleSelectAll = () => {
-    const filteredIds = filteredStandards.map((s) => s.id);
+    const filteredIds = filteredStandards.filter(s => s.is_local).map((s) => s.id);
     const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.includes(id));
 
     if (allSelected) {
@@ -140,9 +168,9 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           <Space>
             <Button 
               onClick={handleToggleSelectAll}
-              disabled={filteredStandards.length === 0}
+              disabled={filteredStandards.filter(s => s.is_local).length === 0}
             >
-              {filteredStandards.length > 0 && filteredStandards.every((item) => selectedIds.includes(item.id))
+              {filteredStandards.filter(s => s.is_local).length > 0 && filteredStandards.filter(s => s.is_local).every((item) => selectedIds.includes(item.id))
                 ? '取消当前全选'
                 : '当前列表全选'}
             </Button>
@@ -173,9 +201,9 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           loading={isLoading}
           dataSource={filteredStandards}
           locale={{ emptyText: <Empty description="当前类别下无任何标准文件" /> }}
-          renderItem={(item: Standard) => (
+          renderItem={(item: any) => (
             <List.Item
-              actions={[
+              actions={item.is_local ? [
                 <Checkbox 
                   key="select"
                   checked={selectedIds.includes(item.id)}
@@ -187,20 +215,27 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
                     }
                   }}
                 />
+              ] : [
+                 <Tooltip title="起草单位"><Tag color="orange" style={{ margin: 0 }}>参与起草</Tag></Tooltip>
               ]}
             >
               <List.Item.Meta
-                avatar={<FilePdfOutlined style={{ fontSize: 24, color: '#ff4d4f' }} />}
-                title={<span style={{ fontWeight: 'bold' }}>{item.standard_no}</span>}
+                avatar={<FilePdfOutlined style={{ fontSize: 24, color: item.is_local ? '#ff4d4f' : '#8c8c8c' }} />}
+                title={<span style={{ fontWeight: 'bold' }}>{item.standard_no} {item.status && <Tag color={item.status === '现行' ? 'green' : 'default'} style={{marginLeft: 8, fontSize: 12}}>{item.status}</Tag>}</span>}
                 description={
                   <Space direction="vertical" size={0}>
                     <span>{item.title}</span>
                     <Space>
                       <Tag color="blue">{item.type_display}</Tag>
-                      {item.is_parsed && item.is_parsed !== 'unparsed' && (
+                      {item.is_local && item.is_parsed && item.is_parsed !== 'unparsed' && (
                         <Tag color={item.is_parsed === 'indicators_parsed' ? 'purple' : 'green'}>
                           {item.is_parsed === 'indicators_parsed' ? '已解析指标' : '已解析引用'}
                         </Tag>
+                      )}
+                      {!item.is_local && item.drafters && item.drafters.length > 0 && (
+                        <span style={{ fontSize: 12, color: '#666', marginTop: 4, display: 'block' }}>
+                          起草单位：{item.drafters.join('、')}
+                        </span>
                       )}
                     </Space>
                   </Space>
