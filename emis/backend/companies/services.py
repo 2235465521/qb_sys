@@ -155,7 +155,7 @@ def search_companies(
     if center_lat is None:
         qs = qs.order_by('-id')
 
-    return qs.select_related('province', 'city', 'district')
+    return qs.select_related('province', 'city', 'district').prefetch_related('standards')
 
 
 # ============================================================

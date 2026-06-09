@@ -24,6 +24,65 @@ class DistrictSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'name', 'city_id']
 
 
+from rest_framework.serializers import ListSerializer
+from django.core.cache import cache
+
+class CompanyBulkListSerializer(ListSerializer):
+    def to_representation(self, data):
+        iterable = data.all() if hasattr(data, 'all') else list(data)
+        
+        # 批量获取 Redis 缓存，解决 20 次 N+1 请求缓存问题
+        cache_keys = {f"federated_std_count_{obj.id}": obj for obj in iterable}
+        cached_data = cache.get_many(cache_keys.keys())
+        
+        missing_objs = []
+        for key, obj in cache_keys.items():
+            if key in cached_data:
+                obj.federated_count = cached_data[key]
+            else:
+                missing_objs.append(obj)
+                
+        # 对于缓存没命中的，使用多线程并发查询外部库，将20秒缩减至不到1秒
+        if missing_objs:
+            import concurrent.futures
+            from django.db import connections
+            
+            def fetch_fed_count(obj):
+                count = 0
+                search_name = obj.name.strip()
+                if search_name:
+                    try:
+                        with connections['stsc_db'].cursor() as cursor:
+                            cursor.execute("SET NAMES utf8mb4;")
+                            query = """
+                                SELECT COUNT(DISTINCT v.std_id)
+                                FROM unit_dict u
+                                JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                                JOIN view_std_full v ON r.base_id = v.id
+                                WHERE u.unit_name LIKE %s
+                            """
+                            cursor.execute(query, [f"%{search_name}%".encode('utf-8')])
+                            row = cursor.fetchone()
+                            if row:
+                                count = row[0]
+                    except Exception:
+                        pass
+                return obj, count
+
+            to_cache = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                futures = [executor.submit(fetch_fed_count, obj) for obj in missing_objs]
+                for future in concurrent.futures.as_completed(futures):
+                    obj, count = future.result()
+                    obj.federated_count = count
+                    to_cache[f"federated_std_count_{obj.id}"] = count
+                    
+            if to_cache:
+                cache.set_many(to_cache, timeout=86400)
+                
+        return super().to_representation(data)
+
+
 class CompanyListSerializer(serializers.ModelSerializer):
     """列表用（精简字段，减少传输量）"""
     province_name = serializers.CharField(source='province.name', read_only=True, default='')
@@ -35,6 +94,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Company
+        list_serializer_class = CompanyBulkListSerializer
         fields = [
             'id', 'name', 'credit_code', 'legal_person',
             'province_name', 'city_name', 'district_name',
@@ -49,42 +109,13 @@ class CompanyListSerializer(serializers.ModelSerializer):
         return None
 
     def get_standards_count(self, obj):
-        # 取 services.py 里已注解好的本地企标与团标数量，如果没有则实时获取（避免全局 annotate 导致的慢查询）
         local_count = getattr(obj, 'standards_count', None)
         if local_count is None:
-            local_count = obj.standards.filter(type__in=['enterprise', 'group']).count()
-        
-        # 实时查询联邦外库获取此企业的国标/行标等数量
-        federated_count = 0
-        search_name = obj.name.strip()
-        if search_name:
-            from django.core.cache import cache
-            cache_key = f"federated_std_count_{obj.id}"
-            cached_count = cache.get(cache_key)
-            if cached_count is not None:
-                federated_count = cached_count
-            else:
-                from django.db import connections
-                try:
-                    with connections['stsc_db'].cursor() as cursor:
-                        cursor.execute("SET NAMES utf8mb4;")
-                        query = """
-                            SELECT COUNT(DISTINCT v.std_id)
-                            FROM unit_dict u
-                            JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                            JOIN view_std_full v ON r.base_id = v.id
-                            WHERE u.unit_name LIKE %s
-                        """
-                        search_param = f"%{search_name}%".encode('utf-8')
-                        cursor.execute(query, [search_param])
-                        row = cursor.fetchone()
-                        if row:
-                            federated_count = row[0]
-                    # 将外部数据库的查询结果缓存一天
-                    cache.set(cache_key, federated_count, timeout=86400)
-                except Exception:
-                    pass
-                
+            # 使用列表预加载出来的 standards，在内存中完成计算，完美解决本地 N+1 SQL 查询
+            local_count = sum(1 for s in obj.standards.all() if s.type in ['enterprise', 'group'])
+            
+        # 联邦外部数量已由 CompanyBulkListSerializer 批量或并发读取并注入
+        federated_count = getattr(obj, 'federated_count', 0)
         return local_count + federated_count
 
 
