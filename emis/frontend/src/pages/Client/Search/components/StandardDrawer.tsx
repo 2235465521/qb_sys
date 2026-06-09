@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Drawer, List, Checkbox, Button, Space, Tag, Empty, message, Progress, Tabs, Modal, Tooltip } from 'antd';
+import { Drawer, List, Button, Space, Tag, Empty, message, Progress, Tabs, Modal, Tooltip } from 'antd';
 import { FilePdfOutlined, DownloadOutlined, LoadingOutlined, DeleteOutlined, ShoppingCartOutlined, PlusOutlined } from '@ant-design/icons';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Standard, Company } from '@/types';
+import StandardListItem from './StandardListItem';
 
 interface StandardDrawerProps {
   company: Company | null;
@@ -11,7 +12,7 @@ interface StandardDrawerProps {
 }
 
 const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose }) => {
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [packing, setPacking] = useState(false);
@@ -66,9 +67,9 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
     return standards.filter((s) => s.type === activeTab);
   }, [standards, activeTab]);
 
-  // 2. 一键全选/取消全选当前可见列表 (仅支持本地企标)
+  // 2. 一键全选/取消全选当前可见列表 (支持全量混合标准)
   const handleToggleSelectAll = () => {
-    const filteredIds = filteredStandards.filter(s => s.is_local).map((s) => s.id);
+    const filteredIds = filteredStandards.map((s) => s.id);
     const allSelected = filteredIds.length > 0 && filteredIds.every((id) => selectedIds.includes(id));
 
     if (allSelected) {
@@ -179,9 +180,9 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           <Space>
             <Button 
               onClick={handleToggleSelectAll}
-              disabled={filteredStandards.filter(s => s.is_local).length === 0}
+              disabled={filteredStandards.length === 0}
             >
-              {filteredStandards.filter(s => s.is_local).length > 0 && filteredStandards.filter(s => s.is_local).every((item) => selectedIds.includes(item.id))
+              {filteredStandards.length > 0 && filteredStandards.every((item) => selectedIds.includes(item.id))
                 ? '取消当前全选'
                 : '当前列表全选'}
             </Button>
@@ -213,52 +214,17 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           dataSource={filteredStandards}
           locale={{ emptyText: <Empty description="当前类别下无任何标准文件" /> }}
           renderItem={(item: any) => (
-            <List.Item
-              actions={item.is_local ? [
-                <Checkbox 
-                  key="select"
-                  checked={selectedIds.includes(item.id)}
-                  onChange={(e) => {
-                    if (e.target.checked) {
-                      setSelectedIds([...selectedIds, item.id]);
-                    } else {
-                      setSelectedIds(selectedIds.filter(id => id !== item.id));
-                    }
-                  }}
-                />
-              ] : [
-                 item.file_path && (
-                   <Tooltip title="下载原文" key="download">
-                     <Button 
-                       type="text" 
-                       size="small" 
-                       icon={<DownloadOutlined style={{color: '#13c2c2'}} />} 
-                       href={`/api/client/search/federated_download/?file_path=${encodeURIComponent(item.file_path)}`} 
-                       target="_blank"
-                     />
-                   </Tooltip>
-                 ),
-                 <Tooltip title="起草单位" key="tag"><Tag color="orange" style={{ margin: 0 }}>参与起草</Tag></Tooltip>
-              ]}
-            >
-              <List.Item.Meta
-                avatar={<FilePdfOutlined style={{ fontSize: 24, color: item.is_local ? '#ff4d4f' : '#8c8c8c' }} />}
-                title={<span style={{ fontWeight: 'bold' }}>{item.standard_no} {item.status && <Tag color={item.status === '现行' || item.status === 'active' || item.status === '活跃' ? 'green' : 'default'} style={{marginLeft: 8, fontSize: 12}}>{item.status === 'active' ? '活跃' : item.status}</Tag>}</span>}
-                description={
-                  <Space direction="vertical" size={0}>
-                    <span>{item.title}</span>
-                    <Space>
-                      <Tag color="blue">{item.type_display}</Tag>
-                      {item.is_local && item.is_parsed && item.is_parsed !== 'unparsed' && (
-                        <Tag color={item.is_parsed === 'indicators_parsed' ? 'purple' : 'green'}>
-                          {item.is_parsed === 'indicators_parsed' ? '已解析指标' : '已解析引用'}
-                        </Tag>
-                      )}
-                    </Space>
-                  </Space>
+            <StandardListItem 
+              item={item} 
+              selectedIds={selectedIds} 
+              onSelect={(id, checked) => {
+                if (checked) {
+                  setSelectedIds([...selectedIds, id]);
+                } else {
+                  setSelectedIds(selectedIds.filter(sid => sid !== id));
                 }
-              />
-            </List.Item>
+              }} 
+            />
           )}
         />
       </Drawer>

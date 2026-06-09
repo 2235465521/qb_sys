@@ -56,17 +56,16 @@ class CompanyFederatedStandardsAPIView(APIView):
                         v.std_chinesename, 
                         v.std_type, 
                         v.release_date, 
-                        v.implement_date,
-                        v.ex_state as status, 
-                        h.draft_unit as drafter, 
-                        r.role_type, 
-                        r.rank_order,
-                        f.file_path
-                    FROM unit_dict u
-                    JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                    JOIN view_std_full v ON r.base_id = v.id
-                    LEFT JOIN std_extend_h h ON v.id = h.base_id
-                    LEFT JOIN std_filepath f ON v.id = f.base_id
+                        v.impl_date as implement_date, 
+                        v.status, 
+                        h.draft_unit as drafter,
+                        f.file_path,
+                        r.rank_order
+                    FROM mydate.unit_dict u
+                    JOIN mydate.std_unit_relation r ON u.unit_id = r.unit_id
+                    JOIN mydate.view_std_full v ON r.base_id = v.id
+                    LEFT JOIN mydate.std_extend_h h ON v.id = h.base_id
+                    LEFT JOIN mydate.std_filepath f ON v.id = f.base_id
                     WHERE u.unit_name LIKE %s
                     ORDER BY v.release_date DESC
                     LIMIT 500
@@ -94,7 +93,8 @@ class CompanyFederatedStandardsAPIView(APIView):
                 'implement_date': row.get('implement_date').isoformat() if row.get('implement_date') else None,
                 'status': self._map_status(row.get('status')),
                 'drafters': drafters_list,
-                'file_path': row.get('file_path')
+                'file_path': row.get('file_path'),
+                'rank_order': row.get('rank_order')
             })
             
         unique_results = []
