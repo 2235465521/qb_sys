@@ -148,14 +148,9 @@ def search_companies(
             .order_by('distance_meters')
         )
 
-    # 5. 统计企业名下的企标与团标数量（防 N+1 查询高性能设计）
-    from django.db.models import Count
-    qs = qs.annotate(
-        standards_count=Count(
-            'standards',
-            filter=Q(standards__type__in=['enterprise', 'group'])
-        )
-    )
+    # 5. 统计企业名下的企标与团标数量
+    # 移除全局 annotate(Count) 以避免分页时触发几十万行数据的慢子查询 COUNT() 导致长达十几秒的卡顿。
+    # 我们将在 Serializer 中获取当前分页（仅 20 条）的 standards 数量。
 
     if center_lat is None:
         qs = qs.order_by('-id')

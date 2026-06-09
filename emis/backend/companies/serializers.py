@@ -49,8 +49,10 @@ class CompanyListSerializer(serializers.ModelSerializer):
         return None
 
     def get_standards_count(self, obj):
-        # 取 services.py 里已注解好的本地企标与团标数量
-        local_count = getattr(obj, 'standards_count', 0)
+        # 取 services.py 里已注解好的本地企标与团标数量，如果没有则实时获取（避免全局 annotate 导致的慢查询）
+        local_count = getattr(obj, 'standards_count', None)
+        if local_count is None:
+            local_count = obj.standards.filter(type__in=['enterprise', 'group']).count()
         
         # 实时查询联邦外库获取此企业的国标/行标等数量
         federated_count = 0
