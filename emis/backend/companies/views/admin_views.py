@@ -405,7 +405,7 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(status=status_param)
         if source_param:
             queryset = queryset.filter(source=source_param)
-        return queryset
+        return queryset.order_by('-created_at')
 
     def perform_create(self, serializer):
         lead = serializer.save()
