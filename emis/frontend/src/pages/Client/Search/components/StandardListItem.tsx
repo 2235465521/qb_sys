@@ -31,7 +31,7 @@ const StandardListItem: React.FC<StandardListItemProps> = ({ item, selectedIds, 
         ),
         !item.is_local && item.rank_order && (
           <Tag color="orange" style={{ margin: 0 }} key="tag">
-            参与起草(第{item.rank_order}名)
+            第{item.rank_order}名
           </Tag>
         )
       ].filter(Boolean)}
