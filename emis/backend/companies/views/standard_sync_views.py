@@ -56,6 +56,9 @@ class CompanyFederatedStandardsAPIView(APIView):
         # 执行跨库高性能原生 SQL 查询
         try:
             with connections['stsc_db'].cursor() as cursor:
+                # 强制使用 utf8mb4 编码，解决 pymysql 默认 latin-1 报错问题
+                cursor.execute("SET NAMES utf8mb4;")
+                
                 # 联表获取该企业参与起草的标准信息
                 # 使用 LIKE 解决 "公司名等"、"公司A、公司B" 黏连的脏数据匹配问题
                 query = """
