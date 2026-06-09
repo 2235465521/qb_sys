@@ -125,6 +125,13 @@ class Company(models.Model):
     english_name = models.CharField('英文名', max_length=200, blank=True, help_text='企业英文名称')
     former_names = models.CharField('曾用名', max_length=500, blank=True, help_text='企业历史曾用名')
 
+    # ── 企查查补充新增字段 ────────────────────────
+    website_url = models.CharField('官网网址', max_length=500, blank=True, help_text='企业官方网站')
+    mailing_address = models.CharField('通讯地址', max_length=500, blank=True, help_text='企业通讯地址')
+    mailing_address_zip = models.CharField('通讯地址邮编', max_length=20, blank=True, help_text='通讯地址对应的邮政编码')
+    business_scope = models.TextField('经营范围', blank=True, help_text='企业工商经营范围')
+    registration_status = models.CharField('工商状态', max_length=100, blank=True, help_text='工商登记状态（如：存续、在业、吊销、注销等）')
+
     status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='active')
     is_deleted = models.BooleanField('是否软删除', default=False, db_index=True)
 
