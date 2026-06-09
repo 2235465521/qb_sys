@@ -16,6 +16,7 @@ export interface ClientStandardSearchParams {
   imp_start?: string;
   imp_end?: string;
   exact_match?: boolean;
+  ordering?: string;
 }
 
 export const useClientStandardSearch = (params: ClientStandardSearchParams) => {

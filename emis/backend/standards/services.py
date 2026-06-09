@@ -180,6 +180,26 @@ def search_standards_service(params):
                 # 模糊匹配：在清洗后的 clean_id 做包含查询，或者 title 模糊匹配
                 qs = qs.filter(Q(clean_id__icontains=kw_clean) | Q(title__icontains=keyword))
 
+    ordering = params.get('ordering')
+    if ordering:
+        allowed_orderings = {
+            'publish_date': 'publish_date',
+            '-publish_date': '-publish_date',
+            'implement_date': 'implement_date',
+            '-implement_date': '-implement_date',
+            'standard_no': 'standard_no',
+            '-standard_no': '-standard_no',
+            'title': 'title',
+            '-title': '-title',
+            'company_name': 'company__name',
+            '-company_name': '-company__name',
+            'created_at': 'created_at',
+            '-created_at': '-created_at',
+        }
+        db_ordering = allowed_orderings.get(ordering)
+        if db_ordering:
+            return qs.order_by(db_ordering)
+
     return qs.order_by('-created_at')
 
 
