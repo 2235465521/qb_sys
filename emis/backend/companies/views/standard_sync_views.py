@@ -69,9 +69,9 @@ class CompanyFederatedStandardsAPIView(APIView):
                         v.drafter, 
                         r.role_type, 
                         r.rank_order
-                    FROM mydate.unit_dict u
-                    JOIN mydate.std_unit_relation r ON u.unit_id = r.unit_id
-                    JOIN mydate.view_std_full v ON r.base_id = v.id
+                    FROM unit_dict u
+                    JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                    JOIN view_std_full v ON r.base_id = v.id
                     WHERE u.unit_name LIKE %s
                     ORDER BY v.release_date DESC
                     LIMIT 500
