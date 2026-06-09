@@ -243,7 +243,7 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
             >
               <List.Item.Meta
                 avatar={<FilePdfOutlined style={{ fontSize: 24, color: item.is_local ? '#ff4d4f' : '#8c8c8c' }} />}
-                title={<span style={{ fontWeight: 'bold' }}>{item.standard_no} {item.status && <Tag color={item.status === '现行' ? 'green' : 'default'} style={{marginLeft: 8, fontSize: 12}}>{item.status}</Tag>}</span>}
+                title={<span style={{ fontWeight: 'bold' }}>{item.standard_no} {item.status && <Tag color={item.status === '现行' || item.status === 'active' || item.status === '活跃' ? 'green' : 'default'} style={{marginLeft: 8, fontSize: 12}}>{item.status === 'active' ? '活跃' : item.status}</Tag>}</span>}
                 description={
                   <Space direction="vertical" size={0}>
                     <span>{item.title}</span>
@@ -253,11 +253,6 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
                         <Tag color={item.is_parsed === 'indicators_parsed' ? 'purple' : 'green'}>
                           {item.is_parsed === 'indicators_parsed' ? '已解析指标' : '已解析引用'}
                         </Tag>
-                      )}
-                      {!item.is_local && item.drafters && item.drafters.length > 0 && (
-                        <span style={{ fontSize: 12, color: '#666', marginTop: 4, display: 'block' }}>
-                          起草单位：{item.drafters.join('、')}
-                        </span>
                       )}
                     </Space>
                   </Space>

@@ -120,7 +120,7 @@ class CompanyFederatedStandardsAPIView(APIView):
         return mapping.get(status_code, '现行')
 
 class FederatedStandardDownloadAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request):
         file_path = request.query_params.get('file_path')

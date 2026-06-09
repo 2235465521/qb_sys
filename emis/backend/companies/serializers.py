@@ -31,7 +31,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
     district_name = serializers.CharField(source='district.name', read_only=True, default='')
     # LBS 检索时附带距离（可能为 None）
     distance_km = serializers.SerializerMethodField()
-    standards_count = serializers.IntegerField(read_only=True, default=0)
+    standards_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Company
@@ -47,6 +47,35 @@ class CompanyListSerializer(serializers.ModelSerializer):
         if meters is not None:
             return round(meters / 1000, 2)
         return None
+
+    def get_standards_count(self, obj):
+        # 取 services.py 里已注解好的本地企标与团标数量
+        local_count = getattr(obj, 'standards_count', 0)
+        
+        # 实时查询联邦外库获取此企业的国标/行标等数量
+        federated_count = 0
+        search_name = obj.name.strip()
+        if search_name:
+            from django.db import connections
+            try:
+                with connections['stsc_db'].cursor() as cursor:
+                    cursor.execute("SET NAMES utf8mb4;")
+                    query = """
+                        SELECT COUNT(DISTINCT v.std_id)
+                        FROM unit_dict u
+                        JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                        JOIN view_std_full v ON r.base_id = v.id
+                        WHERE u.unit_name LIKE %s
+                    """
+                    search_param = f"%{search_name}%".encode('utf-8')
+                    cursor.execute(query, [search_param])
+                    row = cursor.fetchone()
+                    if row:
+                        federated_count = row[0]
+            except Exception:
+                pass
+                
+        return local_count + federated_count
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
