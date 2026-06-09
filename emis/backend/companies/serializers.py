@@ -56,24 +56,32 @@ class CompanyListSerializer(serializers.ModelSerializer):
         federated_count = 0
         search_name = obj.name.strip()
         if search_name:
-            from django.db import connections
-            try:
-                with connections['stsc_db'].cursor() as cursor:
-                    cursor.execute("SET NAMES utf8mb4;")
-                    query = """
-                        SELECT COUNT(DISTINCT v.std_id)
-                        FROM unit_dict u
-                        JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                        JOIN view_std_full v ON r.base_id = v.id
-                        WHERE u.unit_name LIKE %s
-                    """
-                    search_param = f"%{search_name}%".encode('utf-8')
-                    cursor.execute(query, [search_param])
-                    row = cursor.fetchone()
-                    if row:
-                        federated_count = row[0]
-            except Exception:
-                pass
+            from django.core.cache import cache
+            cache_key = f"federated_std_count_{obj.id}"
+            cached_count = cache.get(cache_key)
+            if cached_count is not None:
+                federated_count = cached_count
+            else:
+                from django.db import connections
+                try:
+                    with connections['stsc_db'].cursor() as cursor:
+                        cursor.execute("SET NAMES utf8mb4;")
+                        query = """
+                            SELECT COUNT(DISTINCT v.std_id)
+                            FROM unit_dict u
+                            JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                            JOIN view_std_full v ON r.base_id = v.id
+                            WHERE u.unit_name LIKE %s
+                        """
+                        search_param = f"%{search_name}%".encode('utf-8')
+                        cursor.execute(query, [search_param])
+                        row = cursor.fetchone()
+                        if row:
+                            federated_count = row[0]
+                    # 将外部数据库的查询结果缓存一天
+                    cache.set(cache_key, federated_count, timeout=86400)
+                except Exception:
+                    pass
                 
         return local_count + federated_count
 

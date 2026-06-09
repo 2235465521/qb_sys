@@ -30,13 +30,14 @@ const ActionModal: React.FC<ActionModalProps> = ({
 
   useEffect(() => {
     if (open) {
+      // 核心修复：无论新增还是编辑，打开时先清空上一个记录的残留数据
+      form.resetFields();
       if (editingRecord) {
         form.setFieldsValue(editingRecord);
         // 初始化联动状态
         if (editingRecord.province_id) setSelectedProvince(editingRecord.province_id as unknown as number);
         if (editingRecord.city_id) setSelectedCity(editingRecord.city_id as unknown as number);
       } else {
-        form.resetFields();
         setSelectedProvince(undefined);
         setSelectedCity(undefined);
       }

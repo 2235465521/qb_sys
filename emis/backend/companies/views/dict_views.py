@@ -5,8 +5,10 @@ companies.views.dict_views — 行政区划字典视图
 from rest_framework import generics, permissions
 from companies.models import Province, City, District
 from companies.serializers import ProvinceSerializer, CitySerializer, DistrictSerializer
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 
-
+@method_decorator(cache_page(86400 * 30), name='dispatch')
 class ProvinceListView(generics.ListAPIView):
     """GET /api/admin/dict/provinces/ — 所有省份"""
     permission_classes = [permissions.AllowAny]
@@ -14,7 +16,7 @@ class ProvinceListView(generics.ListAPIView):
     queryset = Province.objects.all()
     pagination_class = None  # 字典数据不分页
 
-
+@method_decorator(cache_page(86400 * 30), name='dispatch')
 class CityListView(generics.ListAPIView):
     """GET /api/admin/dict/cities/?province_id=1 — 城市列表（按省筛选）"""
     permission_classes = [permissions.AllowAny]
@@ -28,7 +30,7 @@ class CityListView(generics.ListAPIView):
             qs = qs.filter(province_id=province_id)
         return qs
 
-
+@method_decorator(cache_page(86400 * 30), name='dispatch')
 class DistrictListView(generics.ListAPIView):
     """GET /api/admin/dict/districts/?city_id=1 — 区县列表（按市筛选）"""
     permission_classes = [permissions.AllowAny]
