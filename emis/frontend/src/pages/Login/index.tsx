@@ -2,18 +2,20 @@ import React from 'react';
 import { Form, Input, Button, Card, Typography, message, Space } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
 import BrandLogo from '@/components/BrandLogo';
+import { RegisterModal } from './components/RegisterModal';
 
 const { Text } = Typography;
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const [loading, setLoading] = React.useState(false);
+  const [registerOpen, setRegisterOpen] = React.useState(false);
   const queryClient = useQueryClient();
 
-  const onFinish = async (values: any) => {
+  const onFinish = async (values: { username?: string; password?: string }) => {
     setLoading(true);
     try {
       const response = await axios.post('/api/auth/login/', {
@@ -39,9 +41,10 @@ const LoginPage: React.FC = () => {
       } else {
         navigate('/client/search');
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error('Login error:', error);
-      const errorMsg = error.response?.data?.detail || '登录失败，请检查账号密码';
+      const axiosError = error as AxiosError<{ detail?: string }>;
+      const errorMsg = axiosError.response?.data?.detail || '登录失败，请检查账号密码';
       message.error(errorMsg);
     } finally {
       setLoading(false);
@@ -75,6 +78,20 @@ const LoginPage: React.FC = () => {
     .ant-input-password-icon:hover {
       color: #ffffff !important;
     }
+    .glass-modal .ant-modal-content {
+      background: rgba(0, 0, 0, 0.45) !important;
+      backdrop-filter: blur(16px) !important;
+      -webkit-backdrop-filter: blur(16px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 16px !important;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
+      padding: 36px 28px !important;
+    }
+    .glass-modal-mask {
+      backdrop-filter: blur(10px) !important;
+      -webkit-backdrop-filter: blur(10px) !important;
+      background-color: rgba(4, 11, 22, 0.45) !important;
+    }
   `;
 
   return (
@@ -84,7 +101,7 @@ const LoginPage: React.FC = () => {
       justifyContent: 'center', 
       alignItems: 'center',
       backgroundColor: '#040b16',
-      backgroundImage: `url('/src/assets/login-bg.jpg')`,
+      backgroundImage: `url('https://images.unsplash.com/photo-1475274047050-1d0c0975c63e?q=80&w=1920&auto=format&fit=crop')`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
@@ -188,16 +205,22 @@ const LoginPage: React.FC = () => {
           <div style={{ textAlign: 'center' }}>
             <Space size="large">
               <Text style={{ fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}>忘记密码？</Text>
-              <Text 
+              <span 
                 style={{ fontSize: 12, cursor: 'pointer', color: '#00f2fe', fontWeight: 'bold' }}
-                onClick={() => navigate('/register')}
+                onClick={() => setRegisterOpen(true)}
               >
                 申请账号
-              </Text>
+              </span>
             </Space>
           </div>
         </Form>
       </Card>
+
+      <RegisterModal
+        open={registerOpen}
+        onCancel={() => setRegisterOpen(false)}
+        onSuccess={() => setRegisterOpen(false)}
+      />
     </div>
   );
 };

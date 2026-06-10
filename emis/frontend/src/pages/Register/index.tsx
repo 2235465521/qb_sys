@@ -37,9 +37,11 @@ const RegisterPage: React.FC = () => {
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center',
-      background: 'radial-gradient(circle at center, #f4f8f6 0%, #eef2f0 100%)',
-      backgroundImage: 'radial-gradient(circle at center, rgba(244, 248, 246, 0.9) 0%, rgba(238, 242, 240, 0.98) 100%), linear-gradient(rgba(22, 163, 74, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 163, 74, 0.03) 1px, transparent 1px)',
-      backgroundSize: '100% 100%, 40px 40px, 40px 40px',
+      backgroundColor: '#040b16',
+      backgroundImage: `url('https://images.unsplash.com/photo-1475274047050-1d0c0975c63e?q=80&w=1920&auto=format&fit=crop')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
       overflow: 'hidden',
       position: 'relative'
     }}>
