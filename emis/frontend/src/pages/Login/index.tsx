@@ -54,25 +54,25 @@ const LoginPage: React.FC = () => {
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center',
-      background: 'radial-gradient(circle at center, #0e1e14 0%, #050806 100%)',
-      backgroundImage: 'radial-gradient(circle at center, rgba(16, 32, 22, 0.9) 0%, rgba(5, 8, 6, 0.98) 100%), linear-gradient(rgba(82, 196, 26, 0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(82, 196, 26, 0.015) 1px, transparent 1px)',
-      backgroundSize: '100% 100%, 30px 30px, 30px 30px',
+      background: 'radial-gradient(circle at center, #f4f8f6 0%, #eef2f0 100%)',
+      backgroundImage: 'radial-gradient(circle at center, rgba(244, 248, 246, 0.9) 0%, rgba(238, 242, 240, 0.98) 100%), linear-gradient(rgba(22, 163, 74, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 163, 74, 0.03) 1px, transparent 1px)',
+      backgroundSize: '100% 100%, 40px 40px, 40px 40px',
       overflow: 'hidden',
       position: 'relative'
     }}>
-      {/* Glow effects to blend with dark technology theme */}
-      <div style={{ position: 'absolute', width: 600, height: 600, background: 'radial-gradient(circle, rgba(82,196,26,0.1) 0%, transparent 70%)', borderRadius: '50%', top: -200, right: -200, pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', width: 500, height: 500, background: 'radial-gradient(circle, rgba(82,196,26,0.06) 0%, transparent 70%)', borderRadius: '50%', bottom: -150, left: -150, pointerEvents: 'none' }} />
+      {/* Glow effects to blend with light premium theme */}
+      <div style={{ position: 'absolute', width: 600, height: 600, background: 'radial-gradient(circle, rgba(22,163,74,0.04) 0%, transparent 70%)', borderRadius: '50%', top: -200, right: -200, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: 500, height: 500, background: 'radial-gradient(circle, rgba(22,163,74,0.03) 0%, transparent 70%)', borderRadius: '50%', bottom: -150, left: -150, pointerEvents: 'none' }} />
 
       <Card 
         bordered={false}
         style={{ 
           width: 440, 
           borderRadius: 20, 
-          boxShadow: '0 12px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.05)',
-          backdropFilter: 'blur(16px)',
-          background: 'rgba(15, 18, 16, 0.85)',
-          border: '1px solid rgba(82, 196, 26, 0.15)'
+          boxShadow: '0 20px 40px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)',
+          backdropFilter: 'blur(20px)',
+          background: 'rgba(255, 255, 255, 0.85)',
+          border: '1px solid rgba(255, 255, 255, 0.7)'
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
@@ -90,7 +90,7 @@ const LoginPage: React.FC = () => {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
             <span style={{ 
               fontSize: 16, 
-              color: '#52c41a', 
+              color: '#15803d', 
               fontWeight: 'bold', 
               letterSpacing: 2, 
               textTransform: 'uppercase',
@@ -99,7 +99,7 @@ const LoginPage: React.FC = () => {
               中科标准企业管理信息系统
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-              <Text style={{ color: 'rgba(255,255,255,0.65)', fontSize: 13, display: 'block', fontWeight: 500 }}>
+              <Text style={{ color: '#475569', fontSize: 13, display: 'block', fontWeight: 500 }}>
                 Data-driven Enterprise Standard Management
               </Text>
             </div>
@@ -117,12 +117,12 @@ const LoginPage: React.FC = () => {
             rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input 
-              prefix={<UserOutlined style={{ color: '#52c41a' }} />} 
+              prefix={<UserOutlined style={{ color: '#15803d' }} />} 
               placeholder="用户名 / 管理员账号" 
               style={{ 
-                background: 'rgba(255,255,255,0.05)', 
-                border: '1px solid rgba(255,255,255,0.1)', 
-                color: '#fff',
+                background: '#ffffff', 
+                border: '1px solid #e2e8f0', 
+                color: '#1e293b',
                 borderRadius: 8
               }}
             />
@@ -133,12 +133,12 @@ const LoginPage: React.FC = () => {
             rules={[{ required: true, message: '请输入密码' }]}
           >
             <Input.Password 
-              prefix={<LockOutlined style={{ color: '#52c41a' }} />} 
+              prefix={<LockOutlined style={{ color: '#15803d' }} />} 
               placeholder="密码" 
               style={{ 
-                background: 'rgba(255,255,255,0.05)', 
-                border: '1px solid rgba(255,255,255,0.1)', 
-                color: '#fff',
+                background: '#ffffff', 
+                border: '1px solid #e2e8f0', 
+                color: '#1e293b',
                 borderRadius: 8
               }}
             />
@@ -153,9 +153,9 @@ const LoginPage: React.FC = () => {
               style={{ 
                 height: 45, 
                 borderRadius: 8, 
-                backgroundColor: '#52c41a', 
-                borderColor: '#52c41a',
-                boxShadow: '0 4px 12px rgba(82,196,26,0.3)',
+                backgroundColor: '#15803d', 
+                borderColor: '#15803d',
+                boxShadow: '0 8px 16px rgba(21, 128, 61, 0.15)',
                 fontWeight: 'bold'
               }}
             >
@@ -165,9 +165,9 @@ const LoginPage: React.FC = () => {
           
           <div style={{ textAlign: 'center' }}>
             <Space size="large">
-              <Text style={{ fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.45)' }}>忘记密码？</Text>
+              <Text style={{ fontSize: 12, cursor: 'pointer', color: '#64748b' }}>忘记密码？</Text>
               <Text 
-                style={{ fontSize: 12, cursor: 'pointer', color: '#52c41a', fontWeight: 'bold' }}
+                style={{ fontSize: 12, cursor: 'pointer', color: '#15803d', fontWeight: 'bold' }}
                 onClick={() => navigate('/register')}
               >
                 申请账号

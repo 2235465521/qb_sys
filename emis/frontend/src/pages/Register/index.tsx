@@ -37,33 +37,38 @@ const RegisterPage: React.FC = () => {
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center',
-      background: 'linear-gradient(135deg, #1890ff 0%, #722ed1 100%)',
+      background: 'radial-gradient(circle at center, #f4f8f6 0%, #eef2f0 100%)',
+      backgroundImage: 'radial-gradient(circle at center, rgba(244, 248, 246, 0.9) 0%, rgba(238, 242, 240, 0.98) 100%), linear-gradient(rgba(22, 163, 74, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 163, 74, 0.03) 1px, transparent 1px)',
+      backgroundSize: '100% 100%, 40px 40px, 40px 40px',
       overflow: 'hidden',
       position: 'relative'
     }}>
-      <div style={{ position: 'absolute', width: 400, height: 400, background: 'rgba(255,255,255,0.1)', borderRadius: '50%', top: -100, right: -100 }} />
-      <div style={{ position: 'absolute', width: 300, height: 300, background: 'rgba(255,255,255,0.05)', borderRadius: '50%', bottom: -50, left: -50 }} />
+      {/* Glow effects to blend with light premium theme */}
+      <div style={{ position: 'absolute', width: 600, height: 600, background: 'radial-gradient(circle, rgba(22,163,74,0.04) 0%, transparent 70%)', borderRadius: '50%', top: -200, right: -200, pointerEvents: 'none' }} />
+      <div style={{ position: 'absolute', width: 500, height: 500, background: 'radial-gradient(circle, rgba(22,163,74,0.03) 0%, transparent 70%)', borderRadius: '50%', bottom: -150, left: -150, pointerEvents: 'none' }} />
 
       <Card 
         bordered={false}
         style={{ 
           width: 420, 
-          borderRadius: 16, 
-          boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
-          backdropFilter: 'blur(10px)',
-          background: 'rgba(255, 255, 255, 0.95)'
+          borderRadius: 20, 
+          boxShadow: '0 20px 40px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)',
+          backdropFilter: 'blur(20px)',
+          background: 'rgba(255, 255, 255, 0.85)',
+          border: '1px solid rgba(255, 255, 255, 0.7)'
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 24 }}>
           <div style={{ 
-            width: 64, height: 64, background: '#1890ff', borderRadius: 12, 
+            width: 64, height: 64, background: 'rgba(22,163,74,0.1)', borderRadius: 12, 
             display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
-            marginBottom: 16, boxShadow: '0 4px 12px rgba(24,144,255,0.3)'
+            marginBottom: 16, border: '1px solid rgba(22,163,74,0.2)',
+            boxShadow: '0 4px 16px rgba(22,163,74,0.08)'
           }}>
-            <SafetyCertificateOutlined style={{ fontSize: 32, color: '#fff' }} />
+            <SafetyCertificateOutlined style={{ fontSize: 32, color: '#15803d' }} />
           </div>
-          <Title level={3} style={{ margin: 0 }}>申请您的 EMIS 账号</Title>
-          <Text type="secondary">Enterprise Management Information System</Text>
+          <Title level={3} style={{ margin: 0, color: '#1e293b' }}>申请您的 EMIS 账号</Title>
+          <Text style={{ color: '#64748b', fontSize: 13, marginTop: 4, display: 'block' }}>Enterprise Management Information System</Text>
         </div>
 
         <Form
@@ -79,27 +84,48 @@ const RegisterPage: React.FC = () => {
               { min: 2, message: '账号长度至少2位' }
             ]}
           >
-            <Input prefix={<UserOutlined />} placeholder="登录账号 (英文/数字组合)" />
+            <Input 
+              prefix={<UserOutlined style={{ color: '#15803d' }} />} 
+              placeholder="登录账号 (英文/数字组合)" 
+              style={{ background: '#ffffff', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: 8 }}
+            />
           </Form.Item>
 
           <Form.Item
             name="real_name"
             rules={[{ required: true, message: '请输入您的真实姓名/企业称呼' }]}
           >
-            <Input prefix={<IdcardOutlined />} placeholder="真实姓名 / 企业称呼" />
+            <Input 
+              prefix={<IdcardOutlined style={{ color: '#15803d' }} />} 
+              placeholder="真实姓名 / 企业称呼" 
+              style={{ background: '#ffffff', border: '1px solid #e2e8f0', color: '#1e293b', borderRadius: 8 }}
+            />
           </Form.Item>
 
           <Form.Item>
-            <Button type="primary" htmlType="submit" block loading={loading} style={{ height: 45, borderRadius: 8 }}>
+            <Button 
+              type="primary" 
+              htmlType="submit" 
+              block 
+              loading={loading} 
+              style={{ 
+                height: 45, 
+                borderRadius: 8,
+                backgroundColor: '#15803d',
+                borderColor: '#15803d',
+                boxShadow: '0 8px 16px rgba(21, 128, 61, 0.15)',
+                fontWeight: 'bold'
+              }}
+            >
               确认注册并生成账号
             </Button>
           </Form.Item>
           
           <div style={{ textAlign: 'center' }}>
             <Space size="large">
-              <Text type="secondary">已有账号？</Text>
+              <Text type="secondary" style={{ color: '#64748b' }}>已有账号？</Text>
               <Text 
-                style={{ fontSize: 13, cursor: 'pointer', color: '#1890ff' }}
+                style={{ fontSize: 13, cursor: 'pointer', color: '#15803d', fontWeight: 'bold' }}
                 onClick={() => navigate('/login')}
               >
                 返回安全登录
