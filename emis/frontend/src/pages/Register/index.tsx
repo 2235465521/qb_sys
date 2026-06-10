@@ -38,7 +38,7 @@ const RegisterPage: React.FC = () => {
       justifyContent: 'center', 
       alignItems: 'center',
       backgroundColor: '#040b16',
-      backgroundImage: `url('https://images.unsplash.com/photo-1475274047050-1d0c0975c63e?q=80&w=1920&auto=format&fit=crop')`,
+      backgroundImage: `url('/login-bg.jpg')`,
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
