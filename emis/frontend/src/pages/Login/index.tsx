@@ -48,58 +48,88 @@ const LoginPage: React.FC = () => {
     }
   };
 
+  const minimalInputStyle = `
+    .minimal-input-wrapper {
+      background: transparent !important;
+      border: none !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.4) !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      padding-left: 0;
+      padding-right: 0;
+      transition: all 0.3s;
+    }
+    .minimal-input-wrapper:hover, .minimal-input-wrapper-focused {
+      border-bottom: 1px solid #00f2fe !important;
+    }
+    .minimal-input-wrapper input {
+      background: transparent !important;
+      color: white !important;
+    }
+    .minimal-input-wrapper input::placeholder {
+      color: rgba(255, 255, 255, 0.5) !important;
+    }
+    .ant-input-password-icon {
+      color: rgba(255, 255, 255, 0.5) !important;
+    }
+    .ant-input-password-icon:hover {
+      color: #ffffff !important;
+    }
+  `;
+
   return (
     <div style={{ 
       height: '100vh', 
       display: 'flex', 
       justifyContent: 'center', 
       alignItems: 'center',
-      background: 'radial-gradient(circle at center, #f4f8f6 0%, #eef2f0 100%)',
-      backgroundImage: 'radial-gradient(circle at center, rgba(244, 248, 246, 0.9) 0%, rgba(238, 242, 240, 0.98) 100%), linear-gradient(rgba(22, 163, 74, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(22, 163, 74, 0.03) 1px, transparent 1px)',
-      backgroundSize: '100% 100%, 40px 40px, 40px 40px',
+      backgroundColor: '#040b16',
+      backgroundImage: `url('/src/assets/login-bg.jpg')`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
       overflow: 'hidden',
       position: 'relative'
     }}>
-      {/* Glow effects to blend with light premium theme */}
-      <div style={{ position: 'absolute', width: 600, height: 600, background: 'radial-gradient(circle, rgba(22,163,74,0.04) 0%, transparent 70%)', borderRadius: '50%', top: -200, right: -200, pointerEvents: 'none' }} />
-      <div style={{ position: 'absolute', width: 500, height: 500, background: 'radial-gradient(circle, rgba(22,163,74,0.03) 0%, transparent 70%)', borderRadius: '50%', bottom: -150, left: -150, pointerEvents: 'none' }} />
-
+      <style>{minimalInputStyle}</style>
+      
       <Card 
         bordered={false}
         style={{ 
           width: 440, 
-          borderRadius: 20, 
-          boxShadow: '0 20px 40px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.6)',
-          backdropFilter: 'blur(20px)',
-          background: 'rgba(255, 255, 255, 0.85)',
-          border: '1px solid rgba(255, 255, 255, 0.7)'
+          borderRadius: 16, 
+          boxShadow: '0 15px 35px rgba(0,0,0,0.5)',
+          backdropFilter: 'blur(12px)',
+          background: 'rgba(0, 0, 0, 0.35)',
+          border: '1px solid rgba(255, 255, 255, 0.1)'
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           {/* Brand Logo Container */}
           <div style={{ 
-            width: 96, height: 96, background: 'rgba(82,196,26,0.1)', borderRadius: '50%', 
+            width: 96, height: 96, 
+            background: 'rgba(255, 255, 255, 0.05)', 
+            borderRadius: '50%', 
             display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
-            marginBottom: 20, border: '1px solid rgba(82,196,26,0.2)',
-            boxShadow: '0 4px 20px rgba(82,196,26,0.15)'
+            marginBottom: 20, border: '1px solid rgba(255, 255, 255, 0.15)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
+            backdropFilter: 'blur(4px)'
           }}>
-            <BrandLogo width={72} height={72} />
+            <BrandLogo width={72} height={72} style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }} />
           </div>
 
           {/* Typography Headers */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
             <span style={{ 
-              fontSize: 16, 
-              color: '#15803d', 
+              fontSize: 18, 
+              color: '#ffffff', 
               fontWeight: 'bold', 
               letterSpacing: 2, 
-              textTransform: 'uppercase',
-              opacity: 0.95
             }}>
               中科标准企业管理信息系统
             </span>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 4 }}>
-              <Text style={{ color: '#475569', fontSize: 13, display: 'block', fontWeight: 500 }}>
+              <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, display: 'block', fontWeight: 500 }}>
                 Data-driven Enterprise Standard Management
               </Text>
             </div>
@@ -117,14 +147,9 @@ const LoginPage: React.FC = () => {
             rules={[{ required: true, message: '请输入用户名' }]}
           >
             <Input 
-              prefix={<UserOutlined style={{ color: '#15803d' }} />} 
+              className="minimal-input-wrapper"
+              prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.7)', marginRight: 8 }} />} 
               placeholder="用户名 / 管理员账号" 
-              style={{ 
-                background: '#ffffff', 
-                border: '1px solid #e2e8f0', 
-                color: '#1e293b',
-                borderRadius: 8
-              }}
             />
           </Form.Item>
 
@@ -133,14 +158,9 @@ const LoginPage: React.FC = () => {
             rules={[{ required: true, message: '请输入密码' }]}
           >
             <Input.Password 
-              prefix={<LockOutlined style={{ color: '#15803d' }} />} 
+              className="minimal-input-wrapper"
+              prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.7)', marginRight: 8 }} />} 
               placeholder="密码" 
-              style={{ 
-                background: '#ffffff', 
-                border: '1px solid #e2e8f0', 
-                color: '#1e293b',
-                borderRadius: 8
-              }}
             />
           </Form.Item>
 
@@ -152,22 +172,24 @@ const LoginPage: React.FC = () => {
               loading={loading} 
               style={{ 
                 height: 45, 
-                borderRadius: 8, 
-                backgroundColor: '#15803d', 
-                borderColor: '#15803d',
-                boxShadow: '0 8px 16px rgba(21, 128, 61, 0.15)',
-                fontWeight: 'bold'
+                borderRadius: 25, 
+                background: 'linear-gradient(90deg, #00f2fe 0%, #4facfe 100%)', 
+                border: 'none',
+                boxShadow: '0 8px 20px rgba(79, 172, 254, 0.4)',
+                fontWeight: 'bold',
+                marginTop: 10,
+                letterSpacing: 1
               }}
             >
-              立即登录
+              登录 LOGIN
             </Button>
           </Form.Item>
           
           <div style={{ textAlign: 'center' }}>
             <Space size="large">
-              <Text style={{ fontSize: 12, cursor: 'pointer', color: '#64748b' }}>忘记密码？</Text>
+              <Text style={{ fontSize: 12, cursor: 'pointer', color: 'rgba(255,255,255,0.6)' }}>忘记密码？</Text>
               <Text 
-                style={{ fontSize: 12, cursor: 'pointer', color: '#15803d', fontWeight: 'bold' }}
+                style={{ fontSize: 12, cursor: 'pointer', color: '#00f2fe', fontWeight: 'bold' }}
                 onClick={() => navigate('/register')}
               >
                 申请账号
