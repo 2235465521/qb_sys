@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Modal, Form, Input, Button, Typography, message, ConfigProvider } from 'antd';
-import { UserOutlined, IdcardOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { UserOutlined, IdcardOutlined } from '@ant-design/icons';
 import axios, { AxiosError } from 'axios';
+import BrandLogo from '@/components/BrandLogo';
 
 const { Text } = Typography;
 
@@ -41,7 +42,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ open, onCancel, on
       theme={{
         components: {
           Modal: {
-            contentBg: 'rgba(0, 0, 0, 0.45)',
+            contentBg: 'rgba(0, 0, 0, 0.22)',
             headerBg: 'transparent',
             titleColor: '#ffffff',
           }
@@ -62,16 +63,17 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ open, onCancel, on
         closeIcon={<span style={{ color: 'rgba(255, 255, 255, 0.55)', fontSize: 16 }}>✕</span>}
       >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          {/* Brand Logo Container */}
           <div style={{ 
-            width: 64, height: 64, 
-            background: 'rgba(0, 242, 254, 0.08)', 
+            width: 96, height: 96, 
+            background: 'rgba(255, 255, 255, 0.05)', 
             borderRadius: '50%', 
             display: 'inline-flex', justifyContent: 'center', alignItems: 'center',
-            marginBottom: 16, border: '1px solid rgba(0, 242, 254, 0.2)',
-            boxShadow: '0 8px 32px rgba(0, 242, 254, 0.1)',
+            marginBottom: 20, border: '1px solid rgba(255, 255, 255, 0.15)',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.3)',
             backdropFilter: 'blur(4px)'
           }}>
-            <SafetyCertificateOutlined style={{ fontSize: 30, color: '#00f2fe' }} />
+            <BrandLogo width={72} height={72} style={{ filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.3))' }} />
           </div>
           <span style={{ 
             fontSize: 18, 

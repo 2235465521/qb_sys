@@ -79,10 +79,10 @@ const LoginPage: React.FC = () => {
       color: #ffffff !important;
     }
     .glass-modal .ant-modal-content {
-      background: rgba(0, 0, 0, 0.45) !important;
-      backdrop-filter: blur(16px) !important;
-      -webkit-backdrop-filter: blur(16px) !important;
-      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      background: rgba(0, 0, 0, 0.22) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.15) !important;
       border-radius: 16px !important;
       box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5) !important;
       padding: 36px 28px !important;
@@ -115,10 +115,11 @@ const LoginPage: React.FC = () => {
         style={{ 
           width: 440, 
           borderRadius: 16, 
-          boxShadow: '0 15px 35px rgba(0,0,0,0.5)',
-          backdropFilter: 'blur(12px)',
-          background: 'rgba(0, 0, 0, 0.35)',
-          border: '1px solid rgba(255, 255, 255, 0.1)'
+          boxShadow: '0 20px 45px rgba(0, 0, 0, 0.65)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          background: 'rgba(0, 0, 0, 0.22)',
+          border: '1px solid rgba(255, 255, 255, 0.15)'
         }}
       >
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
