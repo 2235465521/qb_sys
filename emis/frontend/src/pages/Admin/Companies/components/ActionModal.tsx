@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button } from 'antd';
+import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button, Spin } from 'antd';
 import type { Company } from '@/types';
 import { useDictData } from '@/hooks/useDictData';
+import apiClient from '@/api/client';
 
 interface ActionModalProps {
   open: boolean;
@@ -28,15 +29,27 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const { data: cities } = useCityQuery(selectedProvince);
   const { data: districts } = useDistrictQuery(selectedCity);
 
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
   useEffect(() => {
     if (open) {
-      // 核心修复：无论新增还是编辑，打开时先清空上一个记录的残留数据
       form.resetFields();
       if (editingRecord) {
-        form.setFieldsValue(editingRecord);
-        // 初始化联动状态
-        if (editingRecord.province_id) setSelectedProvince(editingRecord.province_id as unknown as number);
-        if (editingRecord.city_id) setSelectedCity(editingRecord.city_id as unknown as number);
+        if (editingRecord.id) {
+          setLoadingDetail(true);
+          apiClient.get(`/admin/companies/${editingRecord.id}/`)
+            .then(res => {
+              const data = res.data;
+              form.setFieldsValue(data);
+              if (data.province_id) setSelectedProvince(data.province_id);
+              if (data.city_id) setSelectedCity(data.city_id);
+            })
+            .finally(() => {
+              setLoadingDetail(false);
+            });
+        } else {
+          form.setFieldsValue(editingRecord);
+        }
       } else {
         setSelectedProvince(undefined);
         setSelectedCity(undefined);
@@ -151,8 +164,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
         </Col>
       </Row>
 
-      <Form.Item name="address" label="详细地址">
-        <Input.TextArea rows={2} placeholder="请输入详细地址信息" />
+      <Form.Item name="address" label="详细地址 (业务/经营地址)">
+        <Input placeholder="请输入详细地址信息" />
       </Form.Item>
     </div>
   );
@@ -244,8 +257,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
         </Col>
       </Row>
 
-      <Form.Item name="registered_address" label="注册地址">
-        <Input.TextArea rows={2} placeholder="请输入营业执照上的注册地址" />
+      <Form.Item name="registered_address" label="注册地址 (营业执照所在地址)">
+        <Input placeholder="请输入营业执照上的注册地址" />
       </Form.Item>
 
       <Row gutter={16}>
@@ -309,9 +322,11 @@ const ActionModal: React.FC<ActionModalProps> = ({
         <Button key="close" type="primary" onClick={onCancel}>关闭</Button>
       ] : undefined}
     >
-      <Form form={form} layout="vertical" initialValues={{ status: 'active' }} disabled={isViewOnly}>
-        <Tabs defaultActiveKey="basic" items={tabItems} />
-      </Form>
+      <Spin spinning={loadingDetail} tip="正在加载企业详情数据...">
+        <Form form={form} layout="vertical" initialValues={{ status: 'active' }} disabled={isViewOnly}>
+          <Tabs defaultActiveKey="basic" items={tabItems} />
+        </Form>
+      </Spin>
     </Modal>
   );
 };
