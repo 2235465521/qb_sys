@@ -131,6 +131,7 @@ class Company(models.Model):
     mailing_address_zip = models.CharField('通讯地址邮编', max_length=20, blank=True, help_text='通讯地址对应的邮政编码')
     business_scope = models.TextField('经营范围', blank=True, help_text='企业工商经营范围')
     registration_status = models.CharField('工商状态', max_length=100, blank=True, help_text='工商登记状态（如：存续、在业、吊销、注销等）')
+    standards_count = models.IntegerField('标准总数', default=0, db_index=True)
 
     status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='active')
     is_deleted = models.BooleanField('是否软删除', default=False, db_index=True)

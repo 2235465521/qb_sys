@@ -256,7 +256,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
   );
 
   const advancedInfoTab = (
-    <div style={{ paddingTop: 16, maxHeight: 400, overflowY: 'auto', overflowX: 'hidden', paddingRight: 8 }}>
+    <div style={{ paddingTop: 16, maxHeight: 500, overflowY: 'auto', overflowX: 'hidden', paddingRight: 8 }}>
       <Row gutter={16}>
         <Col span={12}>
           <Form.Item name="english_name" label="英文名">

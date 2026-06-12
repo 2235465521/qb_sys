@@ -236,15 +236,51 @@ def _invalidate_search_cache():
     cache.delete("dashboard:stats")
 
 
+def update_company_standards_count(company):
+    if not company:
+        return
+    from django.db import connections
+    # 1. 本地数量
+    local_count = company.standards.filter(type__in=['enterprise', 'group']).count()
+    # 2. 外部联邦库数量
+    federated_count = 0
+    search_name = company.name.strip()
+    if search_name:
+        try:
+            with connections['stsc_db'].cursor() as cursor:
+                cursor.execute("SET NAMES utf8mb4;")
+                query = """
+                    SELECT COUNT(DISTINCT v.std_id)
+                    FROM unit_dict u
+                    JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                    JOIN view_std_full v ON r.base_id = v.id
+                    WHERE u.unit_name LIKE %s
+                """
+                cursor.execute(query, [f"%{search_name}%".encode('utf-8')])
+                row = cursor.fetchone()
+                if row:
+                    federated_count = row[0]
+        except Exception:
+            pass
+    company.standards_count = local_count + federated_count
+    company.save(update_fields=['standards_count'])
+
+
 @receiver(post_save, sender=Standard)
 def standard_post_save(sender, instance, created, **kwargs):
     """
-    当企标记录保存时，精准清除搜索缓存并异步触发 PDF 解析任务
+    当企标记录保存时，精准清除搜索缓存并异步触发 PDF 解析任务，同时更新企业标准总数
     """
     try:
         _invalidate_search_cache()
     except Exception:
         pass
+
+    if instance.company:
+        try:
+            update_company_standards_count(instance.company)
+        except Exception:
+            pass
 
     # 仅企标才需要全文解析，国标等一般不需要
     if instance.type != 'enterprise':
@@ -259,11 +295,17 @@ def standard_post_save(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=Standard)
 def standard_post_delete(sender, instance, **kwargs):
     """
-    当企标记录删除时，精准清除搜索缓存
+    当企标记录删除时，精准清除搜索缓存，并更新企业标准总数
     """
     try:
         _invalidate_search_cache()
     except Exception:
         pass
+
+    if instance.company:
+        try:
+            update_company_standards_count(instance.company)
+        except Exception:
+            pass
 
 

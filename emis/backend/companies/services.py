@@ -165,7 +165,7 @@ def search_companies(
     # 我们将在 Serializer 中获取当前分页（仅 20 条）的 standards 数量。
 
     if center_lat is None:
-        qs = qs.order_by('-id')
+        qs = qs.order_by('-standards_count', '-id')
 
     return qs.select_related('province', 'city', 'district').prefetch_related('standards')
 
