@@ -113,7 +113,7 @@ class Company(models.Model):
     registered_zipcode = models.CharField('注册地址邮编', max_length=20, blank=True, help_text='注册地址对应的邮政编码')
     valid_mobile = models.CharField('有效手机号', max_length=50, blank=True, help_text='主要联系手机号码，用于接收重要推送或通知')
     more_phones = models.CharField('更多电话', max_length=200, blank=True, help_text='其他备用联系电话')
-    email = models.CharField('邮箱', max_length=1000, blank=True, help_text='企业的官方或联系邮箱(可能包含多个)')
+    email = models.CharField('邮箱', max_length=254, blank=True, help_text='企业的官方或联系邮箱(可包含多个)')
     company_type = models.CharField('企业(机构)类型', max_length=100, blank=True, help_text='例如：有限责任公司、股份有限公司等')
     registration_no = models.CharField('注册号', max_length=100, blank=True, help_text='工商注册号')
     organization_code = models.CharField('组织机构代码', max_length=100, blank=True, help_text='组织机构代码证编号')

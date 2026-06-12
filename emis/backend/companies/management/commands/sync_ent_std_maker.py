@@ -14,6 +14,29 @@ class Command(BaseCommand):
             return val
         return val[:max_len]
 
+    def smart_extract_emails(self, email_str, max_len=254):
+        if not email_str or not isinstance(email_str, str):
+            return ''
+        import re
+        # 按分号、逗号、空格、竖线等常见分隔符拆分
+        parts = re.split(r'[;,\s|]+', email_str.strip())
+        valid_parts = [p.strip() for p in parts if p.strip()]
+        
+        result = ''
+        for p in valid_parts:
+            if not result:
+                if len(p) <= max_len:
+                    result = p
+                else:
+                    return p[:max_len]
+            else:
+                candidate = result + ',' + p
+                if len(candidate) <= max_len:
+                    result = candidate
+                else:
+                    break
+        return result
+
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("=== 开始同步 compare_conp.ent_std_maker 数据 ==="))
@@ -74,7 +97,7 @@ class Command(BaseCommand):
                             'registered_zipcode': self.safe_trunc(row_dict.get('registered_address_zip') or '', 20),
                             'valid_mobile': self.safe_trunc(row_dict.get('mobile_phone') or '', 50),
                             'more_phones': self.safe_trunc(row_dict.get('other_phones') or '', 200),
-                            'email': self.safe_trunc(row_dict.get('email') or '', 1000),
+                            'email': self.smart_extract_emails(row_dict.get('email') or '', 254),
                             'industry_category': self.safe_trunc(row_dict.get('industry_category_l1') or '', 100),
                             'industry_major': self.safe_trunc(row_dict.get('industry_category_l2') or '', 100),
                             'industry_middle': self.safe_trunc(row_dict.get('industry_category_l3') or '', 100),
