@@ -212,6 +212,12 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
         <List
           loading={isLoading}
           dataSource={filteredStandards}
+          pagination={{ 
+            pageSize: 20, 
+            showSizeChanger: false, 
+            size: 'small',
+            showTotal: (total) => `共 ${total} 条`
+          }}
           locale={{ emptyText: <Empty description="当前类别下无任何标准文件" /> }}
           renderItem={(item: any) => (
             <StandardListItem 

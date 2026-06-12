@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from django.conf import settings
 from django.http import FileResponse, Http404
 from companies.models import Company
+from django.core.cache import cache
 
 class CompanyFederatedStandardsAPIView(APIView):
     """
@@ -46,6 +47,15 @@ class CompanyFederatedStandardsAPIView(APIView):
             return Response({'error': '未找到该企业'}, status=404)
         
         search_name = company.name.strip()
+        
+        # 尝试从 Cache 获取缓存数据
+        cache_key = f"company_federated_standards:{pk}"
+        try:
+            cached_data = cache.get(cache_key)
+            if cached_data is not None:
+                return Response(cached_data)
+        except Exception:
+            pass
         
         try:
             with connections['stsc_db'].cursor() as cursor:
@@ -102,12 +112,20 @@ class CompanyFederatedStandardsAPIView(APIView):
                 seen_stds.add(item['standard_no'])
                 unique_results.append(item)
                 
-        return Response({
+        response_data = {
             'company_id': company.id,
             'company_name': search_name,
             'total_standards': len(unique_results),
             'standards': unique_results
-        })
+        }
+        
+        # 将数据缓存 1 小时 (3600 秒)
+        try:
+            cache.set(cache_key, response_data, timeout=3600)
+        except Exception:
+            pass
+            
+        return Response(response_data)
 
     def _map_status(self, status_code):
         mapping = {

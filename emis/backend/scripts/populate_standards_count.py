@@ -43,9 +43,10 @@ def main():
                 cursor.execute("SET NAMES utf8mb4;")
                 placeholders = ', '.join(['%s'] * len(batch_names))
                 query = f"""
-                    SELECT u.unit_name, COUNT(DISTINCT r.base_id)
+                    SELECT u.unit_name, COUNT(DISTINCT v.std_id)
                     FROM unit_dict u
                     JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                    JOIN view_std_full v ON r.base_id = v.id
                     WHERE u.unit_name IN ({placeholders})
                     GROUP BY u.unit_name
                 """
