@@ -125,9 +125,15 @@ const ActionModal: React.FC<ActionModalProps> = ({
           apiClient.get(`/admin/companies/${editingRecord.id}/`)
             .then(res => {
               const data = res.data;
-              form.setFieldsValue(data);
-              if (data.province_id) setSelectedProvince(data.province_id);
-              if (data.city_id) setSelectedCity(data.city_id);
+              const formattedData = {
+                ...data,
+                province_id: data.province?.id,
+                city_id: data.city?.id,
+                district_id: data.district?.id,
+              };
+              form.setFieldsValue(formattedData);
+              if (formattedData.province_id) setSelectedProvince(formattedData.province_id);
+              if (formattedData.city_id) setSelectedCity(formattedData.city_id);
             })
             .finally(() => {
               setLoadingDetail(false);

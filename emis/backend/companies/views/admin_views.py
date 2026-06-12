@@ -116,7 +116,7 @@ class CompanyAdminDetailView(generics.RetrieveUpdateDestroyAPIView):
     """
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = CompanySerializer
-    queryset = Company.objects.filter(is_deleted=False)
+    queryset = Company.objects.filter(is_deleted=False).select_related('province', 'city', 'district')
 
     def perform_destroy(self, instance):
         """软删除：设置 is_deleted=True，不真正删除"""
