@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button, Spin } from 'antd';
+import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button, Spin, Tag } from 'antd';
 import type { Company } from '@/types';
 import { useDictData } from '@/hooks/useDictData';
 import apiClient from '@/api/client';
@@ -12,6 +12,68 @@ interface ActionModalProps {
   onCancel: () => void;
   onOk: (values: Partial<Company>) => void;
 }
+
+const RegistrationStatusView: React.FC<{ value?: string }> = ({ value }) => {
+  if (!value) {
+    return (
+      <div style={{
+        backgroundColor: '#f0f2f5',
+        borderRadius: 2,
+        padding: '4px 11px',
+        height: 32,
+        display: 'flex',
+        alignItems: 'center',
+        color: 'rgba(0, 0, 0, 0.85)',
+        fontSize: 14,
+      }}>-</div>
+    );
+  }
+
+  const statusRegex = /^(注销|存续|在营|在册|吊销|迁出|登记|确定|正常|禁用)(.*)$/;
+  const match = value.match(statusRegex);
+
+  if (match) {
+    const status = match[1];
+    const rest = match[2];
+    let tagColor = 'default';
+    if (status === '注销' || status === '吊销' || status === '禁用') {
+      tagColor = 'error';
+    } else if (status === '存续' || status === '在营' || status === '正常') {
+      tagColor = 'success';
+    } else if (status === '迁出') {
+      tagColor = 'warning';
+    }
+
+    return (
+      <div style={{
+        backgroundColor: '#f0f2f5',
+        borderRadius: 2,
+        padding: '4px 11px',
+        height: 32,
+        display: 'flex',
+        alignItems: 'center',
+        fontSize: 14,
+        gap: 8,
+      }}>
+        <Tag color={tagColor} style={{ margin: 0, borderRadius: 2 }}>{status}</Tag>
+        <span style={{ color: 'rgba(0, 0, 0, 0.85)' }}>{rest}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{
+      backgroundColor: '#f0f2f5',
+      borderRadius: 2,
+      padding: '4px 11px',
+      height: 32,
+      display: 'flex',
+      alignItems: 'center',
+      color: 'rgba(0, 0, 0, 0.85)',
+      fontSize: 14,
+    }}>{value}</div>
+  );
+};
 
 const ActionModal: React.FC<ActionModalProps> = ({
   open,
@@ -234,7 +296,11 @@ const ActionModal: React.FC<ActionModalProps> = ({
         </Col>
         <Col span={12}>
           <Form.Item name="registration_status" label="登记状态">
-            <Input placeholder="如：存续、在营、注销" />
+            {isViewOnly ? (
+              <RegistrationStatusView />
+            ) : (
+              <Input placeholder="如：存续、在营、注销" />
+            )}
           </Form.Item>
         </Col>
       </Row>
@@ -326,17 +392,45 @@ const ActionModal: React.FC<ActionModalProps> = ({
         {isViewOnly && (
           <style>
             {`
+              /* 隐藏必填红星 */
+              .ant-form-item-required::before {
+                display: none !important;
+              }
+              
+              /* 统一灰色直角长方形背景与文字颜色 */
               .ant-input-disabled, 
               .ant-input-number-disabled, 
               .ant-select-disabled .ant-select-selector,
-              .ant-picker-disabled {
-                background-color: transparent !important;
+              .ant-picker-disabled,
+              textarea.ant-input-disabled,
+              .ant-input-number-disabled .ant-input-number-input,
+              .ant-picker-disabled input {
+                background-color: #f0f2f5 !important;
                 border-color: transparent !important;
+                border: none !important;
                 color: rgba(0, 0, 0, 0.85) !important;
+                -webkit-text-fill-color: rgba(0, 0, 0, 0.85) !important;
                 cursor: default !important;
+                border-radius: 2px !important;
+                box-shadow: none !important;
               }
+              
+              /* 保证下拉框的值颜色正常 */
+              .ant-select-disabled .ant-select-selection-item {
+                color: rgba(0, 0, 0, 0.85) !important;
+                -webkit-text-fill-color: rgba(0, 0, 0, 0.85) !important;
+              }
+              
+              /* 显示下拉框小箭头，颜色稍淡 */
               .ant-select-disabled .ant-select-arrow {
-                display: none;
+                color: rgba(0, 0, 0, 0.45) !important;
+              }
+              
+              /* 移除 disabled 状态下的 hover 边框效果 */
+              .ant-input-disabled:hover,
+              .ant-input-number-disabled:hover,
+              .ant-select-disabled .ant-select-selector:hover {
+                border-color: transparent !important;
               }
             `}
           </style>
