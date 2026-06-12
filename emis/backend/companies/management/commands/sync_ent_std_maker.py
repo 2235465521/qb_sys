@@ -125,9 +125,14 @@ class Command(BaseCommand):
                         mapped_data['city_id'] = c_id
                         mapped_data['district_id'] = d_id
                         
-                        # 清除空的时间字段，防止 django 报错
-                        if mapped_data.get('established_date') == '':
-                            mapped_data['established_date'] = None
+                        # 兼容处理脏时间数据（如 "-"），防止 django DateField 报错
+                        est_date = mapped_data.get('established_date')
+                        if isinstance(est_date, str):
+                            est_date = est_date.strip()
+                            if not est_date or est_date == '-' or len(est_date) < 10:
+                                mapped_data['established_date'] = None
+                            else:
+                                mapped_data['established_date'] = est_date[:10]
                         
                         if company:
                             # 执行强制覆盖更新 (Update)
