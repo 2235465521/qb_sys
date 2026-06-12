@@ -269,7 +269,7 @@ def parse_normative_reference_excel(file_obj) -> dict:
                 else:
                     latest_no = cited_no or ''
                     
-                if not company_name or not std_no or not cited_no:
+                if not company_name or not std_no or not cited_no or not re.search(r'[a-zA-Z0-9]', cited_no):
                     continue
                     
                 try:
@@ -353,7 +353,7 @@ def parse_normative_reference_excel(file_obj) -> dict:
             if not source_no:
                 continue
             parsed_standard_nos.add(source_no)
-            if cited_no:
+            if cited_no and re.search(r'[a-zA-Z0-9]', cited_no):
                 citation_pairs.append((source_no, cited_no))
 
         with transaction.atomic():
@@ -435,6 +435,7 @@ def get_citation_ranking(limit: int = 20):
 
     ranking = (
         NormativeReference.objects
+        .filter(cited_standard_no__regex=r'[a-zA-Z0-9]')
         .values('cited_standard_no')
         .annotate(
             citation_count=Count('id'),
@@ -1012,8 +1013,8 @@ def import_references_from_excel_v2(file_obj) -> dict:
             if not source_no or source_no == 'nan':
                 result['errors'].append({'row': row_idx, 'error': "必填列 '企标编号*' 为空"})
                 continue
-            if not cited_no or cited_no == 'nan':
-                result['errors'].append({'row': row_idx, 'error': "必填列 '引用的国标/行标编号*' 为空"})
+            if not cited_no or cited_no == 'nan' or not re.search(r'[a-zA-Z0-9]', cited_no):
+                result['errors'].append({'row': row_idx, 'error': "必填列 '引用的国标/行标编号*' 为空或格式无效"})
                 continue
                 
             # B. 主体存在性校验

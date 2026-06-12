@@ -8,9 +8,7 @@ interface StatsProps {
   activeCompanies: number;
   totalMembers: number;
   activeMembers: number;
-  totalStandards: number;
   enterpriseStandards: number;
-  nationalStandards: number;
   totalSmsTasks: number;
   totalSentSms: number;
 }
@@ -20,9 +18,7 @@ const StatsCards: React.FC<StatsProps> = ({
   activeCompanies,
   totalMembers,
   activeMembers,
-  totalStandards,
   enterpriseStandards,
-  nationalStandards,
   totalSmsTasks,
   totalSentSms,
 }) => {
@@ -48,9 +44,9 @@ const StatsCards: React.FC<StatsProps> = ({
       path: '/admin/members',
     },
     {
-      title: '标准资产',
-      value: totalStandards,
-      subValue: `企标 ${enterpriseStandards} | 国标 ${nationalStandards}`,
+      title: '企业标准总数',
+      value: enterpriseStandards,
+      subValue: `企标 ${enterpriseStandards}`,
       icon: <FileProtectOutlined style={{ fontSize: 24, color: '#fff' }} />,
       grad: 'linear-gradient(135deg, #f59e0b 0%, #ca8a04 100%)',
       shadow: 'rgba(245, 158, 11, 0.15)',

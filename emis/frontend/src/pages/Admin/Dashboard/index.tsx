@@ -92,9 +92,7 @@ const DashboardPage: React.FC = () => {
         activeCompanies={stats.active_companies}
         totalMembers={stats.total_members}
         activeMembers={stats.active_members}
-        totalStandards={stats.total_standards}
         enterpriseStandards={stats.enterprise_standards}
-        nationalStandards={stats.national_standards}
         totalSmsTasks={stats.total_sms_tasks}
         totalSentSms={stats.total_sent_sms}
       />
