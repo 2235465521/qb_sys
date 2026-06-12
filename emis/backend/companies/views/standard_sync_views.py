@@ -66,12 +66,10 @@ class CompanyFederatedStandardsAPIView(APIView):
                     JOIN mydate.view_std_full v ON r.base_id = v.id
                     LEFT JOIN mydate.std_extend_h h ON v.id = h.base_id
                     LEFT JOIN mydate.std_filepath f ON v.id = f.base_id
-                    WHERE u.unit_name LIKE %s
+                    WHERE u.unit_name = %s
                     ORDER BY v.release_date DESC
-                    LIMIT 500
                 """
-                search_param = f"%{search_name}%".encode('utf-8')
-                cursor.execute(query, [search_param])
+                cursor.execute(query, [search_name])
                 columns = [col[0] for col in cursor.description]
                 results = [dict(zip(columns, row)) for row in cursor.fetchall()]
         except Exception as e:

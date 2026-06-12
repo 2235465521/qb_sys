@@ -59,9 +59,9 @@ class CompanyBulkListSerializer(ListSerializer):
                                 FROM unit_dict u
                                 JOIN std_unit_relation r ON u.unit_id = r.unit_id
                                 JOIN view_std_full v ON r.base_id = v.id
-                                WHERE u.unit_name LIKE %s
+                                WHERE u.unit_name = %s
                             """
-                            cursor.execute(query, [f"%{search_name}%".encode('utf-8')])
+                            cursor.execute(query, [search_name])
                             row = cursor.fetchone()
                             if row:
                                 count = row[0]
