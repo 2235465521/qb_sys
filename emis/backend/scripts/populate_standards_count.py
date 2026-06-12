@@ -63,7 +63,8 @@ def main():
         name = company.name.strip()
         l_count = local_counts.get(company.id, 0)
         f_count = federated_counts.get(name, 0)
-        company.standards_count = l_count + f_count
+        # 避免两边数据完全一致时的重复计算
+        company.standards_count = max(l_count, f_count)
         updated_companies.append(company)
 
     if updated_companies:

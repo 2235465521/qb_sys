@@ -116,7 +116,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
         # 降级容错逻辑
         local_count = sum(1 for s in obj.standards.all() if s.type in ['enterprise', 'group'])
         federated_count = getattr(obj, 'federated_count', 0)
-        return local_count + federated_count
+        return max(local_count, federated_count)
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):

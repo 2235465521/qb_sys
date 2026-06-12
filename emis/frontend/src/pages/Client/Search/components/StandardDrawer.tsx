@@ -24,10 +24,13 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
 
   const standards = React.useMemo(() => {
     const arr: any[] = [...(localStandards || [])].map(s => ({ ...s, is_local: true }));
+    const existingStdNos = new Set(arr.map(s => String(s.standard_no || '').trim().toUpperCase()));
+    const existingTitles = new Set(arr.map(s => String(s.title || '').trim().toUpperCase()));
+
     if (federatedData && federatedData.standards) {
       const mappedFed = federatedData.standards.map((s: any) => {
         let mappedType = 'industry'; // Default unclassified to industry
-        const stdNo = String(s.standard_no || '').toUpperCase();
+        const stdNo = String(s.standard_no || '').trim().toUpperCase();
         
         // 自动提取标准号前缀作为展示标签 (e.g. GB/T, DB, T)
         let displayTag = '标准';
@@ -52,6 +55,13 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           is_local: false,
           title: s.title || '无标题'
         };
+      }).filter((s: any) => {
+        const stdNo = String(s.standard_no || '').trim().toUpperCase();
+        const title = String(s.title || '').trim().toUpperCase();
+        // 简单去重：如果本地库已经有该标准号或相同标题的记录，则不在前端重复展示
+        if (stdNo && existingStdNos.has(stdNo)) return false;
+        if (title && existingTitles.has(title)) return false;
+        return true;
       });
       arr.push(...mappedFed);
     }

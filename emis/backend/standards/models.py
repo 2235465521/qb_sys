@@ -262,7 +262,8 @@ def update_company_standards_count(company):
                     federated_count = row[0]
         except Exception:
             pass
-    company.standards_count = local_count + federated_count
+    # 避免两边数据完全一致时的重复计算
+    company.standards_count = max(local_count, federated_count)
     company.save(update_fields=['standards_count'])
 
 
