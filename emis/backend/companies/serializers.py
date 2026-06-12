@@ -109,12 +109,12 @@ class CompanyListSerializer(serializers.ModelSerializer):
         return None
 
     def get_standards_count(self, obj):
-        local_count = getattr(obj, 'standards_count', None)
-        if local_count is None:
-            # 使用列表预加载出来的 standards，在内存中完成计算，完美解决本地 N+1 SQL 查询
-            local_count = sum(1 for s in obj.standards.all() if s.type in ['enterprise', 'group'])
+        # 如果数据库中已经存有统计好的 standards_count，直接使用，避免二次叠加
+        if obj.standards_count is not None:
+            return obj.standards_count
             
-        # 联邦外部数量已由 CompanyBulkListSerializer 批量或并发读取并注入
+        # 降级容错逻辑
+        local_count = sum(1 for s in obj.standards.all() if s.type in ['enterprise', 'group'])
         federated_count = getattr(obj, 'federated_count', 0)
         return local_count + federated_count
 
