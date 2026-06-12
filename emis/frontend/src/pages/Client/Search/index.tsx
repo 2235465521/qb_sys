@@ -188,7 +188,7 @@ const CompanySearchPage: React.FC = () => {
                     fontWeight: 500
                   }}
                 >
-                  查看标准资产 ({item.standards_count || 0})
+                  标准总数 ({item.standards_count || 0})
                 </Button>
               ]}
             >

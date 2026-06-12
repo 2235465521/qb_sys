@@ -323,6 +323,24 @@ const ActionModal: React.FC<ActionModalProps> = ({
       ] : undefined}
     >
       <Spin spinning={loadingDetail} tip="正在加载企业详情数据...">
+        {isViewOnly && (
+          <style>
+            {`
+              .ant-input-disabled, 
+              .ant-input-number-disabled, 
+              .ant-select-disabled .ant-select-selector,
+              .ant-picker-disabled {
+                background-color: transparent !important;
+                border-color: transparent !important;
+                color: rgba(0, 0, 0, 0.85) !important;
+                cursor: default !important;
+              }
+              .ant-select-disabled .ant-select-arrow {
+                display: none;
+              }
+            `}
+          </style>
+        )}
         <Form form={form} layout="vertical" initialValues={{ status: 'active' }} disabled={isViewOnly}>
           <Tabs defaultActiveKey="basic" items={tabItems} />
         </Form>
