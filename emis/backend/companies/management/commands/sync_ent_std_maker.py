@@ -163,7 +163,15 @@ class Command(BaseCommand):
                             else:
                                 mapped_data['established_date'] = est_date[:10]
                         
+                        # --- 唯一键防撞车拦截 ---
                         if company:
+                            # 如果我们按名称匹配到了公司，但准备更新它的信用代码时，发现这个信用代码已经被另一家公司占用了
+                            if mapped_data['credit_code'] and mapped_data['credit_code'] != company.credit_code:
+                                conflict = Company.objects.filter(credit_code=mapped_data['credit_code']).exclude(id=company.id).first()
+                                if conflict:
+                                    # 发生冲突！将目标切换为占用该信用代码的公司（以信用代码为绝对权威）
+                                    company = conflict
+                            
                             # 执行强制覆盖更新 (Update)
                             for key, val in mapped_data.items():
                                 if val is not None:
@@ -171,7 +179,17 @@ class Command(BaseCommand):
                             company.save()
                             updated_count += 1
                         else:
-                            # 没找到则新增 (Insert)
+                            # 没找到，准备新增 (Insert)
+                            # 为了防止企查查源数据“内部”存在重复的信用代码导致 Insert 冲突
+                            if mapped_data['credit_code']:
+                                conflict = Company.objects.filter(credit_code=mapped_data['credit_code']).first()
+                                if conflict:
+                                    for key, val in mapped_data.items():
+                                        if val is not None:
+                                            setattr(conflict, key, val)
+                                    conflict.save()
+                                    updated_count += 1
+                                    continue
                             Company.objects.create(**mapped_data)
                             created_count += 1
                         
