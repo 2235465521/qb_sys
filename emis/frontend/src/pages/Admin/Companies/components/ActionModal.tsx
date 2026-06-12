@@ -29,14 +29,37 @@ const RegistrationStatusView: React.FC<{ value?: string }> = ({ value }) => {
     );
   }
 
-  const statusRegex = /^(注销|存续|在营|在册|吊销|迁出|登记|确定|正常|禁用)(.*)$/;
-  const match = value.match(statusRegex);
+  // 移除其中的 “注销” 字样
+  let cleanValue = value.replace(/注销\s*/g, '').trim();
+
+  // 清理多余的空括号，例如 "()" 或 "（）"
+  if (cleanValue === '()' || cleanValue === '（）') {
+    cleanValue = '';
+  }
+
+  if (!cleanValue) {
+    return (
+      <div style={{
+        backgroundColor: '#f0f2f5',
+        borderRadius: 2,
+        padding: '4px 11px',
+        height: 32,
+        display: 'flex',
+        alignItems: 'center',
+        color: 'rgba(0, 0, 0, 0.85)',
+        fontSize: 14,
+      }}>-</div>
+    );
+  }
+
+  const statusRegex = /^(存续|在营|在册|吊销|迁出|登记|确定|正常|禁用)(.*)$/;
+  const match = cleanValue.match(statusRegex);
 
   if (match) {
     const status = match[1];
     const rest = match[2];
     let tagColor = 'default';
-    if (status === '注销' || status === '吊销' || status === '禁用') {
+    if (status === '吊销' || status === '禁用') {
       tagColor = 'error';
     } else if (status === '存续' || status === '在营' || status === '正常') {
       tagColor = 'success';
@@ -71,7 +94,7 @@ const RegistrationStatusView: React.FC<{ value?: string }> = ({ value }) => {
       alignItems: 'center',
       color: 'rgba(0, 0, 0, 0.85)',
       fontSize: 14,
-    }}>{value}</div>
+    }}>{cleanValue}</div>
   );
 };
 
