@@ -93,17 +93,29 @@ def search_companies(
         qs = qs.filter(status=status)
 
     # 1. 行政区划筛选（三级级联 AND 逻辑）
-    if district_id:
-        qs = qs.filter(district_id=district_id)
-    elif city_id:
-        qs = qs.filter(city_id=city_id)
-    elif province_id:
-        qs = qs.filter(province_id=province_id)
+    def to_int(val):
+        try:
+            return int(val) if val else None
+        except (ValueError, TypeError):
+            return None
 
-    # 2. 关键词搜索（企业名称模糊匹配）
+    p_id = to_int(province_id)
+    c_id = to_int(city_id)
+    d_id = to_int(district_id)
+
+    if p_id:
+        qs = qs.filter(province_id=p_id)
+    if c_id:
+        qs = qs.filter(city_id=c_id)
+    if d_id:
+        qs = qs.filter(district_id=d_id)
+
+    # 2. 关键词搜索（企业名称、信用代码、法人）
     if keyword:
         qs = qs.filter(
-            Q(name__icontains=keyword) | Q(credit_code__icontains=keyword)
+            Q(name__icontains=keyword) | 
+            Q(credit_code__icontains=keyword) |
+            Q(legal_person__icontains=keyword)
         )
 
     # 3. 标准分类 ICS/CCS 筛选 (支持 AND / OR 逻辑)
