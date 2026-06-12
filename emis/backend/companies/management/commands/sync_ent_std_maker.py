@@ -74,7 +74,7 @@ class Command(BaseCommand):
                             'registered_zipcode': self.safe_trunc(row_dict.get('registered_address_zip') or '', 20),
                             'valid_mobile': self.safe_trunc(row_dict.get('mobile_phone') or '', 50),
                             'more_phones': self.safe_trunc(row_dict.get('other_phones') or '', 200),
-                            'email': self.safe_trunc(row_dict.get('email') or '', 254),
+                            'email': self.safe_trunc(row_dict.get('email') or '', 1000),
                             'industry_category': self.safe_trunc(row_dict.get('industry_category_l1') or '', 100),
                             'industry_major': self.safe_trunc(row_dict.get('industry_category_l2') or '', 100),
                             'industry_middle': self.safe_trunc(row_dict.get('industry_category_l3') or '', 100),
