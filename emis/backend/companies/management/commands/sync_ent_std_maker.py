@@ -9,6 +9,12 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = '将 compare_conp 数据库中的 ent_std_maker 数据单向对冲（覆盖/新增）到 emis_db.Company'
 
+    def safe_trunc(self, val, max_len):
+        if not isinstance(val, str):
+            return val
+        return val[:max_len]
+
+
     def handle(self, *args, **options):
         self.stdout.write(self.style.SUCCESS("=== 开始同步 compare_conp.ent_std_maker 数据 ==="))
 
@@ -57,41 +63,41 @@ class Command(BaseCommand):
                         
                         # 数据映射封装
                         mapped_data = {
-                            'name': company_name,
-                            'credit_code': credit_code,
-                            'legal_person': row_dict.get('legal_representative') or '',
+                            'name': self.safe_trunc(company_name, 200),
+                            'credit_code': self.safe_trunc(credit_code, 25),
+                            'legal_person': self.safe_trunc(row_dict.get('legal_representative') or '', 50),
                             'established_date': row_dict.get('establishment_date') if row_dict.get('establishment_date') else None,
-                            'company_type': row_dict.get('enterprise_type') or '',
-                            'registration_no': row_dict.get('registration_no') or '',
-                            'organization_code': row_dict.get('organization_code') or '',
-                            'registered_address': row_dict.get('registered_address') or '',
-                            'registered_zipcode': row_dict.get('registered_address_zip') or '',
-                            'valid_mobile': row_dict.get('mobile_phone') or '',
-                            'more_phones': row_dict.get('other_phones') or '',
-                            'email': row_dict.get('email') or '',
-                            'industry_category': row_dict.get('industry_category_l1') or '',
-                            'industry_major': row_dict.get('industry_category_l2') or '',
-                            'industry_middle': row_dict.get('industry_category_l3') or '',
-                            'industry_minor': row_dict.get('industry_category_l4') or '',
-                            'company_size': row_dict.get('enterprise_scale') or '',
-                            'former_names': row_dict.get('former_name') or '',
-                            'english_name': row_dict.get('english_name') or '',
+                            'company_type': self.safe_trunc(row_dict.get('enterprise_type') or '', 100),
+                            'registration_no': self.safe_trunc(row_dict.get('registration_no') or '', 100),
+                            'organization_code': self.safe_trunc(row_dict.get('organization_code') or '', 100),
+                            'registered_address': self.safe_trunc(row_dict.get('registered_address') or '', 500),
+                            'registered_zipcode': self.safe_trunc(row_dict.get('registered_address_zip') or '', 20),
+                            'valid_mobile': self.safe_trunc(row_dict.get('mobile_phone') or '', 50),
+                            'more_phones': self.safe_trunc(row_dict.get('other_phones') or '', 200),
+                            'email': self.safe_trunc(row_dict.get('email') or '', 254),
+                            'industry_category': self.safe_trunc(row_dict.get('industry_category_l1') or '', 100),
+                            'industry_major': self.safe_trunc(row_dict.get('industry_category_l2') or '', 100),
+                            'industry_middle': self.safe_trunc(row_dict.get('industry_category_l3') or '', 100),
+                            'industry_minor': self.safe_trunc(row_dict.get('industry_category_l4') or '', 100),
+                            'company_size': self.safe_trunc(row_dict.get('enterprise_scale') or '', 50),
+                            'former_names': self.safe_trunc(row_dict.get('former_name') or '', 500),
+                            'english_name': self.safe_trunc(row_dict.get('english_name') or '', 200),
                             
                             # 新增 5 个字段
-                            'website_url': row_dict.get('website_url') or '',
-                            'mailing_address': row_dict.get('mailing_address') or '',
-                            'mailing_address_zip': row_dict.get('mailing_address_zip') or '',
+                            'website_url': self.safe_trunc(row_dict.get('website_url') or '', 500),
+                            'mailing_address': self.safe_trunc(row_dict.get('mailing_address') or '', 500),
+                            'mailing_address_zip': self.safe_trunc(row_dict.get('mailing_address_zip') or '', 20),
                             'business_scope': row_dict.get('business_scope') or '',
-                            'registration_status': row_dict.get('registration_status') or '',
+                            'registration_status': self.safe_trunc(row_dict.get('registration_status') or '', 100),
                         }
                         
                         # 兼容处理 contact 字段 (界面上的“联系方式”)
                         if not company or not company.contact:
-                            mapped_data['contact'] = row_dict.get('mobile_phone') or row_dict.get('other_phones') or ''
+                            mapped_data['contact'] = self.safe_trunc(row_dict.get('mobile_phone') or row_dict.get('other_phones') or '', 100)
                         
                         # 兼容处理 address 字段 (界面上的“详细地址”)
                         if not company or not company.address:
-                            mapped_data['address'] = row_dict.get('registered_address') or ''
+                            mapped_data['address'] = self.safe_trunc(row_dict.get('registered_address') or '', 500)
                             
                         # === 行政区划解析逻辑 ===
                         p_name = row_dict.get('province')
