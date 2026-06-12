@@ -148,6 +148,9 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             'registration_no', 'organization_code', 'industry_category',
             'industry_major', 'industry_middle', 'industry_minor',
             'company_size', 'english_name', 'former_names',
+            # 新增的 5 个字段
+            'website_url', 'mailing_address', 'mailing_address_zip',
+            'business_scope', 'registration_status',
         ]
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
 
