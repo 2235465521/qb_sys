@@ -38,7 +38,12 @@ const EXPORT_FIELDS_OPTIONS = [
   { label: '行业小类', value: 'industry_minor' },
   { label: '企业规模', value: 'company_size' },
   { label: '英文名', value: 'english_name' },
-  { label: '曾用名', value: 'former_names' }
+  { label: '曾用名', value: 'former_names' },
+  { label: '企业官网', value: 'website_url' },
+  { label: '通讯地址', value: 'mailing_address' },
+  { label: '通讯邮编', value: 'mailing_address_zip' },
+  { label: '经营范围', value: 'business_scope' },
+  { label: '登记状态', value: 'registration_status' }
 ];
 
 // 定义预设模板字段集合

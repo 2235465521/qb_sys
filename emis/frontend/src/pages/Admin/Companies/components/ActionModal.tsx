@@ -214,6 +214,19 @@ const ActionModal: React.FC<ActionModalProps> = ({
       </Row>
 
       <Row gutter={16}>
+        <Col span={12}>
+          <Form.Item name="website_url" label="企业官网">
+            <Input placeholder="http://..." />
+          </Form.Item>
+        </Col>
+        <Col span={12}>
+          <Form.Item name="registration_status" label="登记状态">
+            <Input placeholder="如：存续、在营、注销" />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Row gutter={16}>
         <Col span={8}>
           <Form.Item name="registration_no" label="注册号">
             <Input placeholder="工商注册号" />
@@ -233,6 +246,23 @@ const ActionModal: React.FC<ActionModalProps> = ({
 
       <Form.Item name="registered_address" label="注册地址">
         <Input.TextArea rows={2} placeholder="请输入营业执照上的注册地址" />
+      </Form.Item>
+
+      <Row gutter={16}>
+        <Col span={16}>
+          <Form.Item name="mailing_address" label="通讯地址">
+            <Input placeholder="请输入通讯地址" />
+          </Form.Item>
+        </Col>
+        <Col span={8}>
+          <Form.Item name="mailing_address_zip" label="通讯邮编">
+            <Input placeholder="通讯地址邮编" />
+          </Form.Item>
+        </Col>
+      </Row>
+
+      <Form.Item name="business_scope" label="经营范围">
+        <Input.TextArea rows={3} placeholder="请输入经营范围" />
       </Form.Item>
 
       <Row gutter={16}>
