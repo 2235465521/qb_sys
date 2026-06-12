@@ -115,16 +115,19 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const { data: districts } = useDistrictQuery(selectedCity);
 
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [companyDetail, setCompanyDetail] = useState<any>(null);
 
   useEffect(() => {
     if (open) {
       form.resetFields();
+      setCompanyDetail(null);
       if (editingRecord) {
         if (editingRecord.id) {
           setLoadingDetail(true);
           apiClient.get(`/admin/companies/${editingRecord.id}/`)
             .then(res => {
               const data = res.data;
+              setCompanyDetail(data);
               const formattedData = {
                 ...data,
                 province_id: data.province?.id,
@@ -186,38 +189,56 @@ const ActionModal: React.FC<ActionModalProps> = ({
 
       <Row gutter={16}>
         <Col span={8}>
-          <Form.Item name="province_id" label="省份" rules={[{ required: true, message: '请选择省份' }]}>
-            <Select
-              placeholder="请选择省份"
-              onChange={(val) => {
-                setSelectedProvince(val);
-                form.setFieldsValue({ city_id: undefined, district_id: undefined });
-              }}
-            >
-              {provinceQuery.data?.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
+          {isViewOnly ? (
+            <Form.Item label="省份">
+              <Input value={companyDetail?.province?.name || editingRecord?.province_name || ''} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="province_id" label="省份" rules={[{ required: true, message: '请选择省份' }]}>
+              <Select
+                placeholder="请选择省份"
+                onChange={(val) => {
+                  setSelectedProvince(val);
+                  form.setFieldsValue({ city_id: undefined, district_id: undefined });
+                }}
+              >
+                {provinceQuery.data?.map(p => <Select.Option key={p.id} value={p.id}>{p.name}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          )}
         </Col>
         <Col span={8}>
-          <Form.Item name="city_id" label="城市" rules={[{ required: true, message: '请选择城市' }]}>
-            <Select
-              placeholder="请选择城市"
-              disabled={!selectedProvince}
-              onChange={(val) => {
-                setSelectedCity(val);
-                form.setFieldsValue({ district_id: undefined });
-              }}
-            >
-              {cities?.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
+          {isViewOnly ? (
+            <Form.Item label="城市">
+              <Input value={companyDetail?.city?.name || editingRecord?.city_name || ''} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="city_id" label="城市" rules={[{ required: true, message: '请选择城市' }]}>
+              <Select
+                placeholder="请选择城市"
+                disabled={!selectedProvince}
+                onChange={(val) => {
+                  setSelectedCity(val);
+                  form.setFieldsValue({ district_id: undefined });
+                }}
+              >
+                {cities?.map(c => <Select.Option key={c.id} value={c.id}>{c.name}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          )}
         </Col>
         <Col span={8}>
-          <Form.Item name="district_id" label="区县" rules={[{ required: true, message: '请选择区县' }]}>
-            <Select placeholder="请选择区县" disabled={!selectedCity}>
-              {districts?.map(d => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
-            </Select>
-          </Form.Item>
+          {isViewOnly ? (
+            <Form.Item label="区县">
+              <Input value={companyDetail?.district?.name || editingRecord?.district_name || ''} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="district_id" label="区县" rules={[{ required: true, message: '请选择区县' }]}>
+              <Select placeholder="请选择区县" disabled={!selectedCity}>
+                {districts?.map(d => <Select.Option key={d.id} value={d.id}>{d.name}</Select.Option>)}
+              </Select>
+            </Form.Item>
+          )}
         </Col>
       </Row>
 
