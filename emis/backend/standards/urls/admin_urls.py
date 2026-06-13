@@ -14,7 +14,8 @@ from standards.views.admin_views import (
     StandardMixedImportView,
     StandardMixedImportStatusView,
     StandardMixedImportTemplateView,
-    StandardSmartImportView
+    StandardSmartImportView,
+    StandardForceReparseDatesView
 )
 
 urlpatterns = [
@@ -29,5 +30,6 @@ urlpatterns = [
     path('import-mixed/status/', StandardMixedImportStatusView.as_view(), name='admin-standard-import-mixed-status'),
     path('import-mixed/template/', StandardMixedImportTemplateView.as_view(), name='admin-standard-import-mixed-template'),
     path('import-smart/', StandardSmartImportView.as_view(), name='admin-standard-import-smart'),
+    path('force-reparse-dates/', StandardForceReparseDatesView.as_view(), name='admin-standard-force-reparse-dates'),
 ]
 

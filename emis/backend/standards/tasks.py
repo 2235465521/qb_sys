@@ -508,7 +508,7 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
 
 
 @shared_task(bind=True, name='standards.parse_standard_pdf')
-def parse_standard_pdf_task(self, standard_id: int):
+def parse_standard_pdf_task(self, standard_id: int, force: bool = False):
     """
     异步提取 PDF 文本并批量存入 StandardContent 表
     """
@@ -650,46 +650,60 @@ def parse_standard_pdf_task(self, standard_id: int):
 
     norm_text = _normalize_date_text(first_page_text)
 
-    # ── 发布日期匹配规则（优先级从高到低）──────────────────────
-    pub_patterns = [
-        # 模式1：日期在前，关键词在后（如 "2024-03-10 发布"）
-        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:发布|公布|公开)',
-        # 模式2：关键词在前，日期在后（如 "发布日期：2024年03月10日"）
-        r'(?:发布|公布|公开)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
-        # 模式3：宽松兜底，提取第一个像日期的 YYYY-MM-DD（页面上有"发布"字样即可）
-        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
-    ]
-    for i, pattern in enumerate(pub_patterns):
-        match = re.search(pattern, norm_text)
-        if match:
+    # ── 预处理：按行分割，过滤水印 ──────────────────────
+    lines = norm_text.split('\n')
+    clean_lines = []
+    for line in lines:
+        if '公共服务平台' in line or '企业标准信息' in line:
+            continue
+        clean_lines.append(line)
+        
+    # ── 提取正则 ──────────────────────
+    # 要求日期必须符合格式，不使用宽松的随意匹配
+    date_pattern = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
+    
+    def extract_closest_date(line_text, keyword):
+        """在行内提取与关键字最近的日期"""
+        if keyword not in line_text:
+            return None
+            
+        import re
+        matches = list(re.finditer(date_pattern, line_text))
+        if not matches:
+            return None
+            
+        kw_idx = line_text.find(keyword)
+        best_candidate = None
+        min_dist = float('inf')
+        
+        for match in matches:
             try:
                 y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                candidate = datetime.date(y, m, d)
-                # 兜底模式（模式3）：仅当页面明确包含"发布/公布/公开"字样时才采用
-                if i == 2 and '发布' not in norm_text and '公布' not in norm_text and '公开' not in norm_text:
-                    break
-                # 合理性校验：年份在 1980-2099 之间
                 if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
-                    extracted_publish_date = candidate
-                    break
+                    # 计算距离
+                    match_center = (match.start() + match.end()) / 2
+                    dist = abs(match_center - kw_idx)
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_candidate = datetime.date(y, m, d)
             except ValueError:
                 pass
+                
+        return best_candidate
 
-    # ── 实施日期匹配规则 ────────────────────────────────────────
-    imp_patterns = [
-        r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:实施|施行)',
-        r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?',
-    ]
-    for pattern in imp_patterns:
-        match = re.search(pattern, norm_text)
-        if match:
-            try:
-                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
-                    extracted_implement_date = datetime.date(y, m, d)
-                    break
-            except ValueError:
-                pass
+    # ── 行级扫描：发布日期 / 实施日期 ──────────────────────
+    for line in clean_lines:
+        if '发布' in line or '公布' in line or '公开' in line:
+            kw = '发布' if '发布' in line else ('公布' if '公布' in line else '公开')
+            d = extract_closest_date(line, kw)
+            if d and not extracted_publish_date:
+                extracted_publish_date = d
+                
+        if '实施' in line or '施行' in line:
+            kw = '实施' if '实施' in line else '施行'
+            d = extract_closest_date(line, kw)
+            if d and not extracted_implement_date:
+                extracted_implement_date = d
 
     # 6. 批量保存全文内容并回填日期字段
     try:
@@ -710,10 +724,10 @@ def parse_standard_pdf_task(self, standard_id: int):
 
             # 如果企标缺失发布日期或实施日期，自动用提取到的日期填充并更新
             updated_fields = []
-            if extracted_publish_date and not standard.publish_date:
+            if extracted_publish_date and (not standard.publish_date or force):
                 standard.publish_date = extracted_publish_date
                 updated_fields.append('publish_date')
-            if extracted_implement_date and not standard.implement_date:
+            if extracted_implement_date and (not standard.implement_date or force):
                 standard.implement_date = extracted_implement_date
                 updated_fields.append('implement_date')
 
@@ -814,4 +828,74 @@ def auto_scan_missing_dates_task():
     return summary
 
 
+@shared_task(bind=False, name='standards.force_reparse_all_dates_task')
+def force_reparse_all_dates_task():
+    """
+    全量重解析所有存在 PDF 文件的企标的发布日期和实施日期。
+    """
+    import os
+    import logging
+    from django.conf import settings
+    from django.db.models import Q
+    from standards.models import Standard
 
+    logger = logging.getLogger('standards')
+    shared_root = getattr(settings, 'SHARED_DISK_ROOT', r'Y:\磁盘阵列\标准文件下载\企标下载')
+
+    # 查询所有存在 PDF 文件的企业标准
+    candidates = Standard.objects.filter(
+        type='enterprise'
+    ).filter(
+        Q(pdf_file__isnull=False) | Q(disk_filename__isnull=False)
+    ).exclude(
+        pdf_file='', disk_filename=''
+    ).values('id', 'standard_no', 'pdf_file', 'disk_filename')
+
+    dispatched = 0
+    skipped = 0
+
+    for std in candidates:
+        file_path = None
+        std_id = std['id']
+        std_no = std['standard_no']
+        disk_fn = (std['disk_filename'] or '').replace('\\', '/')
+        pdf_fn = ''
+        if std['pdf_file']:
+            try:
+                # pdf_file 是 FieldFile，values() 拿到的是字符串
+                pdf_fn = str(std['pdf_file']).replace('\\', '/')
+            except Exception:
+                pass
+
+        # 优先 disk_filename
+        if disk_fn:
+            p = os.path.join(shared_root, disk_fn)
+            if os.path.exists(p):
+                file_path = p
+
+        # 降级 pdf_file
+        if not file_path and pdf_fn:
+            for base in [shared_root, str(settings.MEDIA_ROOT)]:
+                p = os.path.join(base, pdf_fn)
+                if os.path.exists(p):
+                    file_path = p
+                    break
+            if not file_path and pdf_fn.startswith('media/'):
+                p = os.path.join(str(settings.MEDIA_ROOT), pdf_fn[len('media/'):])
+                if os.path.exists(p):
+                    file_path = p
+
+        if file_path:
+            # 异步触发 PDF 解析，force=True 覆盖现有日期
+            parse_standard_pdf_task.delay(std_id, force=True)
+            dispatched += 1
+            logger.info(f'[force_reparse] Dispatched PDF scan for [{std_no}] (id={std_id})')
+        else:
+            skipped += 1
+
+    summary = (
+        f'[force_reparse_all_dates_task] Done: dispatched={dispatched}, '
+        f'no_pdf_skipped={skipped}'
+    )
+    logger.info(summary)
+    return summary

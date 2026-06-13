@@ -355,3 +355,17 @@ class StandardSmartImportView(APIView):
             return Response({'error': '无法识别文件内容，未发现有效的企业、企标编号或引用号列，请使用官方模板'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+class StandardForceReparseDatesView(APIView):
+    """
+    POST /api/admin/standards/force-reparse-dates/
+    触发全量重新扫描修复 PDF 中的发布和实施日期
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from standards.tasks import force_reparse_all_dates_task
+        force_reparse_all_dates_task.delay()
+        return Response({
+            'success': True,
+            'message': '已触发全量重新扫描修复企标发布和实施日期的后台异步任务，请稍后查看结果。'
+        }, status=status.HTTP_200_OK)
