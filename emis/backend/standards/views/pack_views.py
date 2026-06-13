@@ -49,14 +49,21 @@ class PackRequestView(APIView):
             keyword = request.data.get('keyword')
             search_mode = request.data.get('search_mode', 'title')
             if keyword:
+                from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
                 if search_mode == 'full_text':
                     from standards.models import StandardContent
+                    norm_kw = normalize_search_keyword(keyword)
+                    tokens = norm_kw.split() if norm_kw else [keyword]
+                    content_q = Q()
+                    for token in tokens:
+                        content_q &= Q(content__icontains=token)
                     matching_std_ids = StandardContent.objects.filter(
-                        content__icontains=keyword
+                        content_q
                     ).values_list('standard_id', flat=True).distinct()
                     qs = qs.filter(id__in=matching_std_ids)
                 else:
-                    qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+                    search_q = build_smart_search_q(keyword, ['standard_no', 'title'], clean_id_field='clean_id')
+                    qs = qs.filter(search_q)
 
             # 只提取有有效 PDF 文件的标准进行打包
             file_qs = qs.filter(
@@ -469,14 +476,21 @@ class SampledPackRequestView(APIView):
         keyword = filters.get('keyword', '')
         search_mode = filters.get('search_mode', 'title')
         if keyword:
+            from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
             if search_mode == 'full_text':
                 from standards.models import StandardContent
-                matching_ids = StandardContent.objects.filter(
-                    content__icontains=keyword
+                norm_kw = normalize_search_keyword(keyword)
+                tokens = norm_kw.split() if norm_kw else [keyword]
+                content_q = Q()
+                for token in tokens:
+                    content_q &= Q(content__icontains=token)
+                matching_std_ids = StandardContent.objects.filter(
+                    content_q
                 ).values_list('standard_id', flat=True).distinct()
-                qs = qs.filter(id__in=matching_ids)
+                qs = qs.filter(id__in=matching_std_ids)
             else:
-                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+                search_q = build_smart_search_q(keyword, ['standard_no', 'title'], clean_id_field='clean_id')
+                qs = qs.filter(search_q)
 
         pub_start = filters.get('pub_start')
         pub_end = filters.get('pub_end')

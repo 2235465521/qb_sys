@@ -503,13 +503,11 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
                 if source_param:
                     qs = qs.filter(source=source_param)
                 if keyword:
-                    from django.db.models import Q
-                    qs = qs.filter(
-                        Q(contact_name__icontains=keyword) |
-                        Q(contact_phone__icontains=keyword) |
-                        Q(contact_wechat__icontains=keyword) |
-                        Q(enterprise__name__icontains=keyword)
-                    )
+                    from standards.utils.search_utils import build_smart_search_q
+                    search_q = build_smart_search_q(keyword, [
+                        'contact_name', 'contact_phone', 'contact_wechat', 'enterprise__name'
+                    ])
+                    qs = qs.filter(search_q)
         else:
             params = request.query_params
             fields_str = params.get('fields', '')
@@ -524,13 +522,11 @@ class AdminLeadViewSet(viewsets.ModelViewSet):
             if source_param:
                 qs = qs.filter(source=source_param)
             if keyword:
-                from django.db.models import Q
-                qs = qs.filter(
-                    Q(contact_name__icontains=keyword) |
-                    Q(contact_phone__icontains=keyword) |
-                    Q(contact_wechat__icontains=keyword) |
-                    Q(enterprise__name__icontains=keyword)
-                )
+                from standards.utils.search_utils import build_smart_search_q
+                search_q = build_smart_search_q(keyword, [
+                    'contact_name', 'contact_phone', 'contact_wechat', 'enterprise__name'
+                ])
+                qs = qs.filter(search_q)
 
         if not qs.exists():
             return Response({'error': '当前导出的数据范围为空，没有找到任何符合条件的线索数据。'}, status=status.HTTP_400_BAD_REQUEST)

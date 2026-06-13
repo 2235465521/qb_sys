@@ -92,13 +92,22 @@ class StandardListView(generics.ListAPIView):
             return
 
         from standards.models import StandardContent
+        from standards.utils.search_utils import normalize_search_keyword
+        from django.db.models import Q
+        
         std_ids = [std.id for std in standards]
+        
+        norm_kw = normalize_search_keyword(keyword)
+        tokens = norm_kw.split() if norm_kw else [keyword]
+        
+        content_q = Q()
+        for token in tokens:
+            content_q &= Q(content__icontains=token)
 
         # 查询匹配关键词的所有页面文本，按 standard_id 和 page_number 排序
         contents = StandardContent.objects.filter(
-            standard_id__in=std_ids,
-            content__icontains=keyword
-        ).order_by('standard_id', 'page_number')
+            standard_id__in=std_ids
+        ).filter(content_q).order_by('standard_id', 'page_number')
 
         # 分组保留第一个匹配页面的内容
         std_content_map = {}
@@ -109,17 +118,18 @@ class StandardListView(generics.ListAPIView):
         for std in standards:
             sc = std_content_map.get(std.id)
             if sc:
-                std.snippet = self.generate_snippet_text(sc.content, keyword, sc.page_number)
+                std.snippet = self.generate_snippet_text(sc.content, tokens, sc.page_number)
             else:
                 std.snippet = ""
 
-    def generate_snippet_text(self, content, keyword, page_number):
+    def generate_snippet_text(self, content, tokens, page_number):
         import re
-        if not content or not keyword:
+        if not content or not tokens:
             return ""
 
-        # 不区分大小写匹配关键字
-        match = re.search(re.escape(keyword), content, re.IGNORECASE)
+        # 使用第一个 token 来定位片段的中心
+        first_token = tokens[0]
+        match = re.search(re.escape(first_token), content, re.IGNORECASE)
         if not match:
             return content[:80] + "..." if len(content) > 80 else content
 
@@ -128,8 +138,8 @@ class StandardListView(generics.ListAPIView):
         context_len = 70  # 片段字符长度
 
         # 在匹配词两边分配长度
-        left_len = max(0, (context_len - len(keyword)) // 2)
-        right_len = context_len - len(keyword) - left_len
+        left_len = max(0, (context_len - len(first_token)) // 2)
+        right_len = context_len - len(first_token) - left_len
 
         # 计算切片边界
         start_idx = max(0, start - left_len)
@@ -147,11 +157,15 @@ class StandardListView(generics.ListAPIView):
         prefix = "..." if start_idx > 0 else ""
         suffix = "..." if end_idx < total_len else ""
 
-        # 替换高亮匹配项（保留原有大小写）
+        # 替换高亮所有匹配项（保留原有大小写）
+        # 构建一个可以匹配任意 token 的模式，按长度降序排列优先匹配长的
+        sorted_tokens = sorted(tokens, key=len, reverse=True)
+        pattern = "|".join(re.escape(t) for t in sorted_tokens)
+        
         def replace_func(m):
             return f'<mark style="color:red;">{m.group(0)}</mark>'
 
-        highlighted = re.sub(re.escape(keyword), replace_func, snippet_raw, flags=re.IGNORECASE)
+        highlighted = re.sub(f"({pattern})", replace_func, snippet_raw, flags=re.IGNORECASE)
 
         return f"第 {page_number} 页: {prefix}{highlighted}{suffix}"
 
@@ -520,15 +534,22 @@ class StandardDownloadEstimateView(APIView):
         keyword = params.get('keyword')
         search_mode = params.get('search_mode', 'title')
         if keyword:
+            from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
+            from django.db.models import Q
             if search_mode == 'full_text':
                 from standards.models import StandardContent
+                norm_kw = normalize_search_keyword(keyword)
+                tokens = norm_kw.split() if norm_kw else [keyword]
+                content_q = Q()
+                for token in tokens:
+                    content_q &= Q(content__icontains=token)
                 matching_std_ids = StandardContent.objects.filter(
-                    content__icontains=keyword
+                    content_q
                 ).values_list('standard_id', flat=True).distinct()
                 qs = qs.filter(id__in=matching_std_ids)
             else:
-                from django.db.models import Q
-                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+                search_q = build_smart_search_q(keyword, ['standard_no', 'title'], clean_id_field='clean_id')
+                qs = qs.filter(search_q)
 
         # 4. 聚合计算（企业数量，文件总数，预估总体积）
         # 有效 PDF 规则：pdf_file 不为空 或 disk_filename 不为空
@@ -609,15 +630,22 @@ class ExportStandardListView(APIView):
         keyword = params.get('keyword')
         search_mode = params.get('search_mode', 'title')
         if keyword:
+            from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
+            from django.db.models import Q
             if search_mode == 'full_text':
                 from standards.models import StandardContent
+                norm_kw = normalize_search_keyword(keyword)
+                tokens = norm_kw.split() if norm_kw else [keyword]
+                content_q = Q()
+                for token in tokens:
+                    content_q &= Q(content__icontains=token)
                 matching_std_ids = StandardContent.objects.filter(
-                    content__icontains=keyword
+                    content_q
                 ).values_list('standard_id', flat=True).distinct()
                 qs = qs.filter(id__in=matching_std_ids)
             else:
-                from django.db.models import Q
-                qs = qs.filter(Q(standard_no__icontains=keyword) | Q(title__icontains=keyword))
+                search_q = build_smart_search_q(keyword, ['standard_no', 'title'], clean_id_field='clean_id')
+                qs = qs.filter(search_q)
 
         standards = qs.order_by('-created_at')
 

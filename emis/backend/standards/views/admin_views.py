@@ -33,9 +33,10 @@ class StandardAdminListCreateView(generics.ListCreateAPIView):
         # 支持按标准号、标准名称、或者所属企业筛选
         params = self.request.query_params
         if params.get('keyword'):
-            from django.db.models import Q
+            from standards.utils.search_utils import build_smart_search_q
             kw = params['keyword']
-            qs = qs.filter(Q(standard_no__icontains=kw) | Q(title__icontains=kw))
+            search_q = build_smart_search_q(kw, ['standard_no', 'title'], clean_id_field='clean_id')
+            qs = qs.filter(search_q)
             
         if params.get('company_id'):
             qs = qs.filter(company_id=params['company_id'])

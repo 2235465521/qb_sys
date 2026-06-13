@@ -112,11 +112,9 @@ def search_companies(
 
     # 2. 关键词搜索（企业名称、信用代码、法人）
     if keyword:
-        qs = qs.filter(
-            Q(name__icontains=keyword) | 
-            Q(credit_code__icontains=keyword) |
-            Q(legal_person__icontains=keyword)
-        )
+        from standards.utils.search_utils import build_smart_search_q
+        search_q = build_smart_search_q(keyword, ['name', 'credit_code', 'legal_person'])
+        qs = qs.filter(search_q)
 
     # 3. 标准分类 ICS/CCS 筛选 (支持 AND / OR 逻辑)
     if ics or ccs:

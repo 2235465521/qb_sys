@@ -163,22 +163,32 @@ def search_standards_service(params):
         search_mode = params.get('search_mode', 'title')
         exact_match = params.get('exact_match') == 'true'
 
+        from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
+
         if search_mode == 'full_text':
             from standards.models import StandardContent
-            # PDF正文检索暂不使用 clean_id 容错，直接使用原生
+            # 对于 full_text，使用智能分词查询
+            norm_kw = normalize_search_keyword(keyword)
+            tokens = norm_kw.split() if norm_kw else [keyword]
+            
+            content_q = Q()
+            for token in tokens:
+                content_q &= Q(content__icontains=token)
+                
             matching_std_ids = StandardContent.objects.filter(
-                content__icontains=keyword
+                content_q
             ).values_list('standard_id', flat=True).distinct()
             qs = qs.filter(id__in=matching_std_ids)
         else:
-            # 使用 clean_id 容错处理
-            kw_clean = generate_clean_id(keyword)
             if exact_match:
-                # 精确匹配：在清洗后的 clean_id 严格相等，或者 title 完全匹配
-                qs = qs.filter(Q(clean_id=kw_clean) | Q(title__iexact=keyword))
+                # 精确匹配：不再切词，只规范化
+                norm_kw = normalize_search_keyword(keyword)
+                kw_clean = generate_clean_id(norm_kw)
+                qs = qs.filter(Q(clean_id=kw_clean) | Q(title__iexact=keyword) | Q(title__iexact=norm_kw))
             else:
-                # 模糊匹配：在清洗后的 clean_id 做包含查询，或者 title 模糊匹配
-                qs = qs.filter(Q(clean_id__icontains=kw_clean) | Q(title__icontains=keyword))
+                # 模糊匹配：使用智能分词，同时支持 clean_id 容错
+                search_q = build_smart_search_q(keyword, ['title', 'standard_no'], clean_id_field='clean_id')
+                qs = qs.filter(search_q)
 
     ordering = params.get('ordering')
     if ordering:
