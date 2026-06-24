@@ -99,7 +99,7 @@ class CompanyFederatedStandardsAPIView(APIView):
                 'type': row.get('std_type', ''),
                 'release_date': row.get('release_date').isoformat() if row.get('release_date') else None,
                 'implement_date': row.get('implement_date').isoformat() if row.get('implement_date') else None,
-                'status': self._map_status(row.get('status')),
+                'status': self._map_status(row.get('status'), row.get('implement_date')),
                 'drafters': drafters_list,
                 'file_path': row.get('file_path'),
                 'rank_order': row.get('rank_order')
@@ -127,13 +127,33 @@ class CompanyFederatedStandardsAPIView(APIView):
             
         return Response(response_data)
 
-    def _map_status(self, status_code):
+    def _map_status(self, status_code, implement_date=None):
+        # 0: 废止, 1: 现行, 2: 即将实施
         mapping = {
+            0: '废止',
             1: '现行',
-            2: '废止',
-            3: '即将实施'
+            2: '即将实施'
         }
-        return mapping.get(status_code, '现行')
+        status_str = mapping.get(status_code, '现行')
+
+        # 如果是“即将实施”，但实施日期已到，动态将其更新为“现行”
+        if status_str == '即将实施' and implement_date:
+            import datetime
+            if isinstance(implement_date, (datetime.date, datetime.datetime)):
+                current_date = datetime.date.today()
+                if current_date >= implement_date:
+                    status_str = '现行'
+            elif isinstance(implement_date, str):
+                try:
+                    # 尝试解析 ISO 格式日期字符串 (如 YYYY-MM-DD 或 YYYY-MM-DDT...)
+                    date_str = implement_date.split('T')[0]
+                    imp_date = datetime.date.fromisoformat(date_str)
+                    current_date = datetime.date.today()
+                    if current_date >= imp_date:
+                        status_str = '现行'
+                except:
+                    pass
+        return status_str
 
 class FederatedStandardDownloadAPIView(APIView):
     permission_classes = [AllowAny]
