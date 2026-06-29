@@ -75,6 +75,7 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
     try {
       const { data } = await apiClient.post('/admin/standards/import-smart/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 300000, // 5分钟，应对同步导入超大文件与扫描PDF挂载盘
       });
 
       if (data.type === 'async') {

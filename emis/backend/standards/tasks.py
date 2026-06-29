@@ -487,8 +487,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
         }, timeout=86400)
 
         # 5. 清理临时上传的 Excel
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception:
+            pass
 
     except Exception as e:
         cache.set(f'import_task_{task_token}', {
