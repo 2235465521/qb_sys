@@ -510,6 +510,97 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                 pass
 
 
+def extract_dates_from_text(first_page_text: str):
+    """
+    从标准封面页文本中提取发布日期和实施日期。
+    
+    优化：
+    1. 在按行过滤时，自动排除包含时分的时间戳行（如 "公开 2018年07月16日 09点39分"），过滤水印。
+    2. 发布日期的关键字移除 "公开"，防止误识别国家/企业标准平台水印上的公示/公开时间。
+    """
+    import datetime
+    import re
+
+    extracted_publish_date = None
+    extracted_implement_date = None
+
+    # ── 预处理：修正 PDF/OCR 常见误识别字符 ──────────────────
+    def _normalize_date_text(text):
+        # 全角数字转半角
+        result = text.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+        # 全角连字符 → 半角
+        result = result.replace('－', '-').replace('—', '-')
+        # 将紧靠数字的大写 O 替换为 0
+        result = re.sub(r'(?<=\d)O(?=\d)', '0', result)
+        result = re.sub(r'(?<=\d)O(?!\d)', '0', result)
+        result = re.sub(r'(?<!\d)O(?=\d)', '0', result)
+        # 将紧靠数字的小写 l 替换为 1
+        result = re.sub(r'(?<=\d)l(?=\d)', '1', result)
+        result = re.sub(r'(?<=\d)l(?!\d)', '1', result)
+        result = re.sub(r'(?<!\d)l(?=\d)', '1', result)
+        return result
+
+    norm_text = _normalize_date_text(first_page_text)
+
+    # ── 预处理：按行分割，过滤水印 ──────────────────────
+    lines = norm_text.split('\n')
+    clean_lines = []
+    for line in lines:
+        if '公共服务平台' in line or '企业标准信息' in line:
+            continue
+        # 过滤时分秒等时间戳字样，判定为水印/打印记录，而非标准发布/实施日期
+        if '点' in line and '分' in line:
+            continue
+        clean_lines.append(line)
+
+    # ── 提取正则 ──────────────────────
+    date_pattern = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
+
+    def extract_closest_date(line_text, keyword):
+        """在行内提取与关键字最近的日期"""
+        if keyword not in line_text:
+            return None
+
+        matches = list(re.finditer(date_pattern, line_text))
+        if not matches:
+            return None
+
+        kw_idx = line_text.find(keyword)
+        best_candidate = None
+        min_dist = float('inf')
+
+        for match in matches:
+            try:
+                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
+                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
+                    match_center = (match.start() + match.end()) / 2
+                    dist = abs(match_center - kw_idx)
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_candidate = datetime.date(y, m, d)
+            except ValueError:
+                pass
+
+        return best_candidate
+
+    # ── 行级扫描：发布日期 / 实施日期 ──────────────────────
+    for line in clean_lines:
+        # 只保留“发布”和“公布”，不再匹配“公开”，避免被平台水印“公开 YYYY年MM月DD日”干扰
+        if '发布' in line or '公布' in line:
+            kw = '发布' if '发布' in line else '公布'
+            d = extract_closest_date(line, kw)
+            if d and not extracted_publish_date:
+                extracted_publish_date = d
+
+        if '实施' in line or '施行' in line:
+            kw = '实施' if '实施' in line else '施行'
+            d = extract_closest_date(line, kw)
+            if d and not extracted_implement_date:
+                extracted_implement_date = d
+
+    return extracted_publish_date, extracted_implement_date
+
+
 @shared_task(bind=True, name='standards.parse_standard_pdf')
 def parse_standard_pdf_task(self, standard_id: int, force: bool = False):
     """
@@ -622,91 +713,8 @@ def parse_standard_pdf_task(self, standard_id: int, force: bool = False):
             )
 
     # 5. 日期正则提取（发布日期 / 实施日期）
-    extracted_publish_date = None
-    extracted_implement_date = None
-
-    # ── 预处理：修正 PDF/OCR 常见误识别字符 ──────────────────
-    # 仅对首页文本做字符级修正，避免影响正文语义
-    def _normalize_date_text(text):
-        """
-        针对日期识别的文本预处理：
-        - 大写字母 O → 数字 0（常见 OCR 错误，如 O8 → 08）
-        - 小写字母 l → 数字 1（l 与 1 形似）
-        - 全角数字 → 半角（０１２... → 012...）
-        - 全角连字符 → 半角（－ → -）
-        注意：仅替换处于数字上下文中的字符，不改动汉字区域
-        """
-        import re as _re
-        # 全角数字转半角
-        result = text.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
-        # 全角连字符 → 半角
-        result = result.replace('－', '-').replace('—', '-')
-        # 将紧靠数字的大写 O 替换为 0（如 O8、2O24）
-        result = _re.sub(r'(?<=\d)O(?=\d)', '0', result)
-        result = _re.sub(r'(?<=\d)O(?!\d)', '0', result)
-        result = _re.sub(r'(?<!\d)O(?=\d)', '0', result)
-        # 将紧靠数字的小写 l 替换为 1
-        result = _re.sub(r'(?<=\d)l(?=\d)', '1', result)
-        result = _re.sub(r'(?<=\d)l(?!\d)', '1', result)
-        result = _re.sub(r'(?<!\d)l(?=\d)', '1', result)
-        return result
-
-    norm_text = _normalize_date_text(first_page_text)
-
-    # ── 预处理：按行分割，过滤水印 ──────────────────────
-    lines = norm_text.split('\n')
-    clean_lines = []
-    for line in lines:
-        if '公共服务平台' in line or '企业标准信息' in line:
-            continue
-        clean_lines.append(line)
-        
-    # ── 提取正则 ──────────────────────
-    # 要求日期必须符合格式，不使用宽松的随意匹配
-    date_pattern = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
-    
-    def extract_closest_date(line_text, keyword):
-        """在行内提取与关键字最近的日期"""
-        if keyword not in line_text:
-            return None
-            
-        import re
-        matches = list(re.finditer(date_pattern, line_text))
-        if not matches:
-            return None
-            
-        kw_idx = line_text.find(keyword)
-        best_candidate = None
-        min_dist = float('inf')
-        
-        for match in matches:
-            try:
-                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
-                    # 计算距离
-                    match_center = (match.start() + match.end()) / 2
-                    dist = abs(match_center - kw_idx)
-                    if dist < min_dist:
-                        min_dist = dist
-                        best_candidate = datetime.date(y, m, d)
-            except ValueError:
-                pass
-                
-        return best_candidate
-
-    # ── 行级扫描：发布日期 / 实施日期 ──────────────────────
-    for line in clean_lines:
-        if '发布' in line or '公布' in line or '公开' in line:
-            kw = '发布' if '发布' in line else ('公布' if '公布' in line else '公开')
-            d = extract_closest_date(line, kw)
-            if d and not extracted_publish_date:
-                extracted_publish_date = d
-                
-        if '实施' in line or '施行' in line:
-            kw = '实施' if '实施' in line else '施行'
-            d = extract_closest_date(line, kw)
-            if d and not extracted_implement_date:
-                extracted_implement_date = d
+    from standards.tasks import extract_dates_from_text
+    extracted_publish_date, extracted_implement_date = extract_dates_from_text(first_page_text)
 
     # 6. 批量保存全文内容并回填日期字段
     try:
