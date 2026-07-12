@@ -207,10 +207,46 @@ def import_companies_task(file_path, task_id):
                 return ''
             return val_str[:max_len]
 
+        # ==========================================
+        # Step 4: 循环读取每行并进行在内存中的去重合并
+        # ==========================================
+        unique_rows = {}
         for row_idx, row in enumerate(rows_iter, start=2):
             if not any(row):
                 continue
             total_count += 1
+
+            def get_val_temp(key):
+                idx = col_map.get(key, -1)
+                if idx != -1 and idx < len(row):
+                    val = row[idx]
+                    return str(val).strip() if val else ''
+                return ''
+
+            name = get_val_temp('name')
+            credit_code = get_val_temp('credit_code')
+
+            if not name:
+                errors.append(f"第{row_idx}行: 企业名称不能为空")
+                continue
+            if not credit_code:
+                errors.append(f"第{row_idx}行: 统一社会信用代码不能为空")
+                continue
+
+            # 使用信用代码作为唯一键进行去重，保留 Excel 中最后出现的数据行
+            unique_rows[credit_code] = (row_idx, row)
+
+        # ==========================================
+        # Step 5: 逐个处理去重后的数据行并分类写入/更新
+        # ==========================================
+        batch_size = 2000
+        companies_to_create = []
+        companies_to_update = []
+        processed_count = 0
+        total_unique = len(unique_rows)
+
+        for credit_code, (row_idx, row) in unique_rows.items():
+            processed_count += 1
 
             def get_val(key):
                 idx = col_map.get(key, -1)
@@ -219,15 +255,7 @@ def import_companies_task(file_path, task_id):
                     return str(val).strip() if val else ''
                 return ''
 
-            name        = get_val('name')
-            credit_code = get_val('credit_code')
-
-            if not name:
-                errors.append(f"第{row_idx}行: 企业名称不能为空")
-                continue
-            if not credit_code:
-                errors.append(f"第{row_idx}行: 统一社会信用代码不能为空")
-                continue
+            name = get_val('name')
 
             # 行政区划解析
             p_data = c_data = d_data = None
@@ -375,11 +403,11 @@ def import_companies_task(file_path, task_id):
                 success_count += len(companies_to_update)
                 companies_to_update = []
 
-            if total_count % 100 == 0:
-                progress = min(12 + int((total_count / estimated_total) * 83), 95)
+            if processed_count % 100 == 0:
+                progress = min(12 + int((processed_count / (total_unique or 1)) * 83), 95)
                 _update_progress(task_id, status="processing", progress=progress,
                                  success=success_count, skipped=skipped_count,
-                                 errors=errors, total=total_count)
+                                 errors=errors, total=processed_count)
 
         # 插入与更新剩余数据
         if companies_to_create:
@@ -409,8 +437,8 @@ def import_companies_task(file_path, task_id):
             pass
 
         _update_progress(task_id, status="done", progress=100,
-                          success=success_count, skipped=skipped_count,
-                          errors=errors, total=total_count)
+                         success=success_count, skipped=skipped_count,
+                         errors=errors, total=total_count)
 
     except Exception as e:
         traceback.print_exc()
