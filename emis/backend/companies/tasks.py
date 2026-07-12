@@ -198,6 +198,15 @@ def import_companies_task(file_path, task_id):
         companies_to_create = []
         companies_to_update = []
 
+        # 安全截断辅助函数，防止 Excel 数据长度超标导致数据库 (1406, "Data too long") 写入失败
+        def safe_trunc(val, max_len):
+            if not val:
+                return ''
+            val_str = str(val).strip()
+            if val_str == 'nan':
+                return ''
+            return val_str[:max_len]
+
         for row_idx, row in enumerate(rows_iter, start=2):
             if not any(row):
                 continue
@@ -280,10 +289,10 @@ def import_companies_task(file_path, task_id):
                     latitude  = c_data['latitude']
                     longitude = c_data['longitude']
 
-            # 成立日期时间解析与安全校验
+            # 成立日期时间解析与安全校验（过滤掉 '-', '--', '无' 等表示空白的 Excel 填充符）
             est_date_str = get_val('established_date')
             established_date = None
-            if est_date_str and est_date_str != 'nan':
+            if est_date_str and est_date_str.strip() not in ['', 'nan', '-', '--', '无']:
                 try:
                     cleaned_date = est_date_str.replace('/', '-').split(' ')[0]
                     established_date = datetime.datetime.strptime(cleaned_date, '%Y-%m-%d').date()
@@ -293,40 +302,40 @@ def import_companies_task(file_path, task_id):
                     except Exception:
                         errors.append(f"第{row_idx}行: 成立日期格式有误 ('{est_date_str}')，应为 YYYY-MM-DD")
 
-            # 提取详细信息以合并到公司模型中（仅在非空时覆盖）
+            # 提取详细信息以合并到公司模型中（仅在非空时覆盖，并进行 safe_trunc 截断）
             def assign_fields(c):
-                c.name = name
-                if get_val('legal_person'): c.legal_person = get_val('legal_person')
+                c.name = safe_trunc(name, 200)
+                if get_val('legal_person'): c.legal_person = safe_trunc(get_val('legal_person'), 50)
                 if p_data: c.province_id = p_data['id']
                 if c_data: c.city_id = c_data['id']
                 if d_data: c.district_id = d_data['id']
                 if latitude is not None: c.latitude = latitude
                 if longitude is not None: c.longitude = longitude
-                if get_val('contact'): c.contact = get_val('contact')
-                if get_val('address'): c.address = get_val('address')
+                if get_val('contact'): c.contact = safe_trunc(get_val('contact'), 100)
+                if get_val('address'): c.address = safe_trunc(get_val('address'), 500)
                 
                 # 扩展与补充字段赋值
                 if established_date: c.established_date = established_date
-                if get_val('registered_address'): c.registered_address = get_val('registered_address')
-                if get_val('registered_zipcode'): c.registered_zipcode = get_val('registered_zipcode')
-                if get_val('valid_mobile'): c.valid_mobile = get_val('valid_mobile')
-                if get_val('more_phones'): c.more_phones = get_val('more_phones')
-                if get_val('email'): c.email = get_val('email')
-                if get_val('company_type'): c.company_type = get_val('company_type')
-                if get_val('registration_no'): c.registration_no = get_val('registration_no')
-                if get_val('organization_code'): c.organization_code = get_val('organization_code')
-                if get_val('industry_category'): c.industry_category = get_val('industry_category')
-                if get_val('industry_major'): c.industry_major = get_val('industry_major')
-                if get_val('industry_middle'): c.industry_middle = get_val('industry_middle')
-                if get_val('industry_minor'): c.industry_minor = get_val('industry_minor')
-                if get_val('company_size'): c.company_size = get_val('company_size')
-                if get_val('english_name'): c.english_name = get_val('english_name')
-                if get_val('former_names'): c.former_names = get_val('former_names')
-                if get_val('website_url'): c.website_url = get_val('website_url')
-                if get_val('mailing_address'): c.mailing_address = get_val('mailing_address')
-                if get_val('mailing_address_zip'): c.mailing_address_zip = get_val('mailing_address_zip')
-                if get_val('business_scope'): c.business_scope = get_val('business_scope')
-                if get_val('registration_status'): c.registration_status = get_val('registration_status')
+                if get_val('registered_address'): c.registered_address = safe_trunc(get_val('registered_address'), 500)
+                if get_val('registered_zipcode'): c.registered_zipcode = safe_trunc(get_val('registered_zipcode'), 20)
+                if get_val('valid_mobile'): c.valid_mobile = safe_trunc(get_val('valid_mobile'), 50)
+                if get_val('more_phones'): c.more_phones = safe_trunc(get_val('more_phones'), 200)
+                if get_val('email'): c.email = safe_trunc(get_val('email'), 254)
+                if get_val('company_type'): c.company_type = safe_trunc(get_val('company_type'), 100)
+                if get_val('registration_no'): c.registration_no = safe_trunc(get_val('registration_no'), 100)
+                if get_val('organization_code'): c.organization_code = safe_trunc(get_val('organization_code'), 100)
+                if get_val('industry_category'): c.industry_category = safe_trunc(get_val('industry_category'), 100)
+                if get_val('industry_major'): c.industry_major = safe_trunc(get_val('industry_major'), 100)
+                if get_val('industry_middle'): c.industry_middle = safe_trunc(get_val('industry_middle'), 100)
+                if get_val('industry_minor'): c.industry_minor = safe_trunc(get_val('industry_minor'), 100)
+                if get_val('company_size'): c.company_size = safe_trunc(get_val('company_size'), 50)
+                if get_val('english_name'): c.english_name = safe_trunc(get_val('english_name'), 200)
+                if get_val('former_names'): c.former_names = safe_trunc(get_val('former_names'), 500)
+                if get_val('website_url'): c.website_url = safe_trunc(get_val('website_url'), 500)
+                if get_val('mailing_address'): c.mailing_address = safe_trunc(get_val('mailing_address'), 500)
+                if get_val('mailing_address_zip'): c.mailing_address_zip = safe_trunc(get_val('mailing_address_zip'), 20)
+                if get_val('business_scope'): c.business_scope = str(get_val('business_scope')).strip()
+                if get_val('registration_status'): c.registration_status = safe_trunc(get_val('registration_status'), 100)
                 
                 c.updated_at = timezone.now()
 
