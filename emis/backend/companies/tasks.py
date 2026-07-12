@@ -280,6 +280,15 @@ def import_companies_task(file_path, task_id):
                 p_data = find_province(get_val('province'))
             if not c_data and p_data:
                 c_data = find_city(p_data['id'], get_val('city'))
+
+            # 直辖市自动降级补全“市辖区”/“县”逻辑（针对北京市、天津市、上海市、重庆市）
+            if p_data and not c_data and p_data['name'] in ['北京市', '天津市', '上海市', '重庆市']:
+                target_city_name = '市辖区'
+                district_val = get_val('district')
+                if p_data['name'] == '重庆市' and district_val and (district_val.endswith('县') or '县' in district_val):
+                    target_city_name = '县'
+                c_data = find_city(p_data['id'], target_city_name)
+
             if not d_data and c_data:
                 d_data = find_district(c_data['id'], get_val('district'))
 
