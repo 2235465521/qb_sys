@@ -133,47 +133,60 @@ class CompanyImportView(APIView):
 
     def post(self, request):
         import threading
+        import logging
+        import traceback
 
-        file_obj = request.FILES.get('file')
-        if not file_obj:
-            return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            file_obj = request.FILES.get('file')
+            if not file_obj:
+                return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
 
-        if not file_obj.name.endswith(('.xlsx', '.xls')):
-            return Response({'error': '仅支持 .xlsx 或 .xls 格式'}, status=status.HTTP_400_BAD_REQUEST)
+            if not file_obj.name.endswith(('.xlsx', '.xls')):
+                return Response({'error': '仅支持 .xlsx 或 .xls 格式'}, status=status.HTTP_400_BAD_REQUEST)
 
-        task_id = uuid.uuid4().hex
+            task_id = uuid.uuid4().hex
 
-        # 将文件保存到临时目录
-        temp_dir = os.path.join(settings.MEDIA_ROOT, 'imports')
-        os.makedirs(temp_dir, exist_ok=True)
-        file_path = str(os.path.join(temp_dir, f"{task_id}_{file_obj.name}"))
+            # 将文件保存到临时目录
+            temp_dir = os.path.join(settings.MEDIA_ROOT, 'imports')
+            os.makedirs(temp_dir, exist_ok=True)
+            file_path = str(os.path.join(temp_dir, f"{task_id}_{file_obj.name}"))
 
-        with open(file_path, 'wb+') as destination:
-            for chunk in file_obj.chunks():
-                destination.write(chunk)
+            with open(file_path, 'wb+') as destination:
+                for chunk in file_obj.chunks():
+                    destination.write(chunk)
 
-        # 初始化缓存进度
-        cache.set(f"import_task_{task_id}", {
-            "status": "queued",
-            "progress": 0,
-            "success": 0,
-            "skipped": 0,
-            "errors": [],
-            "total": 0
-        }, timeout=3600)
+            # 初始化缓存进度
+            cache.set(f"import_task_{task_id}", {
+                "status": "queued",
+                "progress": 0,
+                "success": 0,
+                "skipped": 0,
+                "errors": [],
+                "total": 0
+            }, timeout=3600)
 
-        # 触发异步任务
-        # 如果 Redis 不可用，CELERY_TASK_ALWAYS_EAGER=True 会使 .delay() 变成同步阅塞请求。
-        # 此处判断：若为同步模式，改用后台线程保证异步，确保 HTTP 响应在 < 1 秒内返回。
-        if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
-            def run_in_thread():
-                import_companies_task(file_path, task_id)
-            t = threading.Thread(target=run_in_thread, daemon=True)
-            t.start()
-        else:
-            import_companies_task.delay(file_path, task_id)
+            # 触发异步任务
+            # 如果 Redis 不可用，CELERY_TASK_ALWAYS_EAGER=True 会使 .delay() 变成同步阅塞请求。
+            # 此处判断：若为同步模式，改用后台线程保证异步，确保 HTTP 响应在 < 1 秒内返回。
+            if getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
+                def run_in_thread():
+                    try:
+                        import_companies_task(file_path, task_id)
+                    except Exception as e:
+                        logging.getLogger('django.request').error(f"Thread import error: {e}", exc_info=True)
+                t = threading.Thread(target=run_in_thread, daemon=True)
+                t.start()
+            else:
+                import_companies_task.delay(file_path, task_id)
 
-        return Response({'task_id': task_id, 'status': 'queued'}, status=status.HTTP_200_OK)
+            return Response({'task_id': task_id, 'status': 'queued'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            logging.getLogger('django.request').error(f"Error starting company import: {e}", exc_info=True)
+            return Response({
+                'error': '启动导入任务失败',
+                'details': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class CompanyImportStatusView(APIView):
@@ -183,13 +196,24 @@ class CompanyImportStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, task_id):
-        cache_key = f"import_task_{task_id}"
-        task_data = cache.get(cache_key)
-        
-        if not task_data:
-            return Response({'error': '任务不存在或已过期'}, status=status.HTTP_404_NOT_FOUND)
+        import logging
+        import traceback
+
+        try:
+            cache_key = f"import_task_{task_id}"
+            task_data = cache.get(cache_key)
             
-        return Response(task_data, status=status.HTTP_200_OK)
+            if not task_data:
+                return Response({'error': '任务不存在或已过期'}, status=status.HTTP_404_NOT_FOUND)
+                
+            return Response(task_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logging.getLogger('django.request').error(f"Error querying company import status: {e}", exc_info=True)
+            return Response({
+                'error': '查询导入状态失败',
+                'details': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class CompanyImportTemplateView(APIView):
