@@ -26,6 +26,7 @@ export const useCompanyData = (params: CompanySearchParams) => {
     onSuccess: () => {
       message.success('操作成功');
       queryClient.invalidateQueries({ queryKey: ['admin_companies'] });
+      companyQuery.refetch();
     },
   });
 
@@ -35,6 +36,7 @@ export const useCompanyData = (params: CompanySearchParams) => {
     onSuccess: () => {
       message.success('企业已删除');
       queryClient.invalidateQueries({ queryKey: ['admin_companies'] });
+      companyQuery.refetch();
     },
   });
 
