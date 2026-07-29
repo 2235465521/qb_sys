@@ -193,7 +193,7 @@ const SmsTasksPage: React.FC = () => {
             ) : (
               <div>
                 <Text type="secondary" style={{ fontSize: 12 }}>计划: </Text>
-                <Tag size="small" color="orange" style={{ margin: 0 }}>即时发送</Tag>
+                <Tag color="orange" style={{ margin: 0 }}>即时发送</Tag>
               </div>
             )}
             {started && (

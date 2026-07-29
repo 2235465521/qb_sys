@@ -154,6 +154,10 @@ export interface SmsTask {
   template: number
   template_name: string
   target_group: string
+  target_company?: string
+  scheduled_time?: string | null
+  started_at?: string | null
+  finished_at?: string | null
   status: string
   status_display: string
   total_count: number
