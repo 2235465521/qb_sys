@@ -222,16 +222,22 @@ from django.dispatch import receiver
 from django.core.cache import cache
 
 
+import logging
+logger = logging.getLogger(__name__)
+
+
 def _invalidate_search_cache():
     """
     精准清除与搜索/统计相关的缓存 key，
-    保留任务进度、ZIP 下载状态等业务关键数据。
+    包含企业搜索缓存与联邦标准摘要缓存。
     """
     try:
         # django-redis 支持通配符删除
         cache.delete_pattern("company_search:*")
-    except (AttributeError, Exception):
-        # 文件缓存降级模式：只删默认页 key，其他 key 在 TTL 5分钟后自然过期
+        cache.delete_pattern("company_federated_standards_summary:*")
+        cache.delete_pattern("company_federated_standards:*")
+    except (AttributeError, Exception) as e:
+        logger.warning(f"Cache pattern invalidation fallback: {e}")
         cache.delete("company_search:default")
     cache.delete("dashboard:stats")
 
@@ -239,32 +245,18 @@ def _invalidate_search_cache():
 def update_company_standards_count(company):
     if not company:
         return
-    from django.db import connections
-    # 1. 本地数量
-    local_count = company.standards.filter(type__in=['enterprise', 'group']).count()
-    # 2. 外部联邦库数量
-    federated_count = 0
-    search_name = company.name.strip()
-    if search_name:
-        try:
-            with connections['stsc_db'].cursor() as cursor:
-                cursor.execute("SET NAMES utf8mb4;")
-                query = """
-                    SELECT COUNT(DISTINCT v.std_id)
-                    FROM unit_dict u
-                    JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                    JOIN view_std_full v ON r.base_id = v.id
-                    WHERE u.unit_name = %s
-                """
-                cursor.execute(query, [search_name])
-                row = cursor.fetchone()
-                if row:
-                    federated_count = row[0]
-        except Exception:
-            pass
-    # 避免两边数据完全一致时的重复计算
-    company.standards_count = max(local_count, federated_count)
-    company.save(update_fields=['standards_count'])
+    try:
+        # 1. 本地企标/团标数量
+        local_count = company.standards.filter(type__in=['enterprise', 'group']).count()
+        # 2. 联邦库精准去重统计数量（通过 FederatedStandardService 深度模块）
+        from companies.services import FederatedStandardService
+        fed_summary = FederatedStandardService.get_company_standards_summary(company, scope='expanded')
+        federated_count = fed_summary.get('total_standards', 0)
+
+        company.standards_count = max(local_count, federated_count)
+        company.save(update_fields=['standards_count'])
+    except Exception as e:
+        logger.error(f"Error in update_company_standards_count for company {company.id}: {e}")
 
 
 @receiver(post_save, sender=Standard)

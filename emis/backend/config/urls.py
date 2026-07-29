@@ -17,6 +17,7 @@ urlpatterns = [
     path('api/admin/companies/', include('companies.urls.admin_urls')),
     path('api/admin/dict/', include('companies.urls.dict_urls')),
     path('api/admin/notifications/templates/', include('notifications.urls.template_urls')),
+    path('api/admin/notifications/', include('notifications.urls.task_urls')),
     path('api/admin/members/', include('users.urls.member_admin_urls')),
     path('api/admin/standards/', include('standards.urls.admin_urls')),
     path('api/admin/users/', include('users.urls.user_admin_urls')),

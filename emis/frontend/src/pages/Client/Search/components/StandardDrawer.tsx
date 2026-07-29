@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Drawer, List, Button, Space, Tag, Empty, message, Progress, Tabs, Modal, Tooltip } from 'antd';
-import { FilePdfOutlined, DownloadOutlined, LoadingOutlined, DeleteOutlined, ShoppingCartOutlined, PlusOutlined } from '@ant-design/icons';
+import { Drawer, List, Button, Space, Tag, Empty, message, Progress, Tabs, Modal, Tooltip, Radio } from 'antd';
+import { FilePdfOutlined, DownloadOutlined, LoadingOutlined, DeleteOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Standard, Company } from '@/types';
 import StandardListItem from './StandardListItem';
@@ -14,13 +14,14 @@ interface StandardDrawerProps {
 const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose }) => {
   const [selectedIds, setSelectedIds] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<string>('all');
+  const [scope, setScope] = useState<'expanded' | 'core'>('expanded');
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState(0);
 
   const { useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus } = useSearchData();
   const { data: localStandards, isLoading: localLoading } = useCompanyStandards(company?.id);
-  const { data: federatedData, isLoading: fedLoading } = useCompanyFederatedStandards(company?.id);
+  const { data: federatedData, isLoading: fedLoading } = useCompanyFederatedStandards(company?.id, scope);
 
   const standards = React.useMemo(() => {
     const arr: any[] = [...(localStandards || [])].map(s => ({ ...s, is_local: true }));
@@ -210,6 +211,51 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
         }
       >
         {packing && <Progress percent={progress} status="active" style={{ marginBottom: 16 }} />}
+
+        {/* 机构信息与统计穿透卡片 */}
+        {company && (
+          <div style={{ background: '#f6f8fa', padding: '12px 16px', borderRadius: 8, marginBottom: 12, border: '1px solid #e1e4e8' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+              <div>
+                <span style={{ fontSize: 13, color: '#586069' }}>统一社会信用代码：</span>
+                <Tag color="blue" style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                  {company.credit_code || federatedData?.credit_code || '未录入'}
+                </Tag>
+              </div>
+              <Radio.Group 
+                value={scope} 
+                onChange={(e) => setScope(e.target.value)} 
+                size="small"
+                optionType="button"
+                buttonStyle="solid"
+              >
+                <Radio.Button value="expanded">全量扩展</Radio.Button>
+                <Radio.Button value="core">核心机构</Radio.Button>
+              </Radio.Group>
+            </div>
+
+            {federatedData && (
+              <div style={{ fontSize: 12, color: '#6a737d', display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <span>联邦库去重总计: <strong style={{ color: '#096dd9' }}>{federatedData.total_standards || 0}</strong> 项</span>
+                <span>|</span>
+                <span>国标: <strong>{federatedData.type_breakdown?.['GB/T'] || 0}</strong></span>
+                <span>团标: <strong>{federatedData.type_breakdown?.['TB'] || 0}</strong></span>
+                <span>地标: <strong>{federatedData.type_breakdown?.['DB'] || 0}</strong></span>
+                
+                <Tooltip title={
+                  <div style={{ fontSize: 12, lineHeight: '1.6' }}>
+                    <div><strong>数据去重与统计口径说明：</strong></div>
+                    <div>1. 本系统基于标准唯一 ID (std_id) 进行了严格精准去重。</div>
+                    <div>2. 第三方商业平台（企查查/天眼查等）未剔除草案/送审稿等版本，数据偏大。</div>
+                    <div>3. 【核心机构】仅计算主机构 unit_id；【全量扩展】穿透包含金砖研究中心/编码中心等挂牌分支机构。</div>
+                  </div>
+                }>
+                  <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'pointer', marginLeft: 4 }} />
+                </Tooltip>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 顶部标签筛选 */}
         <Tabs 

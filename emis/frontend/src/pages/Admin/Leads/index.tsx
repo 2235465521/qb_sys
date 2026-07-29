@@ -69,7 +69,7 @@ const AdminLeadsPage: React.FC = () => {
 
   // Helpers to get current active options with fallback
   const getReqTypeOptions = () => {
-    const active = options.filter(o => o.option_type === 'req_type' && o.is_active);
+    const active = (Array.isArray(options) ? options : []).filter(o => o.option_type === 'req_type' && o.is_active);
     if (active.length > 0) return active;
     return [
       { value: 'general_inquiry', name: '常规咨询' },
@@ -79,7 +79,7 @@ const AdminLeadsPage: React.FC = () => {
   };
 
   const getSourceOptions = () => {
-    const active = options.filter(o => o.option_type === 'source' && o.is_active);
+    const active = (Array.isArray(options) ? options : []).filter(o => o.option_type === 'source' && o.is_active);
     if (active.length > 0) return active;
     return [
       { value: 'wechat', name: '公众号/视频号' },
@@ -90,7 +90,7 @@ const AdminLeadsPage: React.FC = () => {
   };
 
   const getStatusOptions = () => {
-    const active = options.filter(o => o.option_type === 'status' && o.is_active);
+    const active = (Array.isArray(options) ? options : []).filter(o => o.option_type === 'status' && o.is_active);
     if (active.length > 0) return active;
     return [
       { value: 'pending', name: '待处理' },
@@ -101,7 +101,7 @@ const AdminLeadsPage: React.FC = () => {
   };
 
   const getAssigneeOptions = () => {
-    const active = options.filter(o => o.option_type === 'assignee' && o.is_active);
+    const active = (Array.isArray(options) ? options : []).filter(o => o.option_type === 'assignee' && o.is_active);
     if (active.length > 0) return active;
     return users.map(u => ({ value: u.username, name: u.real_name || u.username }));
   };
@@ -110,7 +110,14 @@ const AdminLeadsPage: React.FC = () => {
     setOptionsLoading(true);
     try {
       const response = await apiClient.get('/admin/companies/leads/options/');
-      setOptions(response.data.results || response.data || []);
+      const data = response.data;
+      if (data && Array.isArray(data.results)) {
+        setOptions(data.results);
+      } else if (Array.isArray(data)) {
+        setOptions(data);
+      } else {
+        setOptions([]);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1596,7 +1603,7 @@ const AdminLeadsPage: React.FC = () => {
         <Table
           size="small"
           loading={optionsLoading}
-          dataSource={options.filter(o => o.option_type === activeConfigTab)}
+          dataSource={(Array.isArray(options) ? options : []).filter(o => o.option_type === activeConfigTab)}
           rowKey="id"
           pagination={false}
           columns={[

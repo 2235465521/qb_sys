@@ -46,85 +46,12 @@ class CompanyFederatedStandardsAPIView(APIView):
         except Company.DoesNotExist:
             return Response({'error': '未找到该企业'}, status=404)
         
-        search_name = company.name.strip()
-        
-        # 尝试从 Cache 获取缓存数据
-        cache_key = f"company_federated_standards:{pk}"
-        try:
-            cached_data = cache.get(cache_key)
-            if cached_data is not None:
-                return Response(cached_data)
-        except Exception:
-            pass
-        
-        try:
-            with connections['stsc_db'].cursor() as cursor:
-                cursor.execute("SET NAMES utf8mb4;")
-                query = """
-                    SELECT 
-                        v.std_id, 
-                        v.std_chinesename, 
-                        v.std_type, 
-                        v.release_date, 
-                        v.implement_date, 
-                        v.ex_state as status, 
-                        h.draft_unit as drafter,
-                        f.file_path,
-                        r.rank_order
-                    FROM mydate.unit_dict u
-                    JOIN mydate.std_unit_relation r ON u.unit_id = r.unit_id
-                    JOIN mydate.view_std_full v ON r.base_id = v.id
-                    LEFT JOIN mydate.std_extend_h h ON v.id = h.base_id
-                    LEFT JOIN mydate.std_filepath f ON v.id = f.base_id
-                    WHERE u.unit_name = %s
-                    ORDER BY v.release_date DESC
-                """
-                cursor.execute(query, [search_name])
-                columns = [col[0] for col in cursor.description]
-                results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-        except Exception as e:
-            return Response({
-                'error': '连接 STSC 联邦数据库失败或查询异常',
-                'details': str(e)
-            }, status=500)
-            
-        formatted_results = []
-        for row in results:
-            drafters_raw = row.get('drafter', '')
-            drafters_list = self.clean_draft_units(drafters_raw)
-            
-            formatted_results.append({
-                'standard_no': row.get('std_id', ''),
-                'title': row.get('std_chinesename', ''),
-                'type': row.get('std_type', ''),
-                'release_date': row.get('release_date').isoformat() if row.get('release_date') else None,
-                'implement_date': row.get('implement_date').isoformat() if row.get('implement_date') else None,
-                'status': self._map_status(row.get('status'), row.get('implement_date')),
-                'drafters': drafters_list,
-                'file_path': row.get('file_path'),
-                'rank_order': row.get('rank_order')
-            })
-            
-        unique_results = []
-        seen_stds = set()
-        for item in formatted_results:
-            if item['standard_no'] not in seen_stds:
-                seen_stds.add(item['standard_no'])
-                unique_results.append(item)
-                
-        response_data = {
-            'company_id': company.id,
-            'company_name': search_name,
-            'total_standards': len(unique_results),
-            'standards': unique_results
-        }
-        
-        # 将数据缓存 1 小时 (3600 秒)
-        try:
-            cache.set(cache_key, response_data, timeout=3600)
-        except Exception:
-            pass
-            
+        scope = request.query_params.get('scope', 'expanded')
+        if scope not in ['core', 'expanded']:
+            scope = 'expanded'
+
+        from companies.services import FederatedStandardService
+        response_data = FederatedStandardService.get_company_standards_summary(company, scope=scope)
         return Response(response_data)
 
     def _map_status(self, status_code, implement_date=None):

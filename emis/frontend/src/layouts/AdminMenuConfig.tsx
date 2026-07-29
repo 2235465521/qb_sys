@@ -12,6 +12,7 @@ import {
   InteractionOutlined,
   ToolOutlined,
   HistoryOutlined,
+  SendOutlined,
 } from '@ant-design/icons';
 import type { MenuProps } from 'antd';
 
@@ -62,6 +63,11 @@ export const adminMenuItems: MenuProps['items'] = [
         key: '/admin/sms-templates',
         icon: <MessageOutlined />,
         label: '短信模板管理',
+      },
+      {
+        key: '/admin/sms-tasks',
+        icon: <SendOutlined />,
+        label: '短信群发任务',
       },
     ],
   },

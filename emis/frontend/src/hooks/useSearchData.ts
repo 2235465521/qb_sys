@@ -24,11 +24,25 @@ export const useSearchData = () => {
   });
 
   // 获取企业联邦查询的标准（国标、行标等）
-  const useCompanyFederatedStandards = (companyId?: number) => useQuery({
-    queryKey: ['company_federated_standards', companyId],
+  const useCompanyFederatedStandards = (companyId?: number, scope: 'expanded' | 'core' = 'expanded') => useQuery({
+    queryKey: ['company_federated_standards', companyId, scope],
     queryFn: async () => {
-      if (!companyId) return { standards: [], total_standards: 0 };
-      const { data } = await apiClient.get<{standards: Standard[], total_standards: number}>(`/client/search/companies/${companyId}/federated_standards/`);
+      if (!companyId) return {
+        standards: [],
+        total_standards: 0,
+        type_breakdown: { 'GB/T': 0, 'TB': 0, 'DB': 0, 'industry': 0, 'other': 0 },
+        credit_code: '',
+        scope: scope,
+        matched_units: []
+      };
+      const { data } = await apiClient.get<{
+        standards: Standard[],
+        total_standards: number,
+        type_breakdown?: Record<string, number>,
+        credit_code?: string,
+        scope?: string,
+        matched_units?: string[]
+      }>(`/client/search/companies/${companyId}/federated_standards/`, { params: { scope } });
       return data;
     },
     enabled: !!companyId,
