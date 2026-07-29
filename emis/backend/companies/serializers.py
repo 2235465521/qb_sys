@@ -31,55 +31,37 @@ class CompanyBulkListSerializer(ListSerializer):
     def to_representation(self, data):
         iterable = data.all() if hasattr(data, 'all') else list(data)
         
-        # 批量获取 Redis 缓存，解决 20 次 N+1 请求缓存问题
-        cache_keys = {f"federated_std_count_{obj.id}": obj for obj in iterable}
+        from .services import FederatedStandardService
+        
+        # 批量获取 Redis 缓存中的深度统计摘要
+        cache_keys = {f"company_federated_standards_summary:{obj.id}:expanded": obj for obj in iterable}
         cached_data = cache.get_many(cache_keys.keys())
         
         missing_objs = []
         for key, obj in cache_keys.items():
-            if key in cached_data:
-                obj.federated_count = cached_data[key]
+            if key in cached_data and cached_data[key] is not None:
+                obj.federated_count = cached_data[key].get('total_standards', 0)
             else:
                 missing_objs.append(obj)
                 
-        # 对于缓存没命中的，使用多线程并发查询外部库，将20秒缩减至不到1秒
+        # 对于缓存未命中的，使用 FederatedStandardService 多线程并发计算并写入缓存
         if missing_objs:
             import concurrent.futures
-            from django.db import connections
             
             def fetch_fed_count(obj):
-                count = 0
-                search_name = obj.name.strip()
-                if search_name:
-                    try:
-                        with connections['stsc_db'].cursor() as cursor:
-                            cursor.execute("SET NAMES utf8mb4;")
-                            query = """
-                                SELECT COUNT(DISTINCT v.std_id)
-                                FROM unit_dict u
-                                JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                                JOIN view_std_full v ON r.base_id = v.id
-                                WHERE u.unit_name = %s
-                            """
-                            cursor.execute(query, [search_name])
-                            row = cursor.fetchone()
-                            if row:
-                                count = row[0]
-                    except Exception:
-                        pass
+                try:
+                    summary = FederatedStandardService.get_company_standards_summary(obj, scope='expanded')
+                    count = summary.get('total_standards', 0)
+                except Exception:
+                    count = 0
                 return obj, count
 
-            to_cache = {}
             with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
                 futures = [executor.submit(fetch_fed_count, obj) for obj in missing_objs]
                 for future in concurrent.futures.as_completed(futures):
                     obj, count = future.result()
                     obj.federated_count = count
-                    to_cache[f"federated_std_count_{obj.id}"] = count
                     
-            if to_cache:
-                cache.set_many(to_cache, timeout=86400)
-                
         return super().to_representation(data)
 
 
@@ -109,14 +91,14 @@ class CompanyListSerializer(serializers.ModelSerializer):
         return None
 
     def get_standards_count(self, obj):
-        # 如果数据库中已经存有统计好的 standards_count，直接使用，避免二次叠加
-        if obj.standards_count is not None:
-            return obj.standards_count
+        # 优先使用经过 FederatedStandardService 精准去重计算出的并发缓存结果
+        fed_count = getattr(obj, 'federated_count', None)
+        if fed_count is not None:
+            return fed_count
             
-        # 降级容错逻辑
-        local_count = sum(1 for s in obj.standards.all() if s.type in ['enterprise', 'group'])
-        federated_count = getattr(obj, 'federated_count', 0)
-        return max(local_count, federated_count)
+        from .services import FederatedStandardService
+        summary = FederatedStandardService.get_company_standards_summary(obj, scope='expanded')
+        return summary.get('total_standards', 0)
 
 
 class CompanyDetailSerializer(serializers.ModelSerializer):
