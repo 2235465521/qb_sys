@@ -233,15 +233,6 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
             <Button size="small" onClick={() => setSelectedIds([])} disabled={selectedIds.length === 0}>清空</Button>
             <Button 
               size="small"
-              icon={exportingExcel ? <LoadingOutlined /> : <FileExcelOutlined />} 
-              onClick={handleExportExcel}
-              loading={exportingExcel}
-              style={{ borderColor: '#52c41a', color: '#52c41a' }}
-            >
-              {selectedIds.length > 0 ? `导出选中的标准 (${selectedIds.length})` : '导出 Excel'}
-            </Button>
-            <Button 
-              size="small"
               type="primary" 
               icon={packing ? <LoadingOutlined /> : <DownloadOutlined />} 
               disabled={selectedIds.length === 0 || packing}
@@ -305,12 +296,13 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
                   loading={exportingExcel}
                   style={{ color: '#52c41a', padding: '0 4px', fontWeight: 600, marginLeft: 'auto' }}
                 >
-                  导出 Excel 报表
+                  {selectedIds.length > 0 ? `导出选中的目录 (${selectedIds.length})` : '导出 Excel 目录'}
                 </Button>
               </div>
             )}
           </div>
         )}
+
 
 
         {/* 顶部标签筛选 */}
