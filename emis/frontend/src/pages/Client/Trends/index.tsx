@@ -15,13 +15,14 @@ const TrendDashboard: React.FC = () => {
 
   // Initialize selected keyword to the top trending word once data loads
   React.useEffect(() => {
-    if (wordCloudQuery.data && wordCloudQuery.data.length > 0 && !selectedKeyword) {
+    if (Array.isArray(wordCloudQuery.data) && wordCloudQuery.data.length > 0 && !selectedKeyword) {
       setSelectedKeyword(wordCloudQuery.data[0].name);
     }
   }, [wordCloudQuery.data, selectedKeyword]);
 
   // Dynamic Word Cloud Data mapping to highlight the selected word
-  const wordCloudData = (wordCloudQuery.data || []).map(item => {
+  const wordCloudData = (Array.isArray(wordCloudQuery.data) ? wordCloudQuery.data : []).map(item => {
+
     const isSelected = item.name === selectedKeyword;
     return {
       name: item.name,
@@ -90,7 +91,7 @@ const TrendDashboard: React.FC = () => {
     });
   };
 
-  const growthData = (growthQuery.data || []).slice().reverse();
+  const growthData = (Array.isArray(growthQuery.data) ? growthQuery.data : []).slice().reverse();
 
   const growthOption = {
     tooltip: { 
@@ -140,7 +141,7 @@ const TrendDashboard: React.FC = () => {
   };
 
   // Sort and process all provinces without '其他地区' grouping
-  const rawData = regionalQuery.data || [];
+  const rawData = Array.isArray(regionalQuery.data) ? regionalQuery.data : [];
   const sortedData = [...rawData].sort((a, b) => b.count - a.count);
   const chartData = sortedData.map(item => ({ name: item.province, value: item.count }));
   const totalCount = sortedData.reduce((sum, item) => sum + item.count, 0);
@@ -158,13 +159,13 @@ const TrendDashboard: React.FC = () => {
 
   const generateReportText = () => {
     if (!selectedKeyword) return '';
-    const rawData = regionalQuery.data || [];
+    const rawData = Array.isArray(regionalQuery.data) ? regionalQuery.data : [];
     if (rawData.length === 0) return '暂无数据生成报告。';
 
     const totalCount = rawData.reduce((sum, item) => sum + item.count, 0);
     const topProvince = rawData[0];
     
-    const growthItem = (growthQuery.data || []).find(item => item.keyword === selectedKeyword);
+    const growthItem = (Array.isArray(growthQuery.data) ? growthQuery.data : []).find(item => item.keyword === selectedKeyword);
     const growthStr = growthItem 
       ? (growthItem.growth_rate >= 1000 ? '新晋爆发' : `环比暴增 +${growthItem.growth_rate}%`)
       : '稳步上升';
@@ -215,8 +216,9 @@ ${regionDetail}
       size="small" 
       icon={<FileTextOutlined />} 
       onClick={() => setReportVisible(true)}
-      disabled={!selectedKeyword || (regionalQuery.data || []).length === 0}
+      disabled={!selectedKeyword || (Array.isArray(regionalQuery.data) ? regionalQuery.data : []).length === 0}
       style={{ borderRadius: 6 }}
+
     >
       生成分析报告
     </Button>

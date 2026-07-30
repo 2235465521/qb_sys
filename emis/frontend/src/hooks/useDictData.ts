@@ -4,38 +4,38 @@ import type { Province, City, District } from '@/types';
 
 export const useDictData = () => {
   // 获取省份
-  const provinceQuery = useQuery({
+  const provinceQuery = useQuery<Province[]>({
     queryKey: ['dict_provinces'],
     queryFn: async () => {
-      const { data } = await apiClient.get<Province[]>('/admin/dict/provinces/');
-      return data;
+      const { data } = await apiClient.get<Province[] | { results: Province[] }>('/admin/dict/provinces/');
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     staleTime: Infinity, // 字典数据基本不变
   });
 
   // 获取城市
-  const useCityQuery = (provinceId?: number) => useQuery({
+  const useCityQuery = (provinceId?: number) => useQuery<City[]>({
     queryKey: ['dict_cities', provinceId],
     queryFn: async () => {
       if (!provinceId) return [];
-      const { data } = await apiClient.get<City[]>('/admin/dict/cities/', {
+      const { data } = await apiClient.get<City[] | { results: City[] }>('/admin/dict/cities/', {
         params: { province_id: provinceId }
       });
-      return data;
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     enabled: !!provinceId,
     staleTime: Infinity,
   });
 
   // 获取区县
-  const useDistrictQuery = (cityId?: number) => useQuery({
+  const useDistrictQuery = (cityId?: number) => useQuery<District[]>({
     queryKey: ['dict_districts', cityId],
     queryFn: async () => {
       if (!cityId) return [];
-      const { data } = await apiClient.get<District[]>('/admin/dict/districts/', {
+      const { data } = await apiClient.get<District[] | { results: District[] }>('/admin/dict/districts/', {
         params: { city_id: cityId }
       });
-      return data;
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     enabled: !!cityId,
     staleTime: Infinity,
@@ -43,3 +43,6 @@ export const useDictData = () => {
 
   return { provinceQuery, useCityQuery, useDistrictQuery };
 };
+
+
+

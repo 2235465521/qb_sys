@@ -223,11 +223,12 @@ const MemberAdminPage: React.FC = () => {
 
   const tabItems = [
     { label: '全部会员', key: 'all' },
-    ...(categoryQuery.data || []).map(cat => ({
+    ...(Array.isArray(categoryQuery.data) ? categoryQuery.data : []).map(cat => ({
       label: cat.name,
       key: cat.code
     }))
   ];
+
 
   const columns = [
     { 

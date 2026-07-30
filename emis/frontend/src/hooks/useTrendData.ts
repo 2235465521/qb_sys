@@ -18,36 +18,36 @@ export interface RegionalDist {
 }
 
 export const useTrendData = (days: number = 30, selectedKeyword: string = '') => {
-  const wordCloudQuery = useQuery({
+  const wordCloudQuery = useQuery<TrendWord[]>({
     queryKey: ['trend_word_cloud', days],
     queryFn: async () => {
-      const { data } = await apiClient.get<TrendWord[]>('/client/analysis/trends/word-cloud/', {
+      const { data } = await apiClient.get<TrendWord[] | { results: TrendWord[] }>('/client/analysis/trends/word-cloud/', {
         params: { days, limit: 100 }
       });
-      return data;
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     staleTime: 1000 * 60 * 30, // Cache for 30 minutes
   });
 
-  const growthQuery = useQuery({
+  const growthQuery = useQuery<GrowthRanking[]>({
     queryKey: ['trend_growth', days],
     queryFn: async () => {
-      const { data } = await apiClient.get<GrowthRanking[]>('/client/analysis/trends/growth-ranking/', {
+      const { data } = await apiClient.get<GrowthRanking[] | { results: GrowthRanking[] }>('/client/analysis/trends/growth-ranking/', {
         params: { days, limit: 10 }
       });
-      return data;
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     staleTime: 1000 * 60 * 30,
   });
 
-  const regionalQuery = useQuery({
+  const regionalQuery = useQuery<RegionalDist[]>({
     queryKey: ['trend_regional', selectedKeyword, days],
     queryFn: async () => {
       if (!selectedKeyword) return [];
-      const { data } = await apiClient.get<RegionalDist[]>('/client/analysis/trends/regional-dist/', {
+      const { data } = await apiClient.get<RegionalDist[] | { results: RegionalDist[] }>('/client/analysis/trends/regional-dist/', {
         params: { keyword: selectedKeyword, days }
       });
-      return data;
+      return Array.isArray(data) ? data : (data?.results || []);
     },
     enabled: !!selectedKeyword,
     staleTime: 1000 * 60 * 30,
@@ -59,3 +59,6 @@ export const useTrendData = (days: number = 30, selectedKeyword: string = '') =>
     regionalQuery
   };
 };
+
+
+

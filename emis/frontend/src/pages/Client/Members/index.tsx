@@ -119,11 +119,12 @@ const MemberCenterPage: React.FC = () => {
 
   const tabItems = [
     { label: '全部会员', key: 'all' },
-    ...(categoryQuery.data || []).map(cat => ({
+    ...(Array.isArray(categoryQuery.data) ? categoryQuery.data : []).map(cat => ({
       label: cat.name,
       key: cat.code
     }))
   ];
+
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: '10px 0' }}>

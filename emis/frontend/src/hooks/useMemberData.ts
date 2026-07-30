@@ -41,13 +41,16 @@ export const useMemberData = (params: any) => {
   });
 
   // 获取自定义分类列表
-  const categoryQuery = useQuery({
+  const categoryQuery = useQuery<OrganizationCategory[]>({
     queryKey: ['member_categories'],
     queryFn: async () => {
-      const { data } = await apiClient.get<OrganizationCategory[]>('/client/members/categories/');
-      return data;
+      const { data } = await apiClient.get<OrganizationCategory[] | { results: OrganizationCategory[] }>('/client/members/categories/');
+      return Array.isArray(data) ? data : (data?.results || []);
     },
   });
+
+
+
 
   // 创建分类
   const createCategoryMutation = useMutation({

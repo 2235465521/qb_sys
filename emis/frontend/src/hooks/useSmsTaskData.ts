@@ -17,15 +17,17 @@ export const useSmsTaskData = (params?: { page: number }) => {
     },
   });
 
-  // 获取已审核启用的短信模板列表（供下拉框选择）
-  const activeTemplatesQuery = useQuery({
+  const activeTemplatesQuery = useQuery<SmsTemplate[]>({
     queryKey: ['active_sms_templates'],
     queryFn: async () => {
-      const { data } = await apiClient.get<SmsTemplate[]>('/admin/notifications/templates/');
-      // 过滤出启用（is_active = true）的模板
-      return Array.isArray(data) ? data.filter(t => t.is_active) : [];
+      const { data } = await apiClient.get<SmsTemplate[] | { results: SmsTemplate[] }>('/admin/notifications/templates/');
+      const list = Array.isArray(data) ? data : (data?.results || []);
+      return list.filter((t: SmsTemplate) => t.is_active);
     },
   });
+
+
+
 
   // 创建并提交群发任务
   const createTaskMutation = useMutation({
