@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Drawer, List, Button, Space, Tag, Empty, message, Progress, Tabs, Modal, Tooltip, Radio } from 'antd';
-import { FilePdfOutlined, DownloadOutlined, LoadingOutlined, DeleteOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { FilePdfOutlined, DownloadOutlined, LoadingOutlined, DeleteOutlined, ShoppingCartOutlined, PlusOutlined, InfoCircleOutlined, FileExcelOutlined } from '@ant-design/icons';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Standard, Company } from '@/types';
 import StandardListItem from './StandardListItem';
@@ -18,10 +18,26 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [packing, setPacking] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [exportingExcel, setExportingExcel] = useState(false);
 
-  const { useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus } = useSearchData();
+  const { useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus, exportCompanyStandardsExcel } = useSearchData();
   const { data: localStandards, isLoading: localLoading } = useCompanyStandards(company?.id);
   const { data: federatedData, isLoading: fedLoading } = useCompanyFederatedStandards(company?.id, scope);
+
+  const handleExportExcel = async () => {
+    if (!company) return;
+    setExportingExcel(true);
+    try {
+      await exportCompanyStandardsExcel(company.id, scope, selectedIds.length > 0 ? selectedIds : undefined);
+      message.success(`成功导出 ${company.name} 的标准资产 Excel 报表`);
+    } catch (err) {
+      console.error('Export excel error:', err);
+      message.error('导出 Excel 报表失败，请重试');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
 
   const standards = React.useMemo(() => {
     const arr: any[] = [...(localStandards || [])].map(s => ({ ...s, is_local: true }));
@@ -182,23 +198,50 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
   return (
     <>
       <Drawer
-        title={company ? `${company.name} - 标准资产` : '标准列表'}
+        title={
+          company ? (
+            <div 
+              style={{ 
+                fontWeight: 600, 
+                fontSize: 15, 
+                maxWidth: 220, 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis', 
+                whiteSpace: 'nowrap' 
+              }} 
+              title={`${company.name} - 标准资产`}
+            >
+              {company.name} - 标准资产
+            </div>
+          ) : '标准列表'
+        }
         placement="right"
-        width={520}
+        width={600}
         onClose={onClose}
         open={open}
         extra={
-          <Space>
+          <Space size={6}>
             <Button 
+              size="small"
               onClick={handleToggleSelectAll}
               disabled={filteredStandards.length === 0}
             >
               {filteredStandards.length > 0 && filteredStandards.every((item) => selectedIds.includes(item.id))
-                ? '取消当前全选'
-                : '当前列表全选'}
+                ? '取消全选'
+                : '本页全选'}
             </Button>
-            <Button onClick={() => setSelectedIds([])} disabled={selectedIds.length === 0}>清空</Button>
+            <Button size="small" onClick={() => setSelectedIds([])} disabled={selectedIds.length === 0}>清空</Button>
             <Button 
+              size="small"
+              icon={exportingExcel ? <LoadingOutlined /> : <FileExcelOutlined />} 
+              onClick={handleExportExcel}
+              loading={exportingExcel}
+              style={{ borderColor: '#52c41a', color: '#52c41a' }}
+            >
+              {selectedIds.length > 0 ? `导出选中的标准 (${selectedIds.length})` : '导出 Excel'}
+            </Button>
+            <Button 
+              size="small"
               type="primary" 
               icon={packing ? <LoadingOutlined /> : <DownloadOutlined />} 
               disabled={selectedIds.length === 0 || packing}
@@ -210,6 +253,7 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
           </Space>
         }
       >
+
         {packing && <Progress percent={progress} status="active" style={{ marginBottom: 16 }} />}
 
         {/* 机构信息与统计穿透卡片 */}
@@ -252,10 +296,22 @@ const StandardDrawer: React.FC<StandardDrawerProps> = ({ company, open, onClose 
                 }>
                   <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'pointer', marginLeft: 4 }} />
                 </Tooltip>
+
+                <Button
+                  type="link"
+                  size="small"
+                  icon={exportingExcel ? <LoadingOutlined /> : <FileExcelOutlined />}
+                  onClick={handleExportExcel}
+                  loading={exportingExcel}
+                  style={{ color: '#52c41a', padding: '0 4px', fontWeight: 600, marginLeft: 'auto' }}
+                >
+                  导出 Excel 报表
+                </Button>
               </div>
             )}
           </div>
         )}
+
 
         {/* 顶部标签筛选 */}
         <Tabs 

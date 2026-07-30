@@ -943,3 +943,234 @@ class FederatedStandardService:
         return res
 
 
+class CompanyStandardExportService:
+    """
+    企业标准资产深度 Excel 导出服务模块（Codebase Design）
+
+    联合检索 FederatedStandardService 与本地企标，
+    使用 openpyxl 渲染格式化 Excel 报表：
+    - 大标题行（单位名称 + 统计口径）
+    - 元信息副标题行（导出时间 + 信用代码 + 统计数）
+    - 8 列结构化表格及格式化样式
+    - 自动列宽计算与自适应换行
+    """
+
+    @classmethod
+    def export_company_standards_to_excel(
+        cls,
+        company: Company,
+        scope: str = 'expanded',
+        selected_ids: list = None
+    ) -> tuple:
+        """
+        导出指定企业的标准资产目录为 Excel 字节流与建议文件名。
+
+        Returns:
+            (excel_bytes: bytes, filename: str)
+        """
+        import openpyxl
+        import io
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+        from django.utils import timezone
+
+        # 1. 获取联邦标准数据
+        summary_data = FederatedStandardService.get_company_standards_summary(company, scope=scope)
+        fed_standards = summary_data.get('standards', [])
+
+        # 2. 获取本地企标数据
+        from standards.models import Standard
+        local_standards = list(Standard.objects.filter(company=company)) if company else []
+
+
+        existing_nos = set()
+        existing_titles = set()
+        all_items = []
+
+        for ls in local_standards:
+            std_no = (ls.standard_no or '').strip()
+            title = (ls.title or '').strip()
+            if std_no:
+                existing_nos.add(std_no.upper())
+            if title:
+                existing_titles.add(title.upper())
+
+            drafters_str = '主起草单位' if company else '-'
+            status_map = {'active': '现行', 'deprecated': '废止', 'draft': '草案'}
+            all_items.append({
+                'id': ls.id,
+                'standard_no': ls.standard_no,
+                'title': ls.title or '无标题',
+                'english_title': '-',
+                'type_display': ls.get_type_display(),
+                'drafter_display': drafters_str,
+                'status': status_map.get(ls.status, ls.status or '现行'),
+                'publish_date': ls.publish_date.strftime('%Y-%m-%d') if ls.publish_date else '-',
+                'implement_date': ls.implement_date.strftime('%Y-%m-%d') if ls.implement_date else '-',
+                'is_local': True,
+            })
+
+        for fs in fed_standards:
+            std_no = str(fs.get('standard_no') or '').strip()
+            title = str(fs.get('title') or '').strip()
+            if std_no and std_no.upper() in existing_nos:
+                continue
+            if title and title.upper() in existing_titles:
+                continue
+
+            std_type_raw = str(fs.get('type') or '').strip().upper()
+            if std_no.upper().startswith('GB') or 'GB' in std_type_raw or '国标' in std_type_raw:
+                t_disp = '国家标准'
+            elif (std_no.upper().startswith('TB') or std_no.upper().startswith('T/') or
+                  std_no.upper().startswith('T ') or '团标' in std_type_raw or '团体' in std_type_raw):
+                t_disp = '团体标准'
+            elif std_no.upper().startswith('DB') or '地标' in std_type_raw or '地方' in std_type_raw:
+                t_disp = '地方标准'
+            else:
+                t_disp = '行业标准' if fs.get('type') else '标准'
+
+            rank_order = fs.get('rank_order')
+            drafters = fs.get('drafters') or []
+            if rank_order:
+                rank_disp = f"第{rank_order}名"
+            elif drafters:
+                rank_disp = " / ".join(drafters[:3]) + ("等" if len(drafters) > 3 else "")
+            else:
+                rank_disp = '-'
+
+            all_items.append({
+                'id': f"fed_{std_no}",
+                'standard_no': std_no,
+                'title': fs.get('title') or '无标题',
+                'english_title': '-',
+                'type_display': t_disp,
+                'drafter_display': rank_disp,
+                'status': fs.get('status') or '现行',
+                'publish_date': fs.get('release_date') or '-',
+                'implement_date': fs.get('implement_date') or '-',
+                'is_local': False,
+            })
+
+        # 3. 过滤用户选中的列表项
+        if selected_ids and len(selected_ids) > 0:
+            str_selected = set(str(sid) for sid in selected_ids)
+            all_items = [
+                item for item in all_items
+                if str(item['id']) in str_selected or item['standard_no'] in str_selected
+            ]
+
+        # 4. 构建 openpyxl 工作簿
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "标准资产清单"
+
+        company_name = company.name if company else "未知企业"
+        scope_disp = "全量扩展口径" if scope == 'expanded' else "核心机构口径"
+        export_time_str = timezone.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 样式定义
+        title_font = Font(name="Microsoft YaHei", size=15, bold=True, color="1F2937")
+        meta_font = Font(name="Microsoft YaHei", size=9, italic=True, color="6B7280")
+        header_font = Font(name="Microsoft YaHei", size=11, bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="13C2C2", end_color="13C2C2", fill_type="solid")
+        data_font = Font(name="Microsoft YaHei", size=10, color="374151")
+
+        thin_border = Border(
+            left=Side(style='thin', color='E5E7EB'),
+            right=Side(style='thin', color='E5E7EB'),
+            top=Side(style='thin', color='E5E7EB'),
+            bottom=Side(style='thin', color='E5E7EB')
+        )
+        header_border = Border(
+            left=Side(style='thin', color='096DD9'),
+            right=Side(style='thin', color='096DD9'),
+            top=Side(style='thin', color='096DD9'),
+            bottom=Side(style='thin', color='096DD9')
+        )
+
+        center_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        left_align = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+        # 第 1 行：主标题
+        ws.merge_cells("A1:I1")
+        title_cell = ws["A1"]
+        title_cell.value = f"{company_name} - 标准资产导出清单（{scope_disp}）"
+        title_cell.font = title_font
+        title_cell.alignment = center_align
+        ws.row_dimensions[1].height = 36
+
+        # 第 2 行：副标题 / 元信息
+        ws.merge_cells("A2:I2")
+        meta_cell = ws["A2"]
+        credit_code_str = f"统一社会信用代码: {company.credit_code}" if (company and company.credit_code) else ""
+        meta_cell.value = f"导出时间: {export_time_str}  |  {credit_code_str}  |  数据去重总计共 {len(all_items)} 项标准"
+        meta_cell.font = meta_font
+        meta_cell.alignment = center_align
+        ws.row_dimensions[2].height = 20
+
+        # 第 3 行：表头
+        headers = [
+            "序号", "标准号", "标准中文名称", "标准英文名称",
+            "标准类别", "起草单位排名 / 主要起草单位", "标准状态", "发布日期", "实施日期"
+        ]
+        ws.row_dimensions[3].height = 26
+
+        for col_num, h_text in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col_num, value=h_text)
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = center_align
+            cell.border = header_border
+
+        # 第 4 行及以后：数据行
+        for idx, item in enumerate(all_items, 1):
+            row_data = [
+                idx,
+                item['standard_no'],
+                item['title'],
+                item['english_title'],
+                item['type_display'],
+                item['drafter_display'],
+                item['status'],
+                item['publish_date'],
+                item['implement_date']
+            ]
+            row_num = idx + 3
+            ws.append(row_data)
+            ws.row_dimensions[row_num].height = 22
+
+            for col_num in range(1, 10):
+                cell = ws.cell(row=row_num, column=col_num)
+                cell.font = data_font
+                cell.border = thin_border
+                if col_num in (1, 5, 7, 8, 9):
+                    cell.alignment = center_align
+                else:
+                    cell.alignment = left_align
+
+        # 列宽自适应
+        col_widths = {
+            1: 8,   # 序号
+            2: 24,  # 标准号
+            3: 42,  # 标准中文名称
+            4: 18,  # 标准英文名称
+            5: 14,  # 标准类别
+            6: 30,  # 起草单位排名
+            7: 12,  # 标准状态
+            8: 16,  # 发布日期
+            9: 16   # 实施日期
+        }
+        for col_idx, width in col_widths.items():
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = width
+
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        filename = f"{company_name}_标准资产清单({scope_disp}).xlsx"
+        return output.getvalue(), filename
+
+
+

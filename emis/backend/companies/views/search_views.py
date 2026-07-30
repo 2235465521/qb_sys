@@ -3,6 +3,8 @@ companies.views.search_views — 前台搜企视图（模块一）
 """
 
 from django.http import HttpResponse
+from django.shortcuts import get_object_or_404
+from urllib.parse import quote
 from django.core.cache import cache
 import json
 from rest_framework import generics, status, permissions
@@ -159,6 +161,55 @@ class CompanyExportView(APIView):
         return response
 
 
+class CompanyStandardExportView(APIView):
+    """
+    POST /api/client/search/companies/<pk>/export-standards/
+    GET /api/client/search/companies/<pk>/export-standards/
+
+    导出指定企业的标准资产目录为格式化 Excel 文件。
+    支持参数：
+      - scope: 'expanded' 或 'core'
+      - selected_ids: list (可选勾选项)
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def _handle_export(self, request, pk):
+        company = get_object_or_404(Company, pk=pk)
+
+        if request.method == 'POST':
+            data = request.data or {}
+            scope = data.get('scope', 'expanded')
+            selected_ids = data.get('selected_ids', [])
+        else:
+            scope = request.query_params.get('scope', 'expanded')
+            raw_sel = request.query_params.get('selected_ids', '')
+            selected_ids = [s.strip() for s in raw_sel.split(',') if s.strip()] if raw_sel else []
+
+        try:
+            excel_bytes, filename = services.CompanyStandardExportService.export_company_standards_to_excel(
+                company=company,
+                scope=scope,
+                selected_ids=selected_ids
+            )
+        except Exception as e:
+            return Response({'detail': f'生成 Excel 报表失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(
+            excel_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        quoted_filename = quote(filename)
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quoted_filename}"
+        return response
+
+
+    def get(self, request, pk):
+        return self._handle_export(request, pk)
+
+    def post(self, request, pk):
+        return self._handle_export(request, pk)
+
+
 class ClientLeadCreateView(generics.CreateAPIView):
     """
     POST /api/client/leads/
@@ -167,4 +218,3 @@ class ClientLeadCreateView(generics.CreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
     serializer_class = LeadSerializer
     queryset = Lead.objects.all()
-

@@ -67,5 +67,44 @@ export const useSearchData = () => {
     return data;
   };
 
-  return { useCompanySearch, useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus };
+  // 导出指定企业的标准资产目录为 Excel
+  const exportCompanyStandardsExcel = async (companyId: number, scope: 'expanded' | 'core' = 'expanded', selectedIds?: any[]) => {
+    const response = await apiClient.post(
+      `/client/search/companies/${companyId}/export-standards/`,
+      { scope, selected_ids: selectedIds || [] },
+      { responseType: 'blob' }
+    );
+
+    if (response.data && response.data.type === 'application/json') {
+      const text = await response.data.text();
+      let errDetail = '导出文件失败';
+      try {
+        const errObj = JSON.parse(text);
+        errDetail = errObj.detail || errObj.message || errDetail;
+      } catch (e) {}
+      throw new Error(errDetail);
+    }
+
+    let filename = `企业标准资产清单_${scope}.xlsx`;
+    const disposition = response.headers['content-disposition'];
+    if (disposition && disposition.includes('filename*=')) {
+      const match = disposition.match(/filename\*=UTF-8''(.+)/);
+      if (match && match[1]) {
+        filename = decodeURIComponent(match[1]);
+      }
+    }
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+
+  return { useCompanySearch, useCompanyStandards, useCompanyFederatedStandards, zipMutation, checkZipStatus, exportCompanyStandardsExcel };
 };
+
