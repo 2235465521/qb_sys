@@ -513,10 +513,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
 def extract_dates_from_text(first_page_text: str):
     """
     从标准封面页文本中提取发布日期和实施日期。
-    
-    优化：
-    1. 在按行过滤时，自动排除包含时分的时间戳行（如 "公开 2018年07月16日 09点39分"），过滤水印。
-    2. 发布日期的关键字移除 "公开"，防止误识别国家/企业标准平台水印上的公示/公开时间。
+
+    优化策略：
+    1. 全局移除企业标准/国家标准公共服务平台水印（包括带有"公开"、"公共服务平台"、"企业标准信息"及带时间戳的日期）。
+    2. 优先采用高精准直连正则（如 `2024-04-20发布` / `发布日期：2024-04-20` / `2024-04-20实施`），避免误识别。
+    3. 降级使用行级近邻扫描，排除包含"公开"或公司名称后缀"发布"的干扰行。
     """
     import datetime
     import re
@@ -524,7 +525,6 @@ def extract_dates_from_text(first_page_text: str):
     extracted_publish_date = None
     extracted_implement_date = None
 
-    # ── 预处理：修正 PDF/OCR 常见误识别字符 ──────────────────
     def _normalize_date_text(text):
         # 全角数字转半角
         result = text.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
@@ -540,65 +540,125 @@ def extract_dates_from_text(first_page_text: str):
         result = re.sub(r'(?<!\d)l(?=\d)', '1', result)
         return result
 
-    norm_text = _normalize_date_text(first_page_text)
+    norm_text = _normalize_date_text(first_page_text or "")
 
-    # ── 预处理：按行分割，过滤水印 ──────────────────────
-    lines = norm_text.split('\n')
-    clean_lines = []
-    for line in lines:
-        if '公共服务平台' in line or '企业标准信息' in line:
-            continue
-        # 过滤时分秒等时间戳字样，判定为水印/打印记录，而非标准发布/实施日期
-        if '点' in line and '分' in line:
-            continue
-        clean_lines.append(line)
+    def _parse_date_tuple(y_str, m_str, d_str):
+        try:
+            y, m, d = int(y_str), int(m_str), int(d_str)
+            if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
+                return datetime.date(y, m, d)
+        except (ValueError, TypeError):
+            pass
+        return None
 
-    # ── 提取正则 ──────────────────────
-    date_pattern = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
+    # ── 1. 全局水印预清理：剔除平台水印及水印时间戳 ──────────────────
+    # 清理 "企业标准信息" / "公共服务平台" / "信息服务平台"
+    # 清理 "公开 2024年06月07日 16点37分" / "公开 2024-06-07" / "公开 2024年06月07日"
+    watermark_patterns = [
+        r'企业标准信息.*',
+        r'.*公共服务平台.*',
+        r'信息服务平台.*',
+        r'公开\s*\d{4}\s*[-/年.·]\s*\d{1,2}\s*[-/月.·]\s*\d{1,2}\s*日?.*',
+        r'\d{4}\s*[-/年.·]\s*\d{1,2}\s*[-/月.·]\s*\d{1,2}\s*日?\s*\d{1,2}\s*[点:]\s*\d{1,2}\s*(?:[分秒]|:\d{2})?',
+        r'^\s*公开\s*$',
+    ]
+    
+    clean_text = norm_text
+    for wp in watermark_patterns:
+        clean_text = re.sub(wp, '', clean_text, flags=re.IGNORECASE | re.MULTILINE)
 
-    def extract_closest_date(line_text, keyword):
-        """在行内提取与关键字最近的日期"""
-        if keyword not in line_text:
-            return None
+    # ── 2. 第一阶段：高精准直连正则匹配 (Priority 1) ──────────────────
+    # (a) 发布日期直连模式
+    # 模式1: 2024-04-20发布 / 2024年04月20日 发布 / 2024-04-20公布
+    pub_direct_pattern1 = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:发布|公布)'
+    # 模式2: 发布日期[:：] 2024-04-20 / 发布时间 2024年04月20日
+    pub_direct_pattern2 = r'(?:发布|公布)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*\d{1,2}\s*[-/月.·]\s*(\d{1,2})\s*日?'
+    pub_direct_pattern2_full = r'(?:发布|公布)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
 
-        matches = list(re.finditer(date_pattern, line_text))
-        if not matches:
-            return None
+    match = re.search(pub_direct_pattern1, clean_text)
+    if match:
+        extracted_publish_date = _parse_date_tuple(match.group(1), match.group(2), match.group(3))
 
-        kw_idx = line_text.find(keyword)
-        best_candidate = None
-        min_dist = float('inf')
+    if not extracted_publish_date:
+        match = re.search(pub_direct_pattern2_full, clean_text)
+        if match:
+            extracted_publish_date = _parse_date_tuple(match.group(1), match.group(2), match.group(3))
 
-        for match in matches:
-            try:
-                y, m, d = int(match.group(1)), int(match.group(2)), int(match.group(3))
-                if 1980 <= y <= 2099 and 1 <= m <= 12 and 1 <= d <= 31:
-                    match_center = (match.start() + match.end()) / 2
+    # (b) 实施日期直连模式
+    # 模式1: 2024-04-20实施 / 2024年04月20日 实施 / 2024-04-20施行
+    imp_direct_pattern1 = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:实施|施行)'
+    # 模式2: 实施日期[:：] 2024-04-20 / 实施时间 2024年04月20日
+    imp_direct_pattern2_full = r'(?:实施|施行)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
+
+    match = re.search(imp_direct_pattern1, clean_text)
+    if match:
+        extracted_implement_date = _parse_date_tuple(match.group(1), match.group(2), match.group(3))
+
+    if not extracted_implement_date:
+        match = re.search(imp_direct_pattern2_full, clean_text)
+        if match:
+            extracted_implement_date = _parse_date_tuple(match.group(1), match.group(2), match.group(3))
+
+    # 若两个日期都已经通过高精准直连匹配找到，则跳过后续行级近邻扫描
+    if not (extracted_publish_date and extracted_implement_date):
+        # ── 3. 第二阶段：行级近邻扫描 (Priority 2 Fallback) ──────────────────
+        lines = clean_text.split('\n')
+        clean_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if '公开' in stripped or '水印' in stripped or '平台' in stripped:
+                continue
+            clean_lines.append(stripped)
+
+        date_pattern = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
+
+        def extract_closest_date_in_line(line_text, keyword):
+            if keyword not in line_text:
+                return None
+            kw_idx = line_text.find(keyword)
+            
+            matches = list(re.finditer(date_pattern, line_text))
+            if not matches:
+                return None
+
+            best_candidate = None
+            min_dist = float('inf')
+
+            for m in matches:
+                d = _parse_date_tuple(m.group(1), m.group(2), m.group(3))
+                if d:
+                    match_center = (m.start() + m.end()) / 2
                     dist = abs(match_center - kw_idx)
-                    if dist < min_dist:
+                    if dist < min_dist and dist <= 25:
                         min_dist = dist
-                        best_candidate = datetime.date(y, m, d)
-            except ValueError:
-                pass
+                        best_candidate = d
 
-        return best_candidate
+            return best_candidate
 
-    # ── 行级扫描：发布日期 / 实施日期 ──────────────────────
-    for line in clean_lines:
-        # 只保留“发布”和“公布”，不再匹配“公开”，避免被平台水印“公开 YYYY年MM月DD日”干扰
-        if '发布' in line or '公布' in line:
-            kw = '发布' if '发布' in line else '公布'
-            d = extract_closest_date(line, kw)
-            if d and not extracted_publish_date:
-                extracted_publish_date = d
+        for line in clean_lines:
+            if not extracted_publish_date and ('发布' in line or '公布' in line):
+                kw = '发布' if '发布' in line else '公布'
+                d = extract_closest_date_in_line(line, kw)
+                if d:
+                    extracted_publish_date = d
 
-        if '实施' in line or '施行' in line:
-            kw = '实施' if '实施' in line else '施行'
-            d = extract_closest_date(line, kw)
-            if d and not extracted_implement_date:
-                extracted_implement_date = d
+            if not extracted_implement_date and ('实施' in line or '施行' in line):
+                kw = '实施' if '实施' in line else '施行'
+                d = extract_closest_date_in_line(line, kw)
+                if d:
+                    extracted_implement_date = d
+
+
+    # ── 4. 业务规则保底：实施日期 >= 发布日期 ──────────────────
+    # 规则：实施日期绝不可能早于发布日期；若缺失实施日期，自动用发布日期填充
+    if extracted_publish_date:
+        if not extracted_implement_date or extracted_implement_date < extracted_publish_date:
+            extracted_implement_date = extracted_publish_date
 
     return extracted_publish_date, extracted_implement_date
+
 
 
 @shared_task(bind=True, name='standards.parse_standard_pdf')

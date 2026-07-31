@@ -855,6 +855,12 @@ def import_standards_by_type(file_obj, std_type: str) -> dict:
                 try: implement_date = pd.to_datetime(row.iloc[3]).date()
                 except: pass
 
+            # 业务规则保底：实施日期 >= 发布日期；若缺失实施日期，自动用发布日期填充
+            if publish_date:
+                if not implement_date or implement_date < publish_date:
+                    implement_date = publish_date
+
+
             # 状态解析
             status_str = str(row.iloc[4]).strip() if len(row) > 4 and pd.notna(row.iloc[4]) else ''
             standard_status = 'active'
