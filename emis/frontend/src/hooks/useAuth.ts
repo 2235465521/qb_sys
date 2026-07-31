@@ -12,7 +12,7 @@ export const useAuth = () => {
   const token = localStorage.getItem('access_token');
 
   const { data: user, isLoading, error, refetch } = useQuery<UserInfo>({
-    queryKey: ['currentUser'],
+    queryKey: ['currentUser', token],
     queryFn: async () => {
       const { data } = await apiClient.get<UserInfo>('/auth/me/');
       return data;
@@ -20,7 +20,7 @@ export const useAuth = () => {
     enabled: !!token,
     staleTime: 1000 * 60 * 15, // 15 minutes cache
     gcTime: 1000 * 60 * 30, // 30 minutes gc
-    retry: false,
+    retry: 1,
   });
 
   const isAuthenticated = !!token && !!user;

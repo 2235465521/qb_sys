@@ -33,6 +33,7 @@ const LoginPage: React.FC = () => {
         headers: { Authorization: `Bearer ${access}` }
       });
       const user = userRes.data;
+      queryClient.setQueryData(['currentUser', access], user);
       
       message.success(`登录成功，欢迎回来，${user.real_name || user.username}`);
       
