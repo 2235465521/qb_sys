@@ -324,6 +324,23 @@ def infer_company_type(name: str, raw_type: str = "") -> str:
     return '其他'
 
 
+def detect_std_type_display(std_no: str, raw_type: str = "") -> str:
+    """
+    根据标准号前缀和原始类型推导标准分类（团体标准、地方标准、国家标准、行业标准）
+    """
+    s = (std_no or "").strip().upper()
+    r = (raw_type or "").upper()
+    if '团体' in r or s.startswith('T/') or s.startswith('T '):
+        return '团体标准'
+    if '地方' in r or s.startswith('DB'):
+        return '地方标准'
+    if '国家' in r or s.startswith('GB') or s.startswith('GH') or s.startswith('JJG'):
+        return '国家标准'
+    if '行业' in r or '/' in s:
+        return '行业标准'
+    return '国家标准'
+
+
 def fetch_std_details_map(std_nos: list) -> dict:
     """
     批量从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
@@ -347,7 +364,7 @@ def fetch_std_details_map(std_nos: list) -> dict:
         details_map[no] = {
             'title': std.title or '',
             'status': std.get_status_display() or '现行',
-            'type': std.get_type_display() or '国家标准',
+            'type': std.get_type_display() if (std.type and std.type != 'enterprise') else detect_std_type_display(no),
             'ics': std.ics or '',
             'ccs': std.ccs or '',
         }
@@ -375,7 +392,7 @@ def fetch_std_details_map(std_nos: list) -> dict:
                         title = row[1] or ''
                         ex_state = '现行' if row[2] == 1 else '废止'
                         raw_type = row[3] or ''
-                        type_disp = '国家标准' if 'GB' in raw_type else ('行业标准' if '/' in s_id and not s_id.startswith('Q/') else '国家标准')
+                        type_disp = detect_std_type_display(s_id, raw_type)
                         ics = row[4] or ''
                         ccs = row[5] or ''
 
@@ -393,6 +410,7 @@ def fetch_std_details_map(std_nos: list) -> dict:
             logger.warning(f"从 stsc_db 补全标准信息失败: {exc}")
 
     return details_map
+
 
 
 def generate_advanced_export_file(
@@ -568,7 +586,8 @@ def generate_advanced_export_file(
 
             title = d_info.get('title') or (std.title if std else '')
             status = d_info.get('status') or (std.get_status_display() if std else '现行')
-            stype = d_info.get('type') or (std.get_type_display() if std else '国家标准')
+            stype = d_info.get('type') or (std.get_type_display() if (std and std.type != 'enterprise') else detect_std_type_display(s_no))
+
             ics = d_info.get('ics') or (std.ics if std else '')
             ccs = d_info.get('ccs') or (std.ccs if std else '')
 
