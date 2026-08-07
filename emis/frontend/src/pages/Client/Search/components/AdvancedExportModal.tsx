@@ -3,7 +3,7 @@ import { Modal, Form, Radio, Checkbox, Select, Segmented, Space, Typography, mes
 import { ExportOutlined, FilterOutlined, FileExcelOutlined, FileZipOutlined } from '@ant-design/icons';
 import apiClient from '@/api/client';
 import { useDictData } from '@/hooks/useDictData';
-import type { CompanySearchParams, EnterpriseItem } from '@/types';
+import type { CompanySearchParams, Company } from '@/types';
 
 const { Text } = Typography;
 
@@ -36,7 +36,7 @@ const AGENCY_TYPE_OPTIONS = [
 interface AdvancedExportModalProps {
   visible: boolean;
   onCancel: () => void;
-  selectedEnterprises: EnterpriseItem[];
+  selectedEnterprises: Company[];
   searchParams: CompanySearchParams;
   totalFilteredCount: number;
   onDispatchTask: (taskId: string, title: string, hasDownload: boolean, typeUrl: string, payload: any) => void;
@@ -56,7 +56,6 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
     selectedEnterprises.length > 0 ? 'selected' : 'filtered'
   );
   const [agencyMode, setAgencyMode] = useState<'include' | 'exclude'>('include');
-  const [exportContent, setExportContent] = useState<'both' | 'enterprise_only' | 'standard_only'>('both');
 
   const [selectedProvince, setSelectedProvince] = useState<number | undefined>(
     searchParams.province_id ? Number(searchParams.province_id) : undefined
@@ -112,15 +111,15 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
       if (values.export_scope === 'selected') {
         payload.enterprise_ids = selectedEnterprises.map(c => c.id);
       } else {
-        const { keyword, status } = searchParams;
+        const { keyword } = searchParams;
         payload.base_filters = {
           q: keyword,
           province_id: values.province_id,
           city_id: values.city_id,
           district_id: values.district_id,
-          status,
         };
       }
+
 
       const { data } = await apiClient.post<{ task_id: string; message: string }>(
         '/client/standards/export-advanced/',
