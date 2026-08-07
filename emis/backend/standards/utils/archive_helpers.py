@@ -295,6 +295,106 @@ def pack_enterprises_to_zip(enterprise_ids: list = None, filters: dict = None, e
     return f"exports/{zip_filename}"
 
 
+def infer_company_type(name: str, raw_type: str = "") -> str:
+
+    """
+    已知企业名称或原始类型，智能判定企业(机构)类型
+    """
+    if raw_type and raw_type.strip():
+        return raw_type.strip()
+    if not name:
+        return '其他'
+    name = name.strip()
+    if any(k in name for k in ['协会', '学会', '研究会', '商会', '促进会', '基金会', '联盟']):
+        return '社会团体'
+    if any(k in name for k in ['学校', '大学', '学院', '医院', '中心', '站', '研究所', '研究院', '托育中心', '幼托']):
+        return '事业单位'
+    if any(k in name for k in ['经营部', '商行', '个体', '理发店', '餐馆', '小吃店', '加工厂', '水产店', '食品店']):
+        return '个体工商户'
+    if '合作社' in name:
+        return '农民专业合作社(联合社)'
+    if '股份有限公司' in name:
+        return '股份有限公司'
+    if '有限责任公司' in name or '有限公司' in name:
+        return '有限责任公司'
+    if '合伙企业' in name:
+        return '有限合伙'
+    if any(k in name for k in ['局', '厅', '委', '办', '人民政府', '支队', '大队', '委员会']):
+        return '机关单位'
+    return '其他'
+
+
+def fetch_std_details_map(std_nos: list) -> dict:
+    """
+    批量从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
+    """
+    if not std_nos:
+        return {}
+
+    details_map = {}
+    from standards.services import generate_clean_id
+    clean_to_raw = {}
+    for no in std_nos:
+        clean = generate_clean_id(no)
+        clean_to_raw[clean] = no
+
+    # 1. 查询本地 Standard 表
+    local_stds = Standard.objects.filter(
+        Q(standard_no__in=std_nos) | Q(clean_id__in=list(clean_to_raw.keys()))
+    )
+    for std in local_stds:
+        no = std.standard_no
+        details_map[no] = {
+            'title': std.title or '',
+            'status': std.get_status_display() or '现行',
+            'type': std.get_type_display() or '国家标准',
+            'ics': std.ics or '',
+            'ccs': std.ccs or '',
+        }
+        if std.clean_id in clean_to_raw:
+            details_map[clean_to_raw[std.clean_id]] = details_map[no]
+
+    # 2. 查漏：若有未查到的标准号，穿透到 stsc_db 的 view_std_full 视图
+    missing_cleans = [c for c in clean_to_raw.keys() if clean_to_raw[c] not in details_map]
+    if missing_cleans:
+        try:
+            with connections['stsc_db'].cursor() as cursor:
+                cursor.execute("SET NAMES utf8mb4;")
+                chunk_size = 500
+                for i in range(0, len(missing_cleans), chunk_size):
+                    chunk = missing_cleans[i:i + chunk_size]
+                    fmt = ','.join(['%s'] * len(chunk))
+                    sql = f"""
+                        SELECT std_id, std_chinesename, ex_state, std_type, ics, ccs
+                        FROM mydate.view_std_full
+                        WHERE REPLACE(REPLACE(std_id, ' ', ''), '—', '-') IN ({fmt})
+                    """
+                    cursor.execute(sql, tuple(chunk))
+                    for row in cursor.fetchall():
+                        s_id = row[0]
+                        title = row[1] or ''
+                        ex_state = '现行' if row[2] == 1 else '废止'
+                        raw_type = row[3] or ''
+                        type_disp = '国家标准' if 'GB' in raw_type else ('行业标准' if '/' in s_id and not s_id.startswith('Q/') else '国家标准')
+                        ics = row[4] or ''
+                        ccs = row[5] or ''
+
+                        clean_ver = generate_clean_id(s_id)
+                        raw_no = clean_to_raw.get(clean_ver, s_id)
+                        if raw_no not in details_map or not details_map[raw_no].get('title'):
+                            details_map[raw_no] = {
+                                'title': title,
+                                'status': ex_state,
+                                'type': type_disp,
+                                'ics': ics,
+                                'ccs': ccs,
+                            }
+        except Exception as exc:
+            logger.warning(f"从 stsc_db 补全标准信息失败: {exc}")
+
+    return details_map
+
+
 def generate_advanced_export_file(
     enterprise_ids: list = None,
     base_filters: dict = None,
@@ -351,7 +451,6 @@ def generate_advanced_export_file(
         else:
             qs = qs.filter(agency_q)
 
-
     # 上限保护：10 万条数据
     company_list = list(qs[:100000])
     if not company_list:
@@ -380,17 +479,15 @@ def generate_advanced_export_file(
             p_name = co.province.name if co.province else ''
             c_name = co.city.name if co.city else ''
             d_name = co.district.name if co.district else ''
-            geo_full = f"{p_name} {c_name} {d_name}".strip()
 
             company_rows.append({
                 '企业名称': co.name,
                 '统一信用代码': co.credit_code,
-                '省市县': geo_full,
                 '省份': p_name,
                 '城市': c_name,
                 '区县': d_name,
                 '曾用名': co.former_names or '',
-                '企业(机构)类型': co.company_type or '',
+                '企业(机构)类型': infer_company_type(co.name, co.company_type),
                 '企业规模': co.company_size or '',
                 '登记状态': '存续' if co.status == 'active' else '禁用',
             })
@@ -426,6 +523,7 @@ def generate_advanced_export_file(
     if 'other_standard' in content_set:
         comp_ids = [c.id for c in company_list]
         seen_nos = set()
+        other_items = []
 
         # a. 名下直接关联的非企标标准 (国/行/地/团)
         direct_stds = Standard.objects.select_related('company').filter(
@@ -437,15 +535,10 @@ def generate_advanced_export_file(
             if not s_no or s_no in seen_nos:
                 continue
             seen_nos.add(s_no)
-            other_standard_rows.append({
-                '标准号': s_no,
-                '标准名称': std.title or '',
-                '标准状态': std.get_status_display() or '现行',
-                '标准类型': std.get_type_display() or '国家标准',
-                '制修订': '制定',
-                'ICS': std.ics or '',
-                'CCS': std.ccs or '',
-                '国民经济分类': std.company.industry_category if std.company else '',
+            other_items.append({
+                's_no': s_no,
+                'std': std,
+                'industry_category': std.company.industry_category if std.company else ''
             })
 
         # b. 企标规范性引用的国/行/地/团标
@@ -458,17 +551,36 @@ def generate_advanced_export_file(
             if not s_no or s_no in seen_nos:
                 continue
             seen_nos.add(s_no)
+            other_items.append({
+                's_no': s_no,
+                'std': ref.cited_standard,
+                'industry_category': ref.source_standard.company.industry_category if (ref.source_standard and ref.source_standard.company) else ''
+            })
 
-            std = ref.cited_standard
+        # 批量从 stsc_db / 本地 Standard 表抓取补全标题、状态、类型、ICS、CCS
+        nos_to_fetch = [item['s_no'] for item in other_items]
+        details_map = fetch_std_details_map(nos_to_fetch)
+
+        for item in other_items:
+            s_no = item['s_no']
+            std = item['std']
+            d_info = details_map.get(s_no, {})
+
+            title = d_info.get('title') or (std.title if std else '')
+            status = d_info.get('status') or (std.get_status_display() if std else '现行')
+            stype = d_info.get('type') or (std.get_type_display() if std else '国家标准')
+            ics = d_info.get('ics') or (std.ics if std else '')
+            ccs = d_info.get('ccs') or (std.ccs if std else '')
+
             other_standard_rows.append({
                 '标准号': s_no,
-                '标准名称': std.title if std else '',
-                '标准状态': std.get_status_display() if std else '现行',
-                '标准类型': std.get_type_display() if std else '国家标准',
+                '标准名称': title,
+                '标准状态': status,
+                '标准类型': stype,
                 '制修订': '制定',
-                'ICS': std.ics if std else '',
-                'CCS': std.ccs if std else '',
-                '国民经济分类': ref.source_standard.company.industry_category if (ref.source_standard and ref.source_standard.company) else '',
+                'ICS': ics,
+                'CCS': ccs,
+                '国民经济分类': item['industry_category'],
             })
 
     # 6. 文件写出
@@ -477,7 +589,7 @@ def generate_advanced_export_file(
 
     file_prefix = f"advanced_export_{uuid_str}"
 
-    co_cols = ['企业名称', '统一信用代码', '省市县', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
+    co_cols = ['企业名称', '统一信用代码', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
     std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', 'ICS', 'CCS', '国民经济分类']
 
     if file_format == 'separate_zip':
@@ -520,6 +632,7 @@ def generate_advanced_export_file(
                 df_other.to_excel(writer, sheet_name='国行地团标目录', index=False)
 
         return f"exports/{excel_filename}"
+
 
 
 
