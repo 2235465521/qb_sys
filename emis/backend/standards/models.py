@@ -42,8 +42,10 @@ class Standard(models.Model):
     STATUS_CHOICES = [
         ('active', '现行'),
         ('deprecated', '废止'),
+        ('upcoming', '即将实施'),
         ('draft', '草案'),
     ]
+
 
     # ── 标准号字段（核心）──────────────────────────────────
     standard_no = models.CharField(

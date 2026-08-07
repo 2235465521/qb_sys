@@ -390,7 +390,17 @@ def fetch_std_details_map(std_nos: list) -> dict:
                     for row in cursor.fetchall():
                         s_id = row[0]
                         title = row[1] or ''
-                        ex_state = '现行' if row[2] == 1 else '废止'
+                        st_code = row[2]
+
+                        if st_code == 1:
+                            ex_state = '现行'
+                        elif st_code == 2:
+                            ex_state = '即将实施'
+                        elif st_code == 0:
+                            ex_state = '废止'
+                        else:
+                            ex_state = '现行'
+
                         raw_type = row[3] or ''
                         type_disp = detect_std_type_display(s_id, raw_type)
                         ics = row[4] or ''
