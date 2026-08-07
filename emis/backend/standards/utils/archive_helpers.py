@@ -7,9 +7,10 @@ from django.conf import settings
 from django.db import connections
 from django.db.models import Q
 from standards.models import Standard, NormativeReference
+from standards.services import generate_clean_id
 from companies.models import Company
-
 from companies.services import search_companies
+
 
 logger = logging.getLogger('standards.archive_helpers')
 
@@ -344,6 +345,7 @@ def detect_std_type_display(std_no: str, raw_type: str = "") -> str:
 def fetch_std_details_map(std_nos: list) -> dict:
     """
     批量从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
+    支持国标 (std_gb_detail)、行标 (std_hb_detail)、地标 (std_db_detail)、团标 (std_tb_detail) 明细表联合查询。
     """
     if not std_nos:
         return {}
@@ -361,18 +363,21 @@ def fetch_std_details_map(std_nos: list) -> dict:
     )
     for std in local_stds:
         no = std.standard_no
-        details_map[no] = {
+        item_info = {
             'title': std.title or '',
             'status': std.get_status_display() or '现行',
             'type': std.get_type_display() if (std.type and std.type != 'enterprise') else detect_std_type_display(no),
             'ics': std.ics or '',
             'ccs': std.ccs or '',
         }
+        details_map[no] = item_info
+        if std.clean_id:
+            details_map[std.clean_id] = item_info
         if std.clean_id in clean_to_raw:
-            details_map[clean_to_raw[std.clean_id]] = details_map[no]
+            details_map[clean_to_raw[std.clean_id]] = item_info
 
-    # 2. 查漏：若有未查到的标准号，穿透到 stsc_db 的 view_std_full 视图
-    missing_cleans = [c for c in clean_to_raw.keys() if clean_to_raw[c] not in details_map]
+    # 2. 查漏：若有未查到的标准号，穿透到 stsc_db 的 view_std_full 与各明细表
+    missing_cleans = [c for c in clean_to_raw.keys() if (c not in details_map and clean_to_raw[c] not in details_map)]
     if missing_cleans:
         try:
             with connections['stsc_db'].cursor() as cursor:
@@ -382,9 +387,15 @@ def fetch_std_details_map(std_nos: list) -> dict:
                     chunk = missing_cleans[i:i + chunk_size]
                     fmt = ','.join(['%s'] * len(chunk))
                     sql = f"""
-                        SELECT std_id, std_chinesename, ex_state, std_type, ics, ccs
-                        FROM mydate.view_std_full
-                        WHERE REPLACE(REPLACE(std_id, ' ', ''), '—', '-') IN ({fmt})
+                        SELECT v.std_id, v.std_chinesename, v.ex_state, v.std_type,
+                               COALESCE(v.ics, gb.ics, hb.ics, db.ics, tb.ics) AS ics,
+                               COALESCE(v.ccs, gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                        FROM mydate.view_std_full v
+                        LEFT JOIN mydate.std_gb_detail gb ON v.id = gb.base_id
+                        LEFT JOIN mydate.std_hb_detail hb ON v.id = hb.base_id
+                        LEFT JOIN mydate.std_db_detail db ON v.id = db.base_id
+                        LEFT JOIN mydate.std_tb_detail tb ON v.id = tb.base_id
+                        WHERE REPLACE(REPLACE(v.std_id, ' ', ''), '—', '-') IN ({fmt})
                     """
                     cursor.execute(sql, tuple(chunk))
                     for row in cursor.fetchall():
@@ -406,20 +417,26 @@ def fetch_std_details_map(std_nos: list) -> dict:
                         ics = row[4] or ''
                         ccs = row[5] or ''
 
+                        item_dict = {
+                            'title': title,
+                            'status': ex_state,
+                            'type': type_disp,
+                            'ics': ics,
+                            'ccs': ccs,
+                        }
+
                         clean_ver = generate_clean_id(s_id)
+                        details_map[s_id] = item_dict
+                        details_map[clean_ver] = item_dict
+
                         raw_no = clean_to_raw.get(clean_ver, s_id)
-                        if raw_no not in details_map or not details_map[raw_no].get('title'):
-                            details_map[raw_no] = {
-                                'title': title,
-                                'status': ex_state,
-                                'type': type_disp,
-                                'ics': ics,
-                                'ccs': ccs,
-                            }
+                        details_map[raw_no] = item_dict
+
         except Exception as exc:
             logger.warning(f"从 stsc_db 补全标准信息失败: {exc}")
 
     return details_map
+
 
 
 
@@ -592,7 +609,10 @@ def generate_advanced_export_file(
         for item in other_items:
             s_no = item['s_no']
             std = item['std']
-            d_info = details_map.get(s_no, {})
+            clean_ver = generate_clean_id(s_no)
+            d_info = details_map.get(s_no) or details_map.get(clean_ver) or {}
+
+
 
             title = d_info.get('title') or (std.title if std else '')
             status = d_info.get('status') or (std.get_status_display() if std else '现行')
