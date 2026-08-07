@@ -142,14 +142,15 @@ def run_import(excel_path):
                 skipped_duplicates_count += 1
                 continue
                 
-            # 解析发布日期
+            # 解析发布日期（优先查找明确的发布日期列，不将平台“公开时间”当作标准发布时间）
             publish_date = None
-            pub_date_val = row.get('公开时间')
+            pub_date_val = row.get('发布日期') if '发布日期' in row else row.get('发布时间')
             if pd.notnull(pub_date_val):
                 try:
                     publish_date = pd.to_datetime(pub_date_val).date()
                 except:
                     pass
+
             
             # 映射标准状态
             status_str = str(row.get('标准状态', ''))

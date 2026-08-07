@@ -695,12 +695,13 @@ def import_standards_from_excel(file_obj) -> dict:
                 continue
                 
             publish_date = None
-            pub_date_val = row.get('公开时间')
+            pub_date_val = row.get('发布日期') if '发布日期' in row else row.get('发布时间')
             if pd.notnull(pub_date_val):
                 try:
                     publish_date = pd.to_datetime(pub_date_val).date()
                 except:
                     pass
+
             
             status_str = str(row.get('标准状态', ''))
             standard_status = 'active'

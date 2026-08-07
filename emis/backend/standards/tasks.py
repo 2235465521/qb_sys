@@ -794,13 +794,32 @@ def parse_standard_pdf_task(self, standard_id: int, force: bool = False):
             StandardContent.objects.bulk_create(content_objects)
 
             # 如果企标缺失发布日期或实施日期，自动用提取到的日期填充并更新
+            # 如果现存发布日期晚于提取出的实施日期（例如因 Excel 错将平台公开时间填入 publish_date），也必须强制纠正
             updated_fields = []
-            if extracted_publish_date and (not standard.publish_date or force):
+            
+            should_update_pub = (
+                not standard.publish_date 
+                or force 
+                or (extracted_implement_date and standard.publish_date > extracted_implement_date)
+            )
+            if extracted_publish_date and should_update_pub:
                 standard.publish_date = extracted_publish_date
                 updated_fields.append('publish_date')
-            if extracted_implement_date and (not standard.implement_date or force):
+
+            should_update_imp = (
+                not standard.implement_date 
+                or force 
+                or (standard.publish_date and standard.implement_date < standard.publish_date)
+            )
+            if extracted_implement_date and should_update_imp:
                 standard.implement_date = extracted_implement_date
                 updated_fields.append('implement_date')
+
+            # 最终二次校验业务规则：实施日期必然 >= 发布日期
+            if standard.publish_date and standard.implement_date and standard.implement_date < standard.publish_date:
+                standard.publish_date = standard.implement_date
+                if 'publish_date' not in updated_fields:
+                    updated_fields.append('publish_date')
 
             if updated_fields:
                 standard.save(update_fields=updated_fields)
@@ -819,30 +838,31 @@ def parse_standard_pdf_task(self, standard_id: int, force: bool = False):
 @shared_task(bind=False, name='standards.auto_scan_missing_dates')
 def auto_scan_missing_dates_task():
     """
-    定时任务：自动检测发布时间缺失的企标并触发 PDF 扫描提取
+    定时任务：自动检测发布时间缺失或发布时间异常（发布时间 > 实施时间）的企标，并触发 PDF 扫描提取
 
     运行时机：
       - Celery Beat 每 30 分钟自动调度
       - 后台管理员也可通过 Django shell 手动触发
 
     处理逻辑：
-      1. 查询所有 publish_date 为空的企标记录
+      1. 查询所有 publish_date 为空或 publish_date > implement_date 的企标记录
       2. 过滤出在磁盘/共享盘上存在对应 PDF 文件的记录
       3. 对每个匹配记录，异步触发 parse_standard_pdf_task 重新扫描首页
     """
     import os
     import logging
     from django.conf import settings
+    from django.db.models import F, Q
     from standards.models import Standard
 
     logger = logging.getLogger('standards')
     shared_root = getattr(settings, 'SHARED_DISK_ROOT', r'Y:\磁盘阵列\标准文件下载\企标下载')
 
-    # --- 查询缺失发布时间的企业标准（有 pdf_file 或 disk_filename 之一即可） ---
-    from django.db.models import Q
+    # --- 查询缺失发布时间或发布时间倒置（误将平台公开时间当作发布时间）的企业标准 ---
     candidates = Standard.objects.filter(
-        type='enterprise',
-        publish_date__isnull=True
+        type='enterprise'
+    ).filter(
+        Q(publish_date__isnull=True) | Q(publish_date__gt=F('implement_date'))
     ).filter(
         Q(pdf_file__isnull=False) | Q(disk_filename__isnull=False)
     ).exclude(
