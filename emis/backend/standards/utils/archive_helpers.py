@@ -6,8 +6,9 @@ import pandas as pd
 from django.conf import settings
 from django.db import connections
 from django.db.models import Q
-from standards.models import Standard
+from standards.models import Standard, NormativeReference
 from companies.models import Company
+
 from companies.services import search_companies
 
 logger = logging.getLogger('standards.archive_helpers')
@@ -292,3 +293,233 @@ def pack_enterprises_to_zip(enterprise_ids: list = None, filters: dict = None, e
         raise ValueError("所选企业下未找到任何可供打包的标准 PDF 文件")
 
     return f"exports/{zip_filename}"
+
+
+def generate_advanced_export_file(
+    enterprise_ids: list = None,
+    base_filters: dict = None,
+    advanced_filters: dict = None,
+    export_scope: str = 'filtered',
+    export_content: str = 'both',
+    file_format: str = 'single_excel',
+    uuid_str: str = ""
+) -> str:
+    """
+    高级导出底层引擎函数：
+    根据筛选项导出 企业目录 与 去重企标目录，并写出为单 Excel(多Sheet) 或 ZIP(双Excel)。
+    """
+    base_filters = base_filters or {}
+    advanced_filters = advanced_filters or {}
+
+    # 1. 过滤企业列表
+    qs = Company.objects.select_related('province', 'city', 'district').all()
+
+    if export_scope == 'selected' and enterprise_ids:
+        qs = qs.filter(id__in=enterprise_ids)
+    else:
+        # 应用基础过滤条件
+        q = base_filters.get('q') or base_filters.get('query')
+        if q:
+            qs = qs.filter(Q(name__icontains=q) | Q(credit_code__icontains=q))
+
+        province_id = base_filters.get('province_id') or base_filters.get('province')
+        if province_id:
+            qs = qs.filter(province_id=province_id)
+
+        city_id = base_filters.get('city_id') or base_filters.get('city')
+        if city_id:
+            qs = qs.filter(city_id=city_id)
+
+        district_id = base_filters.get('district_id') or base_filters.get('district')
+        if district_id:
+            qs = qs.filter(district_id=district_id)
+
+        co_status = base_filters.get('status')
+        if co_status:
+            qs = qs.filter(status=co_status)
+
+    # 2. 高级过滤：企业(机构)类型包含/排除模式
+    agency_type_mode = advanced_filters.get('agency_type_mode', 'include')
+    agency_types = advanced_filters.get('agency_types', [])
+    if agency_types and isinstance(agency_types, list):
+        agency_q = Q()
+        for atype in agency_types:
+            if atype:
+                agency_q |= Q(company_type__icontains=atype)
+        if agency_type_mode == 'exclude':
+            qs = qs.exclude(agency_q)
+        else:
+            qs = qs.filter(agency_q)
+
+
+    # 上限保护：10 万条数据
+    company_list = list(qs[:100000])
+    if not company_list:
+        raise ValueError("按当前过滤条件未检索到任何匹配的企业记录")
+
+    # 解析 export_content 参数（支持列表 ['enterprise', 'enterprise_standard', 'other_standard'] 或字符串 'both'/'all' 等）
+    if isinstance(export_content, list):
+        content_set = set(export_content)
+    elif export_content == 'both':
+        content_set = {'enterprise', 'enterprise_standard'}
+    elif export_content == 'all':
+        content_set = {'enterprise', 'enterprise_standard', 'other_standard'}
+    elif export_content == 'enterprise_only':
+        content_set = {'enterprise'}
+    elif export_content == 'standard_only':
+        content_set = {'enterprise_standard'}
+    elif export_content == 'other_standard_only':
+        content_set = {'other_standard'}
+    else:
+        content_set = {'enterprise', 'enterprise_standard', 'other_standard'}
+
+    # 3. 准备企业目录数据
+    company_rows = []
+    if 'enterprise' in content_set:
+        for co in company_list:
+            p_name = co.province.name if co.province else ''
+            c_name = co.city.name if co.city else ''
+            d_name = co.district.name if co.district else ''
+            geo_full = f"{p_name} {c_name} {d_name}".strip()
+
+            company_rows.append({
+                '企业名称': co.name,
+                '统一信用代码': co.credit_code,
+                '省市县': geo_full,
+                '省份': p_name,
+                '城市': c_name,
+                '区县': d_name,
+                '曾用名': co.former_names or '',
+                '企业(机构)类型': co.company_type or '',
+                '企业规模': co.company_size or '',
+                '登记状态': '存续' if co.status == 'active' else '禁用',
+            })
+
+    # 4. 准备企标目录数据（全局去重）
+    standard_rows = []
+    if 'enterprise_standard' in content_set:
+        comp_ids = [c.id for c in company_list]
+        stds = Standard.objects.select_related('company').filter(
+            company_id__in=comp_ids,
+            type='enterprise'
+        )
+
+        seen_nos = set()
+        for std in stds:
+            s_no = (std.standard_no or '').strip()
+            if not s_no or s_no in seen_nos:
+                continue
+            seen_nos.add(s_no)
+            standard_rows.append({
+                '标准号': s_no,
+                '标准名称': std.title or '',
+                '标准状态': std.get_status_display() or '现行',
+                '标准类型': std.get_type_display() or '企业标准',
+                '制修订': '制定',
+                'ICS': std.ics or '',
+                'CCS': std.ccs or '',
+                '国民经济分类': std.company.industry_category if std.company else '',
+            })
+
+    # 5. 准备国行地团标目录数据（全局去重）
+    other_standard_rows = []
+    if 'other_standard' in content_set:
+        comp_ids = [c.id for c in company_list]
+        seen_nos = set()
+
+        # a. 名下直接关联的非企标标准 (国/行/地/团)
+        direct_stds = Standard.objects.select_related('company').filter(
+            company_id__in=comp_ids,
+            type__in=['national', 'industry', 'local', 'group']
+        )
+        for std in direct_stds:
+            s_no = (std.standard_no or '').strip()
+            if not s_no or s_no in seen_nos:
+                continue
+            seen_nos.add(s_no)
+            other_standard_rows.append({
+                '标准号': s_no,
+                '标准名称': std.title or '',
+                '标准状态': std.get_status_display() or '现行',
+                '标准类型': std.get_type_display() or '国家标准',
+                '制修订': '制定',
+                'ICS': std.ics or '',
+                'CCS': std.ccs or '',
+                '国民经济分类': std.company.industry_category if std.company else '',
+            })
+
+        # b. 企标规范性引用的国/行/地/团标
+        ent_stds = Standard.objects.filter(company_id__in=comp_ids, type='enterprise')
+        refs = NormativeReference.objects.select_related('cited_standard', 'source_standard__company').filter(
+            source_standard__in=ent_stds
+        )
+        for ref in refs:
+            s_no = (ref.cited_standard_no or '').strip()
+            if not s_no or s_no in seen_nos:
+                continue
+            seen_nos.add(s_no)
+
+            std = ref.cited_standard
+            other_standard_rows.append({
+                '标准号': s_no,
+                '标准名称': std.title if std else '',
+                '标准状态': std.get_status_display() if std else '现行',
+                '标准类型': std.get_type_display() if std else '国家标准',
+                '制修订': '制定',
+                'ICS': std.ics if std else '',
+                'CCS': std.ccs if std else '',
+                '国民经济分类': ref.source_standard.company.industry_category if (ref.source_standard and ref.source_standard.company) else '',
+            })
+
+    # 6. 文件写出
+    exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
+    os.makedirs(exports_dir, exist_ok=True)
+
+    file_prefix = f"advanced_export_{uuid_str}"
+
+    co_cols = ['企业名称', '统一信用代码', '省市县', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
+    std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', 'ICS', 'CCS', '国民经济分类']
+
+    if file_format == 'separate_zip':
+        zip_filename = f"{file_prefix}.zip"
+        zip_filepath = os.path.join(exports_dir, zip_filename)
+
+        with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
+            if 'enterprise' in content_set:
+                df_co = pd.DataFrame(company_rows, columns=co_cols)
+                co_buf = io.BytesIO()
+                df_co.to_excel(co_buf, index=False, sheet_name='企业目录', engine='openpyxl')
+                zf.writestr('1_企业目录.xlsx', co_buf.getvalue())
+
+            if 'enterprise_standard' in content_set:
+                df_std = pd.DataFrame(standard_rows, columns=std_cols)
+                std_buf = io.BytesIO()
+                df_std.to_excel(std_buf, index=False, sheet_name='企标目录', engine='openpyxl')
+                zf.writestr('2_企标目录.xlsx', std_buf.getvalue())
+
+            if 'other_standard' in content_set:
+                df_other = pd.DataFrame(other_standard_rows, columns=std_cols)
+                other_buf = io.BytesIO()
+                df_other.to_excel(other_buf, index=False, sheet_name='国行地团标目录', engine='openpyxl')
+                zf.writestr('3_国行地团标目录.xlsx', other_buf.getvalue())
+
+        return f"exports/{zip_filename}"
+    else:
+        excel_filename = f"{file_prefix}.xlsx"
+        excel_filepath = os.path.join(exports_dir, excel_filename)
+
+        with pd.ExcelWriter(excel_filepath, engine='openpyxl') as writer:
+            if 'enterprise' in content_set:
+                df_co = pd.DataFrame(company_rows, columns=co_cols)
+                df_co.to_excel(writer, sheet_name='企业目录', index=False)
+            if 'enterprise_standard' in content_set:
+                df_std = pd.DataFrame(standard_rows, columns=std_cols)
+                df_std.to_excel(writer, sheet_name='企标目录', index=False)
+            if 'other_standard' in content_set:
+                df_other = pd.DataFrame(other_standard_rows, columns=std_cols)
+                df_other.to_excel(writer, sheet_name='国行地团标目录', index=False)
+
+        return f"exports/{excel_filename}"
+
+
+

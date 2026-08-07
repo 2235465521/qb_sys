@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Badge, Radio } from 'antd';
-import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined } from '@ant-design/icons';
+import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined, ExportOutlined } from '@ant-design/icons';
 import LbsSearchBar from './components/LbsSearchBar';
 import StandardDrawer from './components/StandardDrawer';
+import { AdvancedExportModal } from './components/AdvancedExportModal';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Company, CompanySearchParams } from '@/types';
 import apiClient from '@/api/client';
@@ -22,7 +23,9 @@ const CompanySearchPage: React.FC = () => {
   
   // 导出模式配置弹窗
   const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [advancedExportModalVisible, setAdvancedExportModalVisible] = useState(false);
   const [exportMode, setExportMode] = useState<'selected' | 'filtered'>('filtered');
+
 
   const { dispatchTask } = useTaskContext();
 
@@ -147,6 +150,19 @@ const CompanySearchPage: React.FC = () => {
           </Space>
           <Space>
             <Button
+              icon={<ExportOutlined />}
+              onClick={() => setAdvancedExportModalVisible(true)}
+              style={{
+                borderRadius: 16,
+                borderColor: '#0d9488',
+                color: '#0d9488',
+                fontWeight: 500,
+              }}
+            >
+              高级导出
+            </Button>
+
+            <Button
               type="primary"
               icon={<CloudDownloadOutlined />}
               onClick={handleOpenExportModal}
@@ -162,6 +178,7 @@ const CompanySearchPage: React.FC = () => {
           </Space>
         </div>
       )}
+
 
       <List
         grid={{ gutter: 16, xs: 1, sm: 1, md: 2, lg: 2, xl: 3, xxl: 3, column: 3 }}
@@ -424,8 +441,18 @@ const CompanySearchPage: React.FC = () => {
         </div>
       </Modal>
 
+      <AdvancedExportModal
+        visible={advancedExportModalVisible}
+        onCancel={() => setAdvancedExportModalVisible(false)}
+        selectedEnterprises={selectedEnterprises}
+        searchParams={params}
+        totalFilteredCount={result?.count || 0}
+        onDispatchTask={dispatchTask}
+      />
+
     </div>
   );
 };
+
 
 export default CompanySearchPage;

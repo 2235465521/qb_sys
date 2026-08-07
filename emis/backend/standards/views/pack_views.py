@@ -365,6 +365,49 @@ class EnterprisePackRequestView(APIView):
         }, status=status.HTTP_202_ACCEPTED)
 
 
+class AdvancedExportRequestView(APIView):
+    """
+    POST /api/client/standards/export-advanced/
+    高级导出接口：根据机构类型包含/排除模式、地区、范围及选择格式，异步生成企业目录与企标目录。
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        export_scope = request.data.get('export_scope', 'filtered')
+        enterprise_ids = request.data.get('enterprise_ids', [])
+        base_filters = request.data.get('base_filters', {})
+        advanced_filters = request.data.get('advanced_filters', {})
+        export_content = request.data.get('export_content', 'both')
+        file_format = request.data.get('file_format', 'single_excel')
+
+        if export_scope == 'selected' and not enterprise_ids:
+            return Response(
+                {'error': '未选中任何企业记录，无法导出'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        import uuid
+        uuid_str = str(uuid.uuid4())
+
+        from standards.tasks import advanced_export_task
+        task = advanced_export_task.delay(
+            enterprise_ids=enterprise_ids,
+            base_filters=base_filters,
+            advanced_filters=advanced_filters,
+            export_scope=export_scope,
+            export_content=export_content,
+            file_format=file_format,
+            uuid_str=uuid_str
+        )
+
+        return Response({
+            'task_id': task.id,
+            'status': 'PENDING',
+            'message': '高级导出任务已成功分发'
+        }, status=status.HTTP_202_ACCEPTED)
+
+
+
 class PackTaskStatusView(APIView):
     """
     GET /api/client/standards/pack-tasks/<str:task_id>/

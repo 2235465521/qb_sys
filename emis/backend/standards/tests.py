@@ -96,4 +96,99 @@ class DateExtractionTestCase(TestCase):
         self.assertEqual(impl_date, datetime.date(2024, 4, 20))
 
 
+class AdvancedExportTestCase(TestCase):
+    def setUp(self):
+        from companies.models import Company
+        from standards.models import Standard
+
+        self.c1 = Company.objects.create(
+            name="测试民营公司A",
+            credit_code="91110000000000001A",
+            company_type="民营企业",
+            status="active"
+        )
+        self.c2 = Company.objects.create(
+            name="测试事业单位B",
+            credit_code="12100000000000002B",
+            company_type="事业单位",
+            status="active"
+        )
+
+        self.s1 = Standard.objects.create(
+            standard_no="Q/TEST 001-2026",
+            clean_id="Q/TEST 001-2026",
+            title="测试企标1",
+            type="enterprise",
+            company=self.c1,
+            status="active"
+        )
+        self.s2 = Standard.objects.create(
+            standard_no="Q/TEST 001-2026", # 重复标准号（模拟不同公司关联）
+            clean_id="Q/TEST 001-2026",
+            title="测试企标1",
+            type="enterprise",
+            company=self.c2,
+            status="active"
+        )
+
+    def test_advanced_export_include_exclude_agency_type(self):
+        from standards.utils.archive_helpers import generate_advanced_export_file
+        import os
+        from django.conf import settings
+
+        # 包含模式：仅包含民营企业
+        rel_path = generate_advanced_export_file(
+            advanced_filters={'agency_type_mode': 'include', 'agency_types': ['民营企业']},
+            export_scope='filtered',
+            export_content='both',
+            file_format='single_excel',
+            uuid_str='test1'
+        )
+        full_path = os.path.join(settings.MEDIA_ROOT, rel_path)
+        self.assertTrue(os.path.exists(full_path))
+
+        # 排除模式：排除事业单位
+        rel_path_ex = generate_advanced_export_file(
+            advanced_filters={'agency_type_mode': 'exclude', 'agency_types': ['事业单位']},
+            export_scope='filtered',
+            export_content='both',
+            file_format='separate_zip',
+            uuid_str='test2'
+        )
+        full_path_ex = os.path.join(settings.MEDIA_ROOT, rel_path_ex)
+        self.assertTrue(os.path.exists(full_path_ex))
+
+    def test_advanced_export_national_group_standards(self):
+        from standards.models import Standard, NormativeReference
+        from standards.utils.archive_helpers import generate_advanced_export_file
+        import os
+        from django.conf import settings
+
+        gb_std = Standard.objects.create(
+            standard_no="GB/T 12345-2024",
+            clean_id="GB/T 12345-2024",
+            title="测试国标",
+            type="national",
+            company=self.c1,
+            status="active"
+        )
+        NormativeReference.objects.create(
+            source_standard=self.s1,
+            cited_standard_no="GB/T 12345-2024",
+            cited_standard=gb_std
+        )
+
+        rel_path_all = generate_advanced_export_file(
+            advanced_filters={'agency_type_mode': 'include', 'agency_types': []},
+            export_scope='filtered',
+            export_content=['enterprise', 'enterprise_standard', 'other_standard'],
+            file_format='single_excel',
+            uuid_str='test3'
+        )
+        full_path_all = os.path.join(settings.MEDIA_ROOT, rel_path_all)
+        self.assertTrue(os.path.exists(full_path_all))
+
+
+
+
 

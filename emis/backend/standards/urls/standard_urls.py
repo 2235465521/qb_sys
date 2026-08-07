@@ -4,7 +4,7 @@ standards.urls.standard_urls — 标准路由（模块一）
 
 from django.urls import path
 from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView, ExportStandardReferencesView, StandardGraphView, StandardDownloadEstimateView, ExportStandardListView
-from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView, SampledPackRequestView
+from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView, SampledPackRequestView, AdvancedExportRequestView
 
 urlpatterns = [
     path('', StandardListView.as_view(), name='client-standard-list'),
@@ -13,6 +13,7 @@ urlpatterns = [
     path('<int:pk>/export-references/', ExportStandardReferencesView.as_view(), name='client-standard-export-references'),
     path('download-estimate/', StandardDownloadEstimateView.as_view(), name='client-standard-download-estimate'),
     path('export/', ExportStandardListView.as_view(), name='client-standard-export'),
+    path('export-advanced/', AdvancedExportRequestView.as_view(), name='client-standard-export-advanced'),
 
 
 
@@ -27,3 +28,4 @@ urlpatterns = [
     # 新增：内联操作栏「抽样打包」接口（替代旧的随机下载 + 自定义选择下载）
     path('sampled-pack/', SampledPackRequestView.as_view(), name='client-standard-sampled-pack'),
 ]
+

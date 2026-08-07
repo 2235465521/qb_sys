@@ -78,30 +78,47 @@ def pack_standards_zip(self, standard_ids: list, download_token: str, include_ex
         raise exc
 
 
-@shared_task(bind=True, name='standards.pack_enterprises_zip')
-def pack_enterprises_zip_task(self, enterprise_ids: list = None, filters: dict = None, export_all: bool = False, uuid_str: str = ""):
+@shared_task(bind=False, name='standards.pack_enterprises_zip')
+def pack_enterprises_zip_task(enterprise_ids: list = None, filters: dict = None, export_all: bool = False, uuid_str: str = ""):
     """
     异步打包选中企业或检索条件名下的所有 PDF 企标文件。
     最大限制 200 家企业。
     目录结构：企业名称/标准号_标准名称.pdf
     """
     from standards.utils.archive_helpers import pack_enterprises_to_zip
-    try:
-        return pack_enterprises_to_zip(
-            enterprise_ids=enterprise_ids,
-            filters=filters,
-            export_all=export_all,
-            uuid_str=uuid_str
-        )
-    except Exception as exc:
-        self.update_state(
-            state='FAILURE',
-            meta={
-                'exc_type': type(exc).__name__,
-                'exc_message': str(exc)
-            }
-        )
-        raise exc
+    return pack_enterprises_to_zip(
+        enterprise_ids=enterprise_ids,
+        filters=filters,
+        export_all=export_all,
+        uuid_str=uuid_str
+    )
+
+
+@shared_task(bind=False, name='standards.advanced_export')
+def advanced_export_task(
+    enterprise_ids: list = None,
+    base_filters: dict = None,
+    advanced_filters: dict = None,
+    export_scope: str = 'filtered',
+    export_content: str = 'both',
+    file_format: str = 'single_excel',
+    uuid_str: str = ""
+):
+    """
+    异步高级导出任务：生成企业目录与去重企标目录 Excel / ZIP
+    """
+    from standards.utils.archive_helpers import generate_advanced_export_file
+    return generate_advanced_export_file(
+        enterprise_ids=enterprise_ids,
+        base_filters=base_filters,
+        advanced_filters=advanced_filters,
+        export_scope=export_scope,
+        export_content=export_content,
+        file_format=file_format,
+        uuid_str=uuid_str
+    )
+
+
 
 
 
@@ -572,10 +589,10 @@ def extract_dates_from_text(first_page_text: str):
     # 模式1: 2024-04-20发布 / 2024年04月20日 发布 / 2024-04-20公布
     pub_direct_pattern1 = r'(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?\s*(?:发布|公布)'
     # 模式2: 发布日期[:：] 2024-04-20 / 发布时间 2024年04月20日
-    pub_direct_pattern2 = r'(?:发布|公布)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*\d{1,2}\s*[-/月.·]\s*(\d{1,2})\s*日?'
     pub_direct_pattern2_full = r'(?:发布|公布)\s*(?:日期|时间)?\s*[:：]?\s*(\d{4})\s*[-/年.·]\s*(\d{1,2})\s*[-/月.·]\s*(\d{1,2})\s*日?'
 
     match = re.search(pub_direct_pattern1, clean_text)
+
     if match:
         extracted_publish_date = _parse_date_tuple(match.group(1), match.group(2), match.group(3))
 
