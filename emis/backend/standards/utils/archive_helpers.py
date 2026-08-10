@@ -387,15 +387,16 @@ def fetch_std_details_map(std_nos: list) -> dict:
                     chunk = missing_cleans[i:i + chunk_size]
                     fmt = ','.join(['%s'] * len(chunk))
                     sql = f"""
-                        SELECT v.std_id, v.std_chinesename, v.ex_state, v.std_type,
-                               COALESCE(v.ics, gb.ics, hb.ics, db.ics, tb.ics) AS ics,
-                               COALESCE(v.ccs, gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
-                        FROM mydate.view_std_full v
-                        LEFT JOIN mydate.std_gb_detail gb ON v.id = gb.base_id
-                        LEFT JOIN mydate.std_hb_detail hb ON v.id = hb.base_id
-                        LEFT JOIN mydate.std_db_detail db ON v.id = db.base_id
-                        LEFT JOIN mydate.std_tb_detail tb ON v.id = tb.base_id
-                        WHERE REPLACE(REPLACE(v.std_id, ' ', ''), '—', '-') IN ({fmt})
+                        SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
+                               COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
+                               COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                        FROM mydate.std_base b
+                        LEFT JOIN mydate.std_gb_detail gb ON b.id = gb.base_id
+                        LEFT JOIN mydate.std_hb_detail hb ON b.id = hb.base_id
+                        LEFT JOIN mydate.std_db_detail db ON b.id = db.base_id
+                        LEFT JOIN mydate.std_tb_detail tb ON b.id = tb.base_id
+                        WHERE REPLACE(REPLACE(b.std_id, ' ', ''), '—', '-') IN ({fmt})
+
                     """
                     cursor.execute(sql, tuple(chunk))
                     for row in cursor.fetchall():
