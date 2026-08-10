@@ -1,7 +1,9 @@
 import os
 import io
+import re
 import zipfile
 import logging
+
 import pandas as pd
 from django.conf import settings
 from django.db import connections
@@ -342,20 +344,60 @@ def detect_std_type_display(std_no: str, raw_type: str = "") -> str:
     return '国家标准'
 
 
+def norm_std_super_key(s: str) -> str:
+    """
+    清洗标准号为强匹配 Key（移除 /T、/t、空格、破折号、点、标点符号等）
+    如: 'GB 5296.6-2004' -> 'GB529662004'
+        'GB/T 5296.6-2004' -> 'GB529662004'
+        'JB/T 8250.5—1995' -> 'JBT825051995'
+    """
+    if not s:
+        return ""
+    s_clean = re.sub(r'/T', '', str(s), flags=re.IGNORECASE)
+    return re.sub(r'[^A-Z0-9]', '', s_clean.upper())
+
+
+def norm_std_prefix_key(s: str) -> str:
+    """
+    提取标准主体编号（不含年份与子部分），用于无部分/无年份模糊兜底匹配
+    如: 'GB/T 4897-2003' -> 'GB4897'
+        'GB/T 4897.1-2003' -> 'GB4897'
+    """
+    if not s:
+        return ""
+    s_clean = re.sub(r'/T', '', str(s), flags=re.IGNORECASE).upper()
+    m = re.search(r'([A-Z]+)\s*[\/]?\s*([0-9]+)', s_clean)
+    if m:
+        return f"{m.group(1)}{m.group(2)}"
+    return ""
+
+
 def fetch_std_details_map(std_nos: list) -> dict:
     """
-    批量从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
+    多级高容错检索：从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
     支持国标 (std_gb_detail)、行标 (std_hb_detail)、地标 (std_db_detail)、团标 (std_tb_detail) 明细表联合查询。
+    自动处理 /T 缺失、半全角符号差异、无子部分号/年份变更等场景。
     """
     if not std_nos:
         return {}
 
     details_map = {}
     from standards.services import generate_clean_id
+
+    # 映射池：普通 clean_id、super_key、prefix_key
     clean_to_raw = {}
+    super_to_raw = {}
+    prefix_to_raw = {}
+
     for no in std_nos:
         clean = generate_clean_id(no)
         clean_to_raw[clean] = no
+        s_key = norm_std_super_key(no)
+        if s_key:
+            super_to_raw[s_key] = no
+        p_key = norm_std_prefix_key(no)
+        if p_key:
+            prefix_to_raw.setdefault(p_key, []).append(no)
 
     # 1. 查询本地 Standard 表
     local_stds = Standard.objects.filter(
@@ -364,11 +406,11 @@ def fetch_std_details_map(std_nos: list) -> dict:
     for std in local_stds:
         no = std.standard_no
         item_info = {
-            'title': std.title or '',
+            'title': std.title or '-',
             'status': std.get_status_display() or '现行',
             'type': std.get_type_display() if (std.type and std.type != 'enterprise') else detect_std_type_display(no),
-            'ics': std.ics or '',
-            'ccs': std.ccs or '',
+            'ics': std.ics or '-',
+            'ccs': std.ccs or '-',
         }
         details_map[no] = item_info
         if std.clean_id:
@@ -376,67 +418,86 @@ def fetch_std_details_map(std_nos: list) -> dict:
         if std.clean_id in clean_to_raw:
             details_map[clean_to_raw[std.clean_id]] = item_info
 
-    # 2. 查漏：若有未查到的标准号，穿透到 stsc_db 的 view_std_full 与各明细表
-    missing_cleans = [c for c in clean_to_raw.keys() if (c not in details_map and clean_to_raw[c] not in details_map)]
-    if missing_cleans:
+    # 2. 查漏：穿透到 stsc_db 的 std_base 与各明细表
+    missing_nos = [no for no in std_nos if (no not in details_map and generate_clean_id(no) not in details_map and norm_std_super_key(no) not in details_map)]
+    if missing_nos:
         try:
-            with connections['stsc_db'].cursor() as cursor:
-                cursor.execute("SET NAMES utf8mb4;")
-                chunk_size = 500
-                for i in range(0, len(missing_cleans), chunk_size):
-                    chunk = missing_cleans[i:i + chunk_size]
-                    fmt = ','.join(['%s'] * len(chunk))
-                    sql = f"""
-                        SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
-                               COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
-                               COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
-                        FROM mydate.std_base b
-                        LEFT JOIN mydate.std_gb_detail gb ON b.id = gb.base_id
-                        LEFT JOIN mydate.std_hb_detail hb ON b.id = hb.base_id
-                        LEFT JOIN mydate.std_db_detail db ON b.id = db.base_id
-                        LEFT JOIN mydate.std_tb_detail tb ON b.id = tb.base_id
-                        WHERE REPLACE(REPLACE(b.std_id, ' ', ''), '—', '-') IN ({fmt})
+            # 提取包含的数字串构建模糊 OR SQL 语句
+            digit_tokens = set()
+            for no in missing_nos:
+                nums = re.findall(r'\d+', no)
+                if nums:
+                    digit_tokens.add(nums[0])
 
-                    """
-                    cursor.execute(sql, tuple(chunk))
-                    for row in cursor.fetchall():
-                        s_id = row[0]
-                        title = row[1] or ''
-                        st_code = row[2]
+            if digit_tokens:
+                with connections['stsc_db'].cursor() as cursor:
+                    cursor.execute("SET NAMES utf8mb4;")
+                    chunk_size = 100
+                    token_list = list(digit_tokens)
+                    for i in range(0, len(token_list), chunk_size):
+                        chunk = token_list[i:i + chunk_size]
+                        where_clauses = " OR ".join(["b.std_id LIKE %s"] * len(chunk))
+                        params = [f"%{t}%" for t in chunk]
 
-                        if st_code == 1:
-                            ex_state = '现行'
-                        elif st_code == 2:
-                            ex_state = '即将实施'
-                        elif st_code == 0:
-                            ex_state = '废止'
-                        else:
-                            ex_state = '现行'
+                        sql = f"""
+                            SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
+                                   COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
+                                   COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                            FROM mydate.std_base b
+                            LEFT JOIN mydate.std_gb_detail gb ON b.id = gb.base_id
+                            LEFT JOIN mydate.std_hb_detail hb ON b.id = hb.base_id
+                            LEFT JOIN mydate.std_db_detail db ON b.id = db.base_id
+                            LEFT JOIN mydate.std_tb_detail tb ON b.id = tb.base_id
+                            WHERE {where_clauses}
+                        """
+                        cursor.execute(sql, params)
+                        for row in cursor.fetchall():
+                            s_id = row[0]
+                            title = row[1] or '-'
+                            st_code = row[2]
 
-                        raw_type = row[3] or ''
-                        type_disp = detect_std_type_display(s_id, raw_type)
-                        ics = row[4] or ''
-                        ccs = row[5] or ''
+                            if st_code == 1:
+                                ex_state = '现行'
+                            elif st_code == 2:
+                                ex_state = '即将实施'
+                            elif st_code == 0:
+                                ex_state = '废止'
+                            else:
+                                ex_state = '现行'
 
-                        item_dict = {
-                            'title': title,
-                            'status': ex_state,
-                            'type': type_disp,
-                            'ics': ics,
-                            'ccs': ccs,
-                        }
+                            raw_type = row[3] or ''
+                            type_disp = detect_std_type_display(s_id, raw_type)
+                            ics = row[4] or '-'
+                            ccs = row[5] or '-'
 
-                        clean_ver = generate_clean_id(s_id)
-                        details_map[s_id] = item_dict
-                        details_map[clean_ver] = item_dict
+                            item_dict = {
+                                'title': title,
+                                'status': ex_state,
+                                'type': type_disp,
+                                'ics': ics,
+                                'ccs': ccs,
+                            }
 
-                        raw_no = clean_to_raw.get(clean_ver, s_id)
-                        details_map[raw_no] = item_dict
+                            clean_ver = generate_clean_id(s_id)
+                            s_key = norm_std_super_key(s_id)
+                            p_key = norm_std_prefix_key(s_id)
+
+                            details_map[s_id] = item_dict
+                            details_map[clean_ver] = item_dict
+                            if s_key:
+                                details_map[s_key] = item_dict
+                            if p_key and p_key not in details_map:
+                                details_map[p_key] = item_dict
+
+                            raw_no = clean_to_raw.get(clean_ver) or super_to_raw.get(s_key)
+                            if raw_no:
+                                details_map[raw_no] = item_dict
 
         except Exception as exc:
             logger.warning(f"从 stsc_db 补全标准信息失败: {exc}")
 
     return details_map
+
 
 
 
@@ -611,16 +672,25 @@ def generate_advanced_export_file(
             s_no = item['s_no']
             std = item['std']
             clean_ver = generate_clean_id(s_no)
-            d_info = details_map.get(s_no) or details_map.get(clean_ver) or {}
+            s_key = norm_std_super_key(s_no)
+            p_key = norm_std_prefix_key(s_no)
 
+            d_info = (details_map.get(s_no) or
+                      details_map.get(clean_ver) or
+                      details_map.get(s_key) or
+                      details_map.get(p_key) or {})
 
+            raw_title = d_info.get('title') or (std.title if std else '')
+            title = raw_title if (raw_title and raw_title != '-') else '-'
 
-            title = d_info.get('title') or (std.title if std else '')
             status = d_info.get('status') or (std.get_status_display() if std else '现行')
             stype = d_info.get('type') or (std.get_type_display() if (std and std.type != 'enterprise') else detect_std_type_display(s_no))
 
-            ics = d_info.get('ics') or (std.ics if std else '')
-            ccs = d_info.get('ccs') or (std.ccs if std else '')
+            raw_ics = d_info.get('ics') or (std.ics if std else '')
+            ics = raw_ics if (raw_ics and raw_ics != '-') else '-'
+
+            raw_ccs = d_info.get('ccs') or (std.ccs if std else '')
+            ccs = raw_ccs if (raw_ccs and raw_ccs != '-') else '-'
 
             other_standard_rows.append({
                 '标准号': s_no,
@@ -632,6 +702,7 @@ def generate_advanced_export_file(
                 'CCS': ccs,
                 '国民经济分类': item['industry_category'],
             })
+
 
     # 6. 文件写出
     exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
