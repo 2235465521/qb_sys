@@ -101,7 +101,7 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
       const payload: any = {
         export_scope: values.export_scope,
         export_content: values.export_content,
-        file_format: values.export_content.length > 1 ? values.file_format : 'single_excel',
+        file_format: values.file_format,
         advanced_filters: {
           agency_type_mode: values.agency_type_mode,
           agency_types: values.agency_types || [],
@@ -111,9 +111,9 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
       if (values.export_scope === 'selected') {
         payload.enterprise_ids = selectedEnterprises.map(c => c.id);
       } else {
-        const { keyword } = searchParams;
         payload.base_filters = {
-          q: keyword,
+          ...searchParams,
+          q: searchParams.keyword,
           province_id: values.province_id,
           city_id: values.city_id,
           district_id: values.district_id,

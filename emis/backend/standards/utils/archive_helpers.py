@@ -103,9 +103,9 @@ def create_zip_from_standards(standard_ids: list, include_excel: bool = False) -
                     format_strings = ','.join(['%s'] * len(federated_stds))
                     query = f"""
                         SELECT v.std_id, v.std_chinesename, f.file_path, h.draft_unit
-                        FROM mydate.view_std_full v
-                        LEFT JOIN mydate.std_filepath f ON v.id = f.base_id
-                        LEFT JOIN mydate.std_extend_h h ON v.id = h.base_id
+                        FROM view_std_full v
+                        LEFT JOIN std_filepath f ON v.id = f.base_id
+                        LEFT JOIN std_extend_h h ON v.id = h.base_id
                         WHERE v.std_id IN ({format_strings})
                     """
                     cursor.execute(query, tuple(federated_stds))
@@ -418,8 +418,13 @@ def fetch_std_details_map(std_nos: list) -> dict:
         if std.clean_id in clean_to_raw:
             details_map[clean_to_raw[std.clean_id]] = item_info
 
-    # 2. 查漏：穿透到 stsc_db 的 std_base 与各明细表
-    missing_nos = [no for no in std_nos if (no not in details_map and generate_clean_id(no) not in details_map and norm_std_super_key(no) not in details_map)]
+    # 2. 查漏：穿透到 stsc_db 的 std_base 与各明细表 (补充不存在或 ICS/CCS 为空的记录)
+    missing_nos = []
+    for no in std_nos:
+        d = details_map.get(no) or details_map.get(generate_clean_id(no)) or details_map.get(norm_std_super_key(no))
+        if not d or d.get('ics') in ('-', '', None) or d.get('ccs') in ('-', '', None):
+            missing_nos.append(no)
+            
     if missing_nos:
         try:
             # 提取包含的数字串构建模糊 OR SQL 语句
@@ -443,11 +448,11 @@ def fetch_std_details_map(std_nos: list) -> dict:
                             SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
                                    COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
                                    COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
-                            FROM mydate.std_base b
-                            LEFT JOIN mydate.std_gb_detail gb ON b.id = gb.base_id
-                            LEFT JOIN mydate.std_hb_detail hb ON b.id = hb.base_id
-                            LEFT JOIN mydate.std_db_detail db ON b.id = db.base_id
-                            LEFT JOIN mydate.std_tb_detail tb ON b.id = tb.base_id
+                            FROM std_base b
+                            LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
+                            LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
+                            LEFT JOIN std_db_detail db ON b.id = db.base_id
+                            LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
                             WHERE {where_clauses}
                         """
                         cursor.execute(sql, params)
@@ -519,47 +524,45 @@ def generate_advanced_export_file(
     advanced_filters = advanced_filters or {}
 
     # 1. 过滤企业列表
-    qs = Company.objects.select_related('province', 'city', 'district').all()
-
     if export_scope == 'selected' and enterprise_ids:
-        qs = qs.filter(id__in=enterprise_ids)
+        qs = Company.objects.select_related('province', 'city', 'district').filter(id__in=enterprise_ids)
     else:
-        # 应用基础过滤条件
-        q = base_filters.get('q') or base_filters.get('query')
-        if q:
-            qs = qs.filter(Q(name__icontains=q) | Q(credit_code__icontains=q))
+        # 复用 search_companies 服务以确保完全对齐前端搜索状态
+        from companies.services import search_companies
+        qs = search_companies(
+            keyword=base_filters.get('q') or base_filters.get('keyword') or base_filters.get('query'),
+            province_id=base_filters.get('province_id') or base_filters.get('province'),
+            city_id=base_filters.get('city_id') or base_filters.get('city'),
+            district_id=base_filters.get('district_id') or base_filters.get('district'),
+            status=base_filters.get('status'),
+            ics=base_filters.get('ics'),
+            ccs=base_filters.get('ccs'),
+            standard_logic=base_filters.get('standard_logic', 'OR'),
+            center_lat=base_filters.get('center_lat') or base_filters.get('lat'),
+            center_lng=base_filters.get('center_lng') or base_filters.get('lng'),
+            radius_km=base_filters.get('radius_km')
+        ).select_related('province', 'city', 'district')
 
-        province_id = base_filters.get('province_id') or base_filters.get('province')
-        if province_id:
-            qs = qs.filter(province_id=province_id)
+    # 上限保护：先拉取查询结果，由于需要推断机构类型，我们将对结果进行内存过滤
+    company_list = list(qs[:100000])
 
-        city_id = base_filters.get('city_id') or base_filters.get('city')
-        if city_id:
-            qs = qs.filter(city_id=city_id)
-
-        district_id = base_filters.get('district_id') or base_filters.get('district')
-        if district_id:
-            qs = qs.filter(district_id=district_id)
-
-        co_status = base_filters.get('status')
-        if co_status:
-            qs = qs.filter(status=co_status)
-
-    # 2. 高级过滤：企业(机构)类型包含/排除模式
+    # 2. 高级过滤：企业(机构)类型包含/排除模式 (在内存中根据 infer_company_type 过滤)
     agency_type_mode = advanced_filters.get('agency_type_mode', 'include')
     agency_types = advanced_filters.get('agency_types', [])
     if agency_types and isinstance(agency_types, list):
-        agency_q = Q()
-        for atype in agency_types:
-            if atype:
-                agency_q |= Q(company_type__icontains=atype)
-        if agency_type_mode == 'exclude':
-            qs = qs.exclude(agency_q)
-        else:
-            qs = qs.filter(agency_q)
+        filtered_list = []
+        for co in company_list:
+            inferred = infer_company_type(co.name, co.company_type)
+            match = any((atype in inferred or inferred in atype) for atype in agency_types if atype)
+            
+            if agency_type_mode == 'exclude':
+                if not match:
+                    filtered_list.append(co)
+            else:
+                if match:
+                    filtered_list.append(co)
+        company_list = filtered_list
 
-    # 上限保护：10 万条数据
-    company_list = list(qs[:100000])
     if not company_list:
         raise ValueError("按当前过滤条件未检索到任何匹配的企业记录")
 

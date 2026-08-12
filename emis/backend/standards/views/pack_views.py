@@ -208,10 +208,10 @@ class RandomPackRequestView(APIView):
         standard_ids = []
 
         if mode == 'standards':
-            # 优先选择”未解析过”且具有 PDF 文件的企标 (is_parsed = '0')
+            # 优先选择”未解析过”且具有 PDF 文件的企标 (is_parsed = 'unparsed')
             qs = Standard.objects.filter(
                 type='enterprise',
-                is_parsed='0'
+                is_parsed='unparsed'
             ).filter(
                 (Q(pdf_file__isnull=False) & ~Q(pdf_file='')) | (Q(disk_filename__isnull=False) & ~Q(disk_filename=''))
             ).values_list('id', flat=True)
@@ -277,9 +277,9 @@ class RandomPackRequestView(APIView):
             # 如果没有选择任何地域，则不加地域限制（或者报错，按需处理）
             
             # 解析状态条件
-            # normative: 暂未解析 -> 需要规范性引用解析 -> is_parsed='0'
-            # indicator: 已完成规范性引用解析 -> 需要指标解析 -> is_parsed='1'
-            is_parsed_val = '0' if parse_target == 'normative' else '1'
+            # normative: 暂未解析 -> 需要规范性引用解析 -> is_parsed='unparsed'
+            # indicator: 已完成规范性引用解析 -> 需要指标解析 -> is_parsed='references_parsed'
+            is_parsed_val = 'unparsed' if parse_target == 'normative' else 'references_parsed'
             
             qs = Standard.objects.filter(
                 type='enterprise',

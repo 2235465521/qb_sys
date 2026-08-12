@@ -109,7 +109,10 @@ def search_standards_service(params):
         qs = qs.filter(type=params['type'])
 
     if params.get('is_parsed') in ('true', 'false'):
-        qs = qs.filter(is_parsed=params['is_parsed'] == 'true')
+        if params['is_parsed'] == 'true':
+            qs = qs.exclude(is_parsed='unparsed')
+        else:
+            qs = qs.filter(is_parsed='unparsed')
 
     if params.get('company_id'):
         qs = qs.filter(company_id=params['company_id'])
@@ -370,7 +373,7 @@ def parse_normative_reference_excel(file_obj) -> dict:
             updated = Standard.objects.filter(
                 standard_no__in=parsed_standard_nos,
                 type='enterprise'
-            ).update(is_parsed=True)
+            ).update(is_parsed='references_parsed')
             result['parsed_standards'] = updated
 
             if updated < len(parsed_standard_nos):
@@ -556,8 +559,6 @@ def scan_and_align_pdf_assets() -> dict:
 # ============================================================
 # ZIP 打包服务（Celery 异步任务辅助）
 # ============================================================
-
-from standards.utils.archive_helpers import create_zip_from_standards
 
 
 # ============================================================
