@@ -8,10 +8,10 @@ import pandas as pd
 from django.conf import settings
 from django.db import connections
 from django.db.models import Q
-from standards.models import Standard, NormativeReference
+from standards.models import Standard
 from standards.services import generate_clean_id
 from companies.models import Company
-from companies.services import search_companies
+from companies.services import search_companies, FederatedStandardService
 
 
 logger = logging.getLogger('standards.archive_helpers')
@@ -651,21 +651,24 @@ def generate_advanced_export_file(
                 'industry_category': std.company.industry_category if std.company else ''
             })
 
-        # b. 企标规范性引用的国/行/地/团标
-        ent_stds = Standard.objects.filter(company_id__in=comp_ids, type='enterprise')
-        refs = NormativeReference.objects.select_related('cited_standard', 'source_standard__company').filter(
-            source_standard__in=ent_stds
-        )
-        for ref in refs:
-            s_no = (ref.cited_standard_no or '').strip()
-            if not s_no or s_no in seen_nos:
-                continue
-            seen_nos.add(s_no)
-            other_items.append({
-                's_no': s_no,
-                'std': ref.cited_standard,
-                'industry_category': ref.source_standard.company.industry_category if (ref.source_standard and ref.source_standard.company) else ''
-            })
+        # b. 穿透 stsc_db 检索选定企业真正参与起草的非企标标准 (国/行/地/团)
+        for company in company_list:
+            try:
+                summary_data = FederatedStandardService.get_company_standards_summary(company)
+                fed_stds = summary_data.get('standards', [])
+                for fed in fed_stds:
+                    s_no = (fed.get('standard_no') or '').strip()
+                    if not s_no or s_no in seen_nos:
+                        continue
+                    seen_nos.add(s_no)
+                    other_items.append({
+                        's_no': s_no,
+                        'std': None,
+                        'fed_info': fed,
+                        'industry_category': company.industry_category or ''
+                    })
+            except Exception as fed_err:
+                logger.error(f"Failed to query STSC standards for company {company.name}: {fed_err}")
 
         # 批量从 stsc_db / 本地 Standard 表抓取补全标题、状态、类型、ICS、CCS
         nos_to_fetch = [item['s_no'] for item in other_items]
@@ -674,6 +677,7 @@ def generate_advanced_export_file(
         for item in other_items:
             s_no = item['s_no']
             std = item['std']
+            fed_info = item.get('fed_info') or {}
             clean_ver = generate_clean_id(s_no)
             s_key = norm_std_super_key(s_no)
             p_key = norm_std_prefix_key(s_no)
@@ -683,11 +687,11 @@ def generate_advanced_export_file(
                       details_map.get(s_key) or
                       details_map.get(p_key) or {})
 
-            raw_title = d_info.get('title') or (std.title if std else '')
+            raw_title = d_info.get('title') or fed_info.get('title') or (std.title if std else '')
             title = raw_title if (raw_title and raw_title != '-') else '-'
 
-            status = d_info.get('status') or (std.get_status_display() if std else '现行')
-            stype = d_info.get('type') or (std.get_type_display() if (std and std.type != 'enterprise') else detect_std_type_display(s_no))
+            status = d_info.get('status') or fed_info.get('status') or (std.get_status_display() if std else '现行')
+            stype = d_info.get('type') or fed_info.get('type') or (std.get_type_display() if (std and std.type != 'enterprise') else detect_std_type_display(s_no))
 
             raw_ics = d_info.get('ics') or (std.ics if std else '')
             ics = raw_ics if (raw_ics and raw_ics != '-') else '-'
