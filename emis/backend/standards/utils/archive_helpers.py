@@ -427,76 +427,138 @@ def fetch_std_details_map(std_nos: list) -> dict:
             
     if missing_nos:
         try:
-            # 提取包含的数字串构建模糊 OR SQL 语句
-            digit_tokens = set()
-            for no in missing_nos:
-                nums = re.findall(r'\d+', no)
-                if nums:
-                    digit_tokens.add(nums[0])
+            with connections['stsc_db'].cursor() as cursor:
+                cursor.execute("SET NAMES utf8mb4;")
 
-            if digit_tokens:
-                with connections['stsc_db'].cursor() as cursor:
-                    cursor.execute("SET NAMES utf8mb4;")
-                    chunk_size = 100
-                    token_list = list(digit_tokens)
-                    for i in range(0, len(token_list), chunk_size):
-                        chunk = token_list[i:i + chunk_size]
-                        where_clauses = " OR ".join(["b.std_id LIKE %s"] * len(chunk))
-                        params = [f"%{t}%" for t in chunk]
+                # =========================================================
+                # 阶段 1: 极速阶段 —— 建立 std_id_norm 精准 B-Tree 索引 IN 查询 (覆盖 95%+ 正规格式)
+                # =========================================================
+                norm_map = {}  # norm_str -> original_no
+                for no in missing_nos:
+                    n_str = re.sub(r'[/ \-\s]', '', no).upper()
+                    if n_str:
+                        norm_map[n_str] = no
 
-                        sql = f"""
-                            SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
-                                   COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
-                                   COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
-                            FROM std_base b
-                            LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
-                            LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
-                            LEFT JOIN std_db_detail db ON b.id = db.base_id
-                            LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
-                            WHERE {where_clauses}
-                        """
-                        cursor.execute(sql, params)
-                        for row in cursor.fetchall():
-                            s_id = row[0]
-                            title = row[1] or '-'
-                            st_code = row[2]
+                norm_keys = list(norm_map.keys())
+                chunk_size = 500
+                for i in range(0, len(norm_keys), chunk_size):
+                    chunk_keys = norm_keys[i:i + chunk_size]
+                    in_clause = ",".join(["%s"] * len(chunk_keys))
 
-                            if st_code == 1:
-                                ex_state = '现行'
-                            elif st_code == 2:
-                                ex_state = '即将实施'
-                            elif st_code == 0:
-                                ex_state = '废止'
-                            else:
-                                ex_state = '现行'
+                    sql = f"""
+                        SELECT b.std_id, b.std_id_norm, b.std_chinesename, b.ex_state, b.std_type,
+                               COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
+                               COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                        FROM std_base b
+                        LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
+                        LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
+                        LEFT JOIN std_db_detail db ON b.id = db.base_id
+                        LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
+                        WHERE b.std_id_norm IN ({in_clause})
+                    """
+                    cursor.execute(sql, chunk_keys)
+                    for row in cursor.fetchall():
+                        s_id = row[0]
+                        s_norm = row[1]
+                        title = row[2] or '-'
+                        st_code = row[3]
+                        ex_state = '即将实施' if st_code == 2 else ('废止' if st_code == 0 else '现行')
+                        raw_type = row[4] or ''
+                        type_disp = detect_std_type_display(s_id, raw_type)
+                        ics = row[5] or '-'
+                        ccs = row[6] or '-'
 
-                            raw_type = row[3] or ''
-                            type_disp = detect_std_type_display(s_id, raw_type)
-                            ics = row[4] or '-'
-                            ccs = row[5] or '-'
+                        item_dict = {
+                            'title': title,
+                            'status': ex_state,
+                            'type': type_disp,
+                            'ics': ics,
+                            'ccs': ccs,
+                        }
 
-                            item_dict = {
-                                'title': title,
-                                'status': ex_state,
-                                'type': type_disp,
-                                'ics': ics,
-                                'ccs': ccs,
-                            }
+                        clean_ver = generate_clean_id(s_id)
+                        s_key = norm_std_super_key(s_id)
+                        p_key = norm_std_prefix_key(s_id)
 
-                            clean_ver = generate_clean_id(s_id)
-                            s_key = norm_std_super_key(s_id)
-                            p_key = norm_std_prefix_key(s_id)
+                        details_map[s_id] = item_dict
+                        details_map[clean_ver] = item_dict
+                        if s_norm:
+                            details_map[s_norm] = item_dict
+                        if s_key:
+                            details_map[s_key] = item_dict
+                        if p_key and p_key not in details_map:
+                            details_map[p_key] = item_dict
 
-                            details_map[s_id] = item_dict
-                            details_map[clean_ver] = item_dict
-                            if s_key:
-                                details_map[s_key] = item_dict
-                            if p_key and p_key not in details_map:
-                                details_map[p_key] = item_dict
+                        raw_no = norm_map.get(s_norm) or clean_to_raw.get(clean_ver) or super_to_raw.get(s_key)
+                        if raw_no:
+                            details_map[raw_no] = item_dict
 
-                            raw_no = clean_to_raw.get(clean_ver) or super_to_raw.get(s_key)
-                            if raw_no:
-                                details_map[raw_no] = item_dict
+                # =========================================================
+                # 阶段 2: 降级保底阶段 —— 对仅剩未命中的极少数非标格式发起模糊扫描 (覆盖 5% 非标格式)
+                # =========================================================
+                still_missing_nos = [
+                    no for no in missing_nos
+                    if not details_map.get(no) or details_map.get(no, {}).get('ics') in ('-', '', None)
+                ]
+
+                if still_missing_nos:
+                    digit_tokens = set()
+                    for no in still_missing_nos:
+                        nums = re.findall(r'\d+', no)
+                        if nums:
+                            digit_tokens.add(nums[0])
+
+                    if digit_tokens:
+                        token_list = list(digit_tokens)
+                        for i in range(0, len(token_list), 100):
+                            chunk = token_list[i:i + 100]
+                            where_clauses = " OR ".join(["b.std_id LIKE %s"] * len(chunk))
+                            params = [f"%{t}%" for t in chunk]
+
+                            sql = f"""
+                                SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
+                                       COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
+                                       COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                                FROM std_base b
+                                LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
+                                LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
+                                LEFT JOIN std_db_detail db ON b.id = db.base_id
+                                LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
+                                WHERE {where_clauses}
+                            """
+                            cursor.execute(sql, params)
+                            for row in cursor.fetchall():
+                                s_id = row[0]
+                                title = row[1] or '-'
+                                st_code = row[2]
+                                ex_state = '即将实施' if st_code == 2 else ('废止' if st_code == 0 else '现行')
+                                raw_type = row[3] or ''
+                                type_disp = detect_std_type_display(s_id, raw_type)
+                                ics = row[4] or '-'
+                                ccs = row[5] or '-'
+
+                                item_dict = {
+                                    'title': title,
+                                    'status': ex_state,
+                                    'type': type_disp,
+                                    'ics': ics,
+                                    'ccs': ccs,
+                                }
+
+                                clean_ver = generate_clean_id(s_id)
+                                s_key = norm_std_super_key(s_id)
+                                p_key = norm_std_prefix_key(s_id)
+
+                                details_map[s_id] = item_dict
+                                details_map[clean_ver] = item_dict
+                                if s_key:
+                                    details_map[s_key] = item_dict
+                                if p_key and p_key not in details_map:
+                                    details_map[p_key] = item_dict
+
+                                raw_no = clean_to_raw.get(clean_ver) or super_to_raw.get(s_key)
+                                if raw_no:
+                                    details_map[raw_no] = item_dict
 
         except Exception as exc:
             logger.warning(f"从 stsc_db 补全标准信息失败: {exc}")
