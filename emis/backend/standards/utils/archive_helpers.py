@@ -372,9 +372,100 @@ def norm_std_prefix_key(s: str) -> str:
     return ""
 
 
+def fetch_ics_ccs_name_maps(ics_code_list: list, ccs_code_list: list) -> tuple:
+    """
+    批量查询 stsc_db 的 std_ics_dict 与 std_ccs_dict，返回 {code: category_name} 映射字典
+    """
+    ics_tokens = set()
+    for raw in ics_code_list:
+        if not raw or raw in ('-', ''):
+            continue
+        parts = re.split(r'[,;；/|\s]+', str(raw))
+        for p in parts:
+            p_clean = p.strip()
+            if p_clean and p_clean != '-':
+                ics_tokens.add(p_clean)
+
+    ccs_tokens = set()
+    for raw in ccs_code_list:
+        if not raw or raw in ('-', ''):
+            continue
+        parts = re.split(r'[,;；/|\s]+', str(raw))
+        for p in parts:
+            p_clean = p.strip()
+            if p_clean and p_clean != '-':
+                ccs_tokens.add(p_clean)
+
+    ics_map = {}
+    ccs_map = {}
+
+    if not ics_tokens and not ccs_tokens:
+        return ics_map, ccs_map
+
+    try:
+        with connections['stsc_db'].cursor() as cursor:
+            cursor.execute("SET NAMES utf8mb4;")
+
+            if ics_tokens:
+                ics_list = list(ics_tokens)
+                chunk_size = 500
+                for i in range(0, len(ics_list), chunk_size):
+                    chunk = ics_list[i:i + chunk_size]
+                    in_clause = ",".join(["%s"] * len(chunk))
+                    cursor.execute(f"SELECT ics_code, category_name FROM std_ics_dict WHERE ics_code IN ({in_clause})", chunk)
+                    for code, name in cursor.fetchall():
+                        if code and name:
+                            ics_map[code.strip()] = name.strip()
+
+            if ccs_tokens:
+                ccs_list = list(ccs_tokens)
+                chunk_size = 500
+                for i in range(0, len(ccs_list), chunk_size):
+                    chunk = ccs_list[i:i + chunk_size]
+                    in_clause = ",".join(["%s"] * len(chunk))
+                    cursor.execute(f"SELECT ccs_code, category_name FROM std_ccs_dict WHERE ccs_code IN ({in_clause})", chunk)
+                    for code, name in cursor.fetchall():
+                        if code and name:
+                            ccs_map[code.strip()] = name.strip()
+    except Exception as exc:
+        logger.warning(f"获取 ICS/CCS 字典名称映射失败: {exc}")
+
+    return ics_map, ccs_map
+
+
+def format_codes_and_names(raw_code_str: str, name_map: dict) -> tuple:
+    """
+    清洗并规范化 ICS 或 CCS 代码与中文名称：
+    将原始分类号字符串拆分为多个独立代码，用 ';' 分隔重组编号与对应的中文名称。
+    Returns: (formatted_codes_str, formatted_names_str)
+    """
+    if not raw_code_str or str(raw_code_str).strip() in ('-', ''):
+        return '-', '-'
+
+    parts = re.split(r'[,;；/|\s]+', str(raw_code_str))
+    valid_codes = []
+    valid_names = []
+
+    for p in parts:
+        code = p.strip()
+        if not code or code == '-':
+            continue
+        if code not in valid_codes:
+            valid_codes.append(code)
+            zh_name = name_map.get(code) or '-'
+            valid_names.append(zh_name)
+
+    if not valid_codes:
+        return '-', '-'
+
+    code_str = "; ".join(valid_codes)
+    name_str = "; ".join(valid_names)
+    return code_str, name_str
+
+
 def fetch_std_details_map(std_nos: list) -> dict:
     """
-    多级高容错检索：从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS。
+    多级高容错检索：从本地 Standard 表和穿透 stsc_db 获取标准的标题、状态、类型、ICS、CCS、发布/实施日期及起草单位。
     支持国标 (std_gb_detail)、行标 (std_hb_detail)、地标 (std_db_detail)、团标 (std_tb_detail) 明细表联合查询。
     自动处理 /T 缺失、半全角符号差异、无子部分号/年份变更等场景。
     """
@@ -400,7 +491,7 @@ def fetch_std_details_map(std_nos: list) -> dict:
             prefix_to_raw.setdefault(p_key, []).append(no)
 
     # 1. 查询本地 Standard 表
-    local_stds = Standard.objects.filter(
+    local_stds = Standard.objects.select_related('company').filter(
         Q(standard_no__in=std_nos) | Q(clean_id__in=list(clean_to_raw.keys()))
     )
     for std in local_stds:
@@ -411,6 +502,9 @@ def fetch_std_details_map(std_nos: list) -> dict:
             'type': std.get_type_display() if (std.type and std.type != 'enterprise') else detect_std_type_display(no),
             'ics': std.ics or '-',
             'ccs': std.ccs or '-',
+            'release_date': std.publish_date.strftime('%Y-%m-%d') if std.publish_date else '-',
+            'implement_date': std.implement_date.strftime('%Y-%m-%d') if std.implement_date else '-',
+            'drafter': std.company.name if std.company else '-',
         }
         details_map[no] = item_info
         if std.clean_id:
@@ -424,7 +518,7 @@ def fetch_std_details_map(std_nos: list) -> dict:
         d = details_map.get(no) or details_map.get(generate_clean_id(no)) or details_map.get(norm_std_super_key(no))
         if not d or d.get('ics') in ('-', '', None) or d.get('ccs') in ('-', '', None):
             missing_nos.append(no)
-            
+
     if missing_nos:
         try:
             with connections['stsc_db'].cursor() as cursor:
@@ -448,12 +542,15 @@ def fetch_std_details_map(std_nos: list) -> dict:
                     sql = f"""
                         SELECT b.std_id, b.std_id_norm, b.std_chinesename, b.ex_state, b.std_type,
                                COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
-                               COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                               COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs,
+                               b.release_date, b.implement_date,
+                               COALESCE(h.draft_unit, gb.drafter, hb.drafter, tb.drafter) AS drafter
                         FROM std_base b
                         LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
                         LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
                         LEFT JOIN std_db_detail db ON b.id = db.base_id
                         LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
+                        LEFT JOIN std_extend_h h ON b.id = h.base_id
                         WHERE b.std_id_norm IN ({in_clause})
                     """
                     cursor.execute(sql, chunk_keys)
@@ -467,6 +564,9 @@ def fetch_std_details_map(std_nos: list) -> dict:
                         type_disp = detect_std_type_display(s_id, raw_type)
                         ics = row[5] or '-'
                         ccs = row[6] or '-'
+                        rel_date = row[7].strftime('%Y-%m-%d') if row[7] else '-'
+                        imp_date = row[8].strftime('%Y-%m-%d') if row[8] else '-'
+                        drafter_str = row[9] or '-'
 
                         item_dict = {
                             'title': title,
@@ -474,6 +574,9 @@ def fetch_std_details_map(std_nos: list) -> dict:
                             'type': type_disp,
                             'ics': ics,
                             'ccs': ccs,
+                            'release_date': rel_date,
+                            'implement_date': imp_date,
+                            'drafter': drafter_str,
                         }
 
                         clean_ver = generate_clean_id(s_id)
@@ -518,12 +621,15 @@ def fetch_std_details_map(std_nos: list) -> dict:
                             sql = f"""
                                 SELECT b.std_id, b.std_chinesename, b.ex_state, b.std_type,
                                        COALESCE(gb.ics, hb.ics, db.ics, tb.ics) AS ics,
-                                       COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs
+                                       COALESCE(gb.ccs, hb.ccs, db.ccs, tb.ccs) AS ccs,
+                                       b.release_date, b.implement_date,
+                                       COALESCE(h.draft_unit, gb.drafter, hb.drafter, tb.drafter) AS drafter
                                 FROM std_base b
                                 LEFT JOIN std_gb_detail gb ON b.id = gb.base_id
                                 LEFT JOIN std_hb_detail hb ON b.id = hb.base_id
                                 LEFT JOIN std_db_detail db ON b.id = db.base_id
                                 LEFT JOIN std_tb_detail tb ON b.id = tb.base_id
+                                LEFT JOIN std_extend_h h ON b.id = h.base_id
                                 WHERE {where_clauses}
                             """
                             cursor.execute(sql, params)
@@ -536,6 +642,9 @@ def fetch_std_details_map(std_nos: list) -> dict:
                                 type_disp = detect_std_type_display(s_id, raw_type)
                                 ics = row[4] or '-'
                                 ccs = row[5] or '-'
+                                rel_date = row[6].strftime('%Y-%m-%d') if row[6] else '-'
+                                imp_date = row[7].strftime('%Y-%m-%d') if row[7] else '-'
+                                drafter_str = row[8] or '-'
 
                                 item_dict = {
                                     'title': title,
@@ -543,6 +652,9 @@ def fetch_std_details_map(std_nos: list) -> dict:
                                     'type': type_disp,
                                     'ics': ics,
                                     'ccs': ccs,
+                                    'release_date': rel_date,
+                                    'implement_date': imp_date,
+                                    'drafter': drafter_str,
                                 }
 
                                 clean_ver = generate_clean_id(s_id)
@@ -679,12 +791,18 @@ def generate_advanced_export_file(
             if not s_no or s_no in seen_nos:
                 continue
             seen_nos.add(s_no)
+            company_name = std.company.name if std.company else ''
+            pub_date = std.publish_date.strftime('%Y-%m-%d') if std.publish_date else '-'
+            imp_date = std.implement_date.strftime('%Y-%m-%d') if std.implement_date else '-'
             standard_rows.append({
                 '标准号': s_no,
                 '标准名称': std.title or '',
+                '企业名称': company_name,
                 '标准状态': std.get_status_display() or '现行',
                 '标准类型': std.get_type_display() or '企业标准',
                 '制修订': '制定',
+                '发布日期': pub_date,
+                '实施日期': imp_date,
                 'ICS': std.ics or '',
                 'CCS': std.ccs or '',
                 '国民经济分类': std.company.industry_category if std.company else '',
@@ -732,9 +850,12 @@ def generate_advanced_export_file(
             except Exception as fed_err:
                 logger.error(f"Failed to query STSC standards for company {company.name}: {fed_err}")
 
-        # 批量从 stsc_db / 本地 Standard 表抓取补全标题、状态、类型、ICS、CCS
+        # 批量从 stsc_db / 本地 Standard 表抓取补全标题、状态、类型、ICS、CCS、日期与起草单位
         nos_to_fetch = [item['s_no'] for item in other_items]
         details_map = fetch_std_details_map(nos_to_fetch)
+
+        all_ics_raw = []
+        all_ccs_raw = []
 
         for item in other_items:
             s_no = item['s_no']
@@ -749,17 +870,50 @@ def generate_advanced_export_file(
                       details_map.get(s_key) or
                       details_map.get(p_key) or {})
 
+            raw_ics = d_info.get('ics') or fed_info.get('ics') or (std.ics if std else '')
+            raw_ccs = d_info.get('ccs') or fed_info.get('ccs') or (std.ccs if std else '')
+            item['d_info'] = d_info
+            item['raw_ics'] = raw_ics
+            item['raw_ccs'] = raw_ccs
+
+            if raw_ics:
+                all_ics_raw.append(raw_ics)
+            if raw_ccs:
+                all_ccs_raw.append(raw_ccs)
+
+        ics_map, ccs_map = fetch_ics_ccs_name_maps(all_ics_raw, all_ccs_raw)
+
+        for item in other_items:
+            s_no = item['s_no']
+            std = item['std']
+            fed_info = item.get('fed_info') or {}
+            d_info = item.get('d_info') or {}
+
             raw_title = d_info.get('title') or fed_info.get('title') or (std.title if std else '')
             title = raw_title if (raw_title and raw_title != '-') else '-'
 
             status = d_info.get('status') or fed_info.get('status') or (std.get_status_display() if std else '现行')
             stype = d_info.get('type') or fed_info.get('type') or (std.get_type_display() if (std and std.type != 'enterprise') else detect_std_type_display(s_no))
 
-            raw_ics = d_info.get('ics') or (std.ics if std else '')
-            ics = raw_ics if (raw_ics and raw_ics != '-') else '-'
+            ics, ics_zh = format_codes_and_names(item.get('raw_ics'), ics_map)
+            ccs, ccs_zh = format_codes_and_names(item.get('raw_ccs'), ccs_map)
 
-            raw_ccs = d_info.get('ccs') or (std.ccs if std else '')
-            ccs = raw_ccs if (raw_ccs and raw_ccs != '-') else '-'
+            pub_date = (std.publish_date.strftime('%Y-%m-%d') if std and std.publish_date else None) or d_info.get('release_date') or fed_info.get('release_date') or '-'
+            imp_date = (std.implement_date.strftime('%Y-%m-%d') if std and std.implement_date else None) or d_info.get('implement_date') or fed_info.get('implement_date') or '-'
+
+            drafters_raw = fed_info.get('drafters') or d_info.get('drafter') or ''
+            if isinstance(drafters_raw, list):
+                drafters_disp = ", ".join(drafters_raw) if drafters_raw else '-'
+            elif isinstance(drafters_raw, str) and drafters_raw.strip():
+                drafters_disp = drafters_raw.strip()
+            else:
+                drafters_disp = '-'
+
+            rank_order = fed_info.get('rank_order') or d_info.get('rank_order')
+            if rank_order:
+                rank_disp = f"第{rank_order}名"
+            else:
+                rank_disp = '-'
 
             other_standard_rows.append({
                 '标准号': s_no,
@@ -767,11 +921,16 @@ def generate_advanced_export_file(
                 '标准状态': status,
                 '标准类型': stype,
                 '制修订': '制定',
+                '发布日期': pub_date,
+                '实施日期': imp_date,
                 'ICS': ics,
+                'ICS中文名称': ics_zh,
                 'CCS': ccs,
+                'CCS中文名称': ccs_zh,
+                '起草单位': drafters_disp,
+                '起草单位排名名次': rank_disp,
                 '国民经济分类': item['industry_category'],
             })
-
 
     # 6. 文件写出
     exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
@@ -780,7 +939,8 @@ def generate_advanced_export_file(
     file_prefix = f"advanced_export_{uuid_str}"
 
     co_cols = ['企业名称', '统一信用代码', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
-    std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', 'ICS', 'CCS', '国民经济分类']
+    std_cols = ['标准号', '标准名称', '企业名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'CCS', '国民经济分类']
+    other_std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'ICS中文名称', 'CCS', 'CCS中文名称', '起草单位', '起草单位排名名次', '国民经济分类']
 
     if file_format == 'separate_zip':
         zip_filename = f"{file_prefix}.zip"
@@ -800,7 +960,7 @@ def generate_advanced_export_file(
                 zf.writestr('2_企标目录.xlsx', std_buf.getvalue())
 
             if 'other_standard' in content_set:
-                df_other = pd.DataFrame(other_standard_rows, columns=std_cols)
+                df_other = pd.DataFrame(other_standard_rows, columns=other_std_cols)
                 other_buf = io.BytesIO()
                 df_other.to_excel(other_buf, index=False, sheet_name='国行地团标目录', engine='openpyxl')
                 zf.writestr('3_国行地团标目录.xlsx', other_buf.getvalue())
@@ -818,7 +978,7 @@ def generate_advanced_export_file(
                 df_std = pd.DataFrame(standard_rows, columns=std_cols)
                 df_std.to_excel(writer, sheet_name='企标目录', index=False)
             if 'other_standard' in content_set:
-                df_other = pd.DataFrame(other_standard_rows, columns=std_cols)
+                df_other = pd.DataFrame(other_standard_rows, columns=other_std_cols)
                 df_other.to_excel(writer, sheet_name='国行地团标目录', index=False)
 
         return f"exports/{excel_filename}"

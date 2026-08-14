@@ -97,6 +97,8 @@ class DateExtractionTestCase(TestCase):
 
 
 class AdvancedExportTestCase(TestCase):
+    databases = {'default', 'stsc_db'}
+
     def setUp(self):
         from companies.models import Company
         from standards.models import Standard
