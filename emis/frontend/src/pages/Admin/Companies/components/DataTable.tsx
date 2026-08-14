@@ -1,6 +1,6 @@
 import React from 'react';
 import { Table, Tag, Space, Button, Popconfirm, Tooltip, Spin } from 'antd';
-import { EditOutlined, DeleteOutlined, EnvironmentOutlined, EyeOutlined } from '@ant-design/icons';
+import { EditOutlined, DeleteOutlined, EnvironmentOutlined, EyeOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import type { Company } from '@/types';
 import { useSearchData } from '@/hooks/useSearchData';
@@ -13,6 +13,7 @@ interface DataTableProps {
   onSelectionChange: (keys: number[]) => void;
   onEdit: (record: Company) => void;
   onViewDetails: (record: Company) => void;
+  onSyncOwnership?: (record: Company) => void;
   onDelete: (id: number) => void;
   onChange: (pagination: any) => void;
 }
@@ -99,6 +100,7 @@ const DataTable: React.FC<DataTableProps> = ({
   onSelectionChange,
   onEdit,
   onViewDetails,
+  onSyncOwnership,
   onDelete,
   onChange,
 }) => {
@@ -150,10 +152,53 @@ const DataTable: React.FC<DataTableProps> = ({
       ),
     },
     {
+      title: '所有制 / 标签',
+      key: 'ownership_categories',
+      width: 200,
+      render: (_, record) => {
+        const categories = record.ownership_categories || [];
+        if (categories.length === 0) {
+          return <span style={{ color: '#bfbfbf', fontSize: 12 }}>未标记</span>;
+        }
+        return (
+          <Space size={[4, 4]} wrap>
+            {categories.map((cat) => (
+              <Tooltip
+                key={cat.id}
+                title={
+                  cat.definition ? (
+                    <div style={{ maxWidth: 280, fontSize: 12 }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#e6f7ff' }}>
+                        {cat.name} {cat.parent_name ? `(${cat.parent_name})` : ''}
+                      </div>
+                      <div style={{ color: '#ffffff', lineHeight: 1.4 }}>{cat.definition}</div>
+                    </div>
+                  ) : cat.name
+                }
+                placement="topLeft"
+              >
+                <Tag
+                  color={cat.badge_color || (cat.category_type === 'main' ? 'blue' : 'geekblue')}
+                  style={{
+                    marginRight: 0,
+                    cursor: 'pointer',
+                    fontSize: 12,
+                    borderRadius: 4,
+                  }}
+                >
+                  {cat.name}
+                </Tag>
+              </Tooltip>
+            ))}
+          </Space>
+        );
+      },
+    },
+    {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 90,
       render: (status: string) => (
         <Tag color={status === 'active' ? 'green' : 'red'}>
           {status === 'active' ? '正常' : '禁用'}
@@ -164,14 +209,14 @@ const DataTable: React.FC<DataTableProps> = ({
       title: '入库时间',
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 120,
+      width: 110,
       render: (val) => val ? val.split('T')[0] : '',
     },
     {
       title: '操作',
       key: 'action',
       fixed: 'right',
-      width: 150,
+      width: 170,
       render: (_, record) => (
         <Space size="small">
           <Tooltip title="查看详情">
@@ -188,6 +233,15 @@ const DataTable: React.FC<DataTableProps> = ({
               onClick={() => onEdit(record)}
             />
           </Tooltip>
+          {onSyncOwnership && (
+            <Tooltip title="智能识别所有制与标签">
+              <Button
+                type="text"
+                icon={<ThunderboltOutlined style={{ color: '#722ed1' }} />}
+                onClick={() => onSyncOwnership(record)}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="删除">
             <Popconfirm
               title="确定要删除该企业吗？"

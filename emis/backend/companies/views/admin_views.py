@@ -14,7 +14,7 @@ from rest_framework.parsers import MultiPartParser
 
 from companies.models import Company, Lead, FollowUp, Attachment, LeadOption
 from companies.serializers import (
-    CompanySerializer, CompanyListSerializer, LeadSerializer, 
+    CompanySerializer, CompanyDetailSerializer, CompanyListSerializer, LeadSerializer, 
     FollowUpSerializer, AttachmentSerializer, LeadOptionSerializer
 )
 from companies import services
@@ -45,6 +45,8 @@ class CompanyAdminListCreateView(generics.ListCreateAPIView):
             city_id=params.get('city_id'),
             district_id=params.get('district_id'),
             status=params.get('status', ''),
+            category_id=params.get('category_id'),
+            category_code=params.get('category_code'),
         )
 
 
@@ -605,6 +607,76 @@ class AdminLeadOptionViewSet(viewsets.ModelViewSet):
         if option_type:
             queryset = queryset.filter(option_type=option_type)
         return queryset.order_by('option_type', 'sort_order', 'id')
+
+
+class CompanyBatchTagView(APIView):
+    """
+    POST /api/admin/companies/batch_tag/ — 批量给企业打标签/移除标签
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        company_ids = request.data.get('company_ids', [])
+        category_ids = request.data.get('category_ids', [])
+        action = request.data.get('action', 'add')  # 'add', 'remove', 'replace'
+
+        if not company_ids:
+            return Response({'error': '请选择要操作的企业'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from companies.models import CompanyCategory
+        categories = list(CompanyCategory.objects.filter(id__in=category_ids))
+
+        # 自动关联父级大类
+        parent_categories = [c.parent for c in categories if c.parent]
+        all_cats_to_link = set(categories + parent_categories)
+
+        companies = Company.objects.filter(id__in=company_ids, is_deleted=False)
+        updated_count = 0
+        for company in companies:
+            if action == 'add':
+                company.ownership_categories.add(*all_cats_to_link)
+            elif action == 'remove':
+                company.ownership_categories.remove(*categories)
+            elif action == 'replace':
+                company.ownership_categories.set(all_cats_to_link)
+            updated_count += 1
+
+        return Response({
+            'message': f'成功为 {updated_count} 家企业更新标签',
+            'updated_count': updated_count
+        }, status=status.HTTP_200_OK)
+
+
+class CompanySyncOwnershipView(APIView):
+    """
+    POST /api/admin/companies/{id}/sync_ownership/ — 触发单家企业 QCC / 规则智能所有制标签识别
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, pk, *args, **kwargs):
+        company = Company.objects.filter(id=pk, is_deleted=False).first()
+        if not company:
+            return Response({'error': '企业不存在'}, status=status.HTTP_404_NOT_FOUND)
+
+        use_qcc = request.data.get('use_qcc', False)
+        from companies.ownership_service import OwnershipTagService
+
+        tags_applied = []
+        if use_qcc:
+            qcc_data = OwnershipTagService.call_qcc_api(company.name, company.credit_code)
+            if qcc_data:
+                tags_applied = OwnershipTagService.parse_and_assign_qcc_data(company, qcc_data)
+
+        if not tags_applied:
+            tags_applied = OwnershipTagService.predict_and_assign_by_rules(company)
+
+        serializer = CompanyDetailSerializer(company)
+        return Response({
+            'message': f'识别成功，已打上标签: {", ".join(tags_applied)}',
+            'tags': tags_applied,
+            'company': serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 
 

@@ -26,6 +26,20 @@ class DistrictSerializer(serializers.ModelSerializer):
 
 from rest_framework.serializers import ListSerializer
 from django.core.cache import cache
+from .models import Company, Province, City, District, CompanyCategory
+
+
+class CompanyCategorySerializer(serializers.ModelSerializer):
+    """企业所有制与身份分类标签序列化器"""
+    parent_name = serializers.CharField(source='parent.name', read_only=True, default='')
+
+    class Meta:
+        model = CompanyCategory
+        fields = [
+            'id', 'code', 'name', 'category_type', 'parent_id', 'parent_name',
+            'definition', 'badge_color', 'sort_order', 'is_active'
+        ]
+
 
 class CompanyBulkListSerializer(ListSerializer):
     def to_representation(self, data):
@@ -70,6 +84,8 @@ class CompanyListSerializer(serializers.ModelSerializer):
     province_name = serializers.CharField(source='province.name', read_only=True, default='')
     city_name = serializers.CharField(source='city.name', read_only=True, default='')
     district_name = serializers.CharField(source='district.name', read_only=True, default='')
+    # 所有制标签列表
+    ownership_categories = CompanyCategorySerializer(many=True, read_only=True)
     # LBS 检索时附带距离（可能为 None）
     distance_km = serializers.SerializerMethodField()
     standards_count = serializers.SerializerMethodField()
@@ -82,6 +98,7 @@ class CompanyListSerializer(serializers.ModelSerializer):
             'province_name', 'city_name', 'district_name',
             'latitude', 'longitude', 'contact', 'status',
             'distance_km', 'standards_count', 'created_at',
+            'ownership_categories',
         ]
 
     def get_distance_km(self, obj):
@@ -115,6 +132,10 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
     district_id = serializers.PrimaryKeyRelatedField(
         queryset=District.objects.all(), source='district', write_only=True, required=False
     )
+    ownership_categories = CompanyCategorySerializer(many=True, read_only=True)
+    ownership_category_ids = serializers.PrimaryKeyRelatedField(
+        queryset=CompanyCategory.objects.all(), source='ownership_categories', many=True, write_only=True, required=False
+    )
 
     class Meta:
         model = Company
@@ -124,6 +145,7 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             'province_id', 'city_id', 'district_id',
             'latitude', 'longitude', 'contact', 'address',
             'status', 'is_deleted', 'created_at', 'updated_at',
+            'ownership_categories', 'ownership_category_ids',
             # 16个新增详细字段
             'established_date', 'registered_address', 'registered_zipcode',
             'valid_mobile', 'more_phones', 'email', 'company_type',
@@ -137,7 +159,7 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
 
 
-from .models import Company, Province, City, District, Lead, FollowUp, Attachment, LeadOption
+from .models import Company, Province, City, District, Lead, FollowUp, Attachment, LeadOption, CompanyCategory
 
 
 class LeadOptionSerializer(serializers.ModelSerializer):

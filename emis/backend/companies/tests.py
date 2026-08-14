@@ -213,4 +213,82 @@ class LeadAPITests(APITestCase):
         self.assertEqual(response4.data['id'], response3.data['id'])
 
 
+class OwnershipCategoryTests(APITestCase):
+    databases = '__all__'
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='admin_owner',
+            password='password123',
+            is_staff=True,
+            is_superuser=True
+        )
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+
+        from companies.models import CompanyCategory
+        self.main_cat = CompanyCategory.objects.create(
+            code='state_owned',
+            name='国有企业',
+            category_type='main',
+            badge_color='blue',
+            sort_order=10,
+            definition='国有企业主分类'
+        )
+        self.sub_cat = CompanyCategory.objects.create(
+            code='central_soe',
+            name='央企',
+            category_type='sub',
+            parent=self.main_cat,
+            badge_color='blue',
+            sort_order=11,
+            definition='国务院国资委履行出资人职责的企业'
+        )
+
+        self.company = Company.objects.create(
+            name="中国石油天然气集团有限公司",
+            credit_code="91110000MA11111111",
+            status="active",
+            company_type="有限责任公司(国有独资)"
+        )
+
+    def test_category_dict_api(self):
+        url = reverse('dict-categories')
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 2)
+
+    def test_ownership_tag_service_rules(self):
+        from companies.ownership_service import OwnershipTagService
+        tags = OwnershipTagService.predict_and_assign_by_rules(self.company)
+        self.assertTrue(self.company.ownership_categories.filter(code='state_owned').exists())
+
+    def test_company_batch_tag(self):
+        url = reverse('admin-company-batch-tag')
+        data = {
+            'company_ids': [self.company.id],
+            'category_ids': [self.sub_cat.id],
+            'action': 'add'
+        }
+        response = self.client.post(url, data, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(self.company.ownership_categories.filter(code='central_soe').exists())
+        self.assertTrue(self.company.ownership_categories.filter(code='state_owned').exists())
+
+    def test_company_filter_by_category(self):
+        self.company.ownership_categories.add(self.main_cat, self.sub_cat)
+        url = reverse('admin-company-list')
+        response = self.client.get(url, {'category_code': 'state_owned'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['ownership_categories'][0]['code'], 'state_owned')
+
+    def test_company_sync_ownership_endpoint(self):
+        url = reverse('admin-company-sync-ownership', kwargs={'pk': self.company.id})
+        response = self.client.post(url, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(len(response.data['tags']) > 0)
+
+
+
 

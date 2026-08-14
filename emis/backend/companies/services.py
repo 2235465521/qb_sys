@@ -77,6 +77,8 @@ def search_companies(
     ccs: str = '',
     standard_logic: str = 'OR',
     status: str = 'active',
+    category_id: int = None,
+    category_code: str = '',
 ):
     """
     多维度企业与标准级联检索（支持任意组合条件）
@@ -86,6 +88,7 @@ def search_companies(
       2. 经纬度 LBS 范围筛选 (lat, lng, radius_km) 并能与其他条件 AND 联动
       3. 企业名称/信用代码关键词匹配
       4. 企业标准 ICS / CCS 分类筛选 (支持 OR / AND 逻辑)
+      5. 企业所有制分类与标签树筛选 (大类/小类)
     """
     qs = Company.objects.filter(is_deleted=False)
 
@@ -110,13 +113,33 @@ def search_companies(
     if d_id:
         qs = qs.filter(district_id=d_id)
 
-    # 2. 关键词搜索（企业名称、信用代码、法人）
+    # 2. 所有制分类与标签筛选
+    from .models import CompanyCategory
+    cat_id = to_int(category_id)
+    if cat_id:
+        cat = CompanyCategory.objects.filter(id=cat_id).first()
+        if cat:
+            if cat.category_type == 'main':
+                sub_ids = list(cat.children.values_list('id', flat=True))
+                qs = qs.filter(ownership_categories__id__in=[cat.id] + sub_ids).distinct()
+            else:
+                qs = qs.filter(ownership_categories=cat).distinct()
+    elif category_code:
+        cat = CompanyCategory.objects.filter(code=category_code).first()
+        if cat:
+            if cat.category_type == 'main':
+                sub_ids = list(cat.children.values_list('id', flat=True))
+                qs = qs.filter(ownership_categories__id__in=[cat.id] + sub_ids).distinct()
+            else:
+                qs = qs.filter(ownership_categories=cat).distinct()
+
+    # 3. 关键词搜索（企业名称、信用代码、法人）
     if keyword:
         from standards.utils.search_utils import build_smart_search_q
         search_q = build_smart_search_q(keyword, ['name', 'credit_code', 'legal_person'])
         qs = qs.filter(search_q)
 
-    # 3. 标准分类 ICS/CCS 筛选 (支持 AND / OR 逻辑)
+    # 4. 标准分类 ICS/CCS 筛选 (支持 AND / OR 逻辑)
     if ics or ccs:
         from standards.models import Standard
         
@@ -139,7 +162,7 @@ def search_companies(
             matching_companies = Standard.objects.filter(std_q).values_list('company_id', flat=True)
             qs = qs.filter(id__in=matching_companies)
 
-    # 4. LBS 范围筛选 (支持与其他条件 AND 级联联动)
+    # 5. LBS 范围筛选 (支持与其他条件 AND 级联联动)
     if center_lat is not None and center_lng is not None and radius_km:
         from django.db.models.expressions import RawSQL
         from django.db.models import FloatField
@@ -158,14 +181,11 @@ def search_companies(
             .order_by('distance_meters')
         )
 
-    # 5. 统计企业名下的企标与团标数量
-    # 移除全局 annotate(Count) 以避免分页时触发几十万行数据的慢子查询 COUNT() 导致长达十几秒的卡顿。
-    # 我们将在 Serializer 中获取当前分页（仅 20 条）的 standards 数量。
-
+    # 6. 排序
     if center_lat is None:
         qs = qs.order_by('-standards_count', '-id')
 
-    return qs.select_related('province', 'city', 'district').prefetch_related('standards')
+    return qs.select_related('province', 'city', 'district').prefetch_related('standards', 'ownership_categories')
 
 
 # ============================================================
@@ -446,6 +466,7 @@ def export_companies_to_excel(queryset) -> bytes:
     header_align = Alignment(horizontal='center', vertical='center')
 
     headers = ['企业名称', '统一社会信用代码', '法人', '省份', '城市', '区县',
+               '所有制大类', '所有制标签',
                '纬度', '经度', '联系方式', '详细地址', '状态', '入库时间']
 
     for col, header in enumerate(headers, 1):
@@ -456,18 +477,24 @@ def export_companies_to_excel(queryset) -> bytes:
 
     # 数据行
     for row_idx, company in enumerate(queryset, 2):
+        cats = list(company.ownership_categories.all())
+        main_cats = [c.name for c in cats if c.category_type == 'main']
+        sub_cats = [c.name for c in cats if c.category_type == 'sub']
+
         ws.cell(row=row_idx, column=1, value=company.name)
         ws.cell(row=row_idx, column=2, value=company.credit_code)
         ws.cell(row=row_idx, column=3, value=company.legal_person)
         ws.cell(row=row_idx, column=4, value=company.province.name if company.province else '')
         ws.cell(row=row_idx, column=5, value=company.city.name if company.city else '')
         ws.cell(row=row_idx, column=6, value=company.district.name if company.district else '')
-        ws.cell(row=row_idx, column=7, value=float(company.latitude) if company.latitude else '')
-        ws.cell(row=row_idx, column=8, value=float(company.longitude) if company.longitude else '')
-        ws.cell(row=row_idx, column=9, value=company.contact)
-        ws.cell(row=row_idx, column=10, value=company.address)
-        ws.cell(row=row_idx, column=11, value=company.get_status_display())
-        ws.cell(row=row_idx, column=12, value=company.created_at.strftime('%Y-%m-%d'))
+        ws.cell(row=row_idx, column=7, value=', '.join(main_cats))
+        ws.cell(row=row_idx, column=8, value=', '.join(sub_cats))
+        ws.cell(row=row_idx, column=9, value=float(company.latitude) if company.latitude else '')
+        ws.cell(row=row_idx, column=10, value=float(company.longitude) if company.longitude else '')
+        ws.cell(row=row_idx, column=11, value=company.contact)
+        ws.cell(row=row_idx, column=12, value=company.address)
+        ws.cell(row=row_idx, column=13, value=company.get_status_display())
+        ws.cell(row=row_idx, column=14, value=company.created_at.strftime('%Y-%m-%d'))
 
     # 自动列宽
     for col in ws.columns:
@@ -505,6 +532,8 @@ def export_companies_to_excel_advanced(queryset, fields=None, include_standards=
         'province': ('省份', lambda c: c.province.name if c.province else ''),
         'city': ('城市', lambda c: c.city.name if c.city else ''),
         'district': ('区县', lambda c: c.district.name if c.district else ''),
+        'ownership_category': ('所有制大类', lambda c: ', '.join([cat.name for cat in c.ownership_categories.all() if cat.category_type == 'main'])),
+        'ownership_tags': ('所有制标签', lambda c: ', '.join([cat.name for cat in c.ownership_categories.all() if cat.category_type == 'sub'])),
         'latitude': ('纬度', lambda c: float(c.latitude) if c.latitude else ''),
         'longitude': ('经度', lambda c: float(c.longitude) if c.longitude else ''),
         'contact': ('联系方式', lambda c: c.contact),

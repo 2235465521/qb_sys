@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button, Spin, Tag } from 'antd';
+import { Modal, Form, Input, Select, InputNumber, Row, Col, Tabs, Button, Spin, Tag, Tooltip, message } from 'antd';
+import { ThunderboltOutlined } from '@ant-design/icons';
 import type { Company } from '@/types';
 import { useDictData } from '@/hooks/useDictData';
 import apiClient from '@/api/client';
@@ -108,8 +109,9 @@ const ActionModal: React.FC<ActionModalProps> = ({
   const [form] = Form.useForm();
   const [selectedProvince, setSelectedProvince] = useState<number>();
   const [selectedCity, setSelectedCity] = useState<number>();
+  const [syncingTags, setSyncingTags] = useState(false);
 
-  const { provinceQuery, useCityQuery, useDistrictQuery } = useDictData();
+  const { provinceQuery, useCityQuery, useDistrictQuery, categoryQuery } = useDictData();
   const { data: cities } = useCityQuery(selectedProvince);
   const { data: districts } = useDistrictQuery(selectedCity);
 
@@ -132,6 +134,7 @@ const ActionModal: React.FC<ActionModalProps> = ({
                 province_id: data.province?.id,
                 city_id: data.city?.id,
                 district_id: data.district?.id,
+                ownership_category_ids: data.ownership_categories?.map((c: any) => c.id) || [],
               };
               form.setFieldsValue(formattedData);
               if (formattedData.province_id) setSelectedProvince(formattedData.province_id);
@@ -141,7 +144,10 @@ const ActionModal: React.FC<ActionModalProps> = ({
               setLoadingDetail(false);
             });
         } else {
-          form.setFieldsValue(editingRecord);
+          form.setFieldsValue({
+            ...editingRecord,
+            ownership_category_ids: editingRecord.ownership_categories?.map((c: any) => c.id) || [],
+          });
         }
       } else {
         setSelectedProvince(undefined);
@@ -149,6 +155,27 @@ const ActionModal: React.FC<ActionModalProps> = ({
       }
     }
   }, [open, editingRecord, form]);
+
+  const handleAutoDetectTags = async () => {
+    if (!editingRecord?.id) {
+      message.info('新建企业填写完成后，系统将在保存时自动完成规则预打标');
+      return;
+    }
+    setSyncingTags(true);
+    try {
+      const res = await apiClient.post(`/admin/companies/${editingRecord.id}/sync_ownership/`, { use_qcc: false });
+      message.success(res.data.message || '识别成功');
+      if (res.data.company?.ownership_categories) {
+        const ids = res.data.company.ownership_categories.map((c: any) => c.id);
+        form.setFieldsValue({ ownership_category_ids: ids });
+        setCompanyDetail(res.data.company);
+      }
+    } catch (e: any) {
+      message.error('智能识别失败');
+    } finally {
+      setSyncingTags(false);
+    }
+  };
 
   const handleOk = async () => {
     if (isViewOnly) {
@@ -185,6 +212,85 @@ const ActionModal: React.FC<ActionModalProps> = ({
           </Form.Item>
         </Col>
       </Row>
+
+      <Form.Item
+        name="ownership_category_ids"
+        label={
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <span>企业所有制性质与属性标签</span>
+            {!isViewOnly && (
+              <Button
+                type="link"
+                size="small"
+                icon={<ThunderboltOutlined />}
+                loading={syncingTags}
+                onClick={handleAutoDetectTags}
+                style={{ padding: 0 }}
+              >
+                一键智能识别所有制
+              </Button>
+            )}
+          </div>
+        }
+      >
+        {isViewOnly ? (
+          <div style={{ minHeight: 32, display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+            {companyDetail?.ownership_categories && companyDetail.ownership_categories.length > 0 ? (
+              companyDetail.ownership_categories.map((cat: any) => (
+                <Tooltip
+                  key={cat.id}
+                  title={
+                    cat.definition ? (
+                      <div style={{ maxWidth: 280, fontSize: 12 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: 4, color: '#e6f7ff' }}>
+                          {cat.name} {cat.parent_name ? `(${cat.parent_name})` : ''}
+                        </div>
+                        <div style={{ color: '#fff', lineHeight: 1.4 }}>{cat.definition}</div>
+                      </div>
+                    ) : cat.name
+                  }
+                >
+                  <Tag color={cat.badge_color || (cat.category_type === 'main' ? 'blue' : 'geekblue')} style={{ fontSize: 12 }}>
+                    {cat.name}
+                  </Tag>
+                </Tooltip>
+              ))
+            ) : (
+              <span style={{ color: '#bfbfbf', fontSize: 12 }}>暂未设置所有制标签</span>
+            )}
+          </div>
+        ) : (
+          <Select
+            mode="multiple"
+            placeholder="请选择企业归属的所有制大类及小类属性标签（可多选）"
+            style={{ width: '100%' }}
+            loading={categoryQuery.isLoading}
+            optionLabelProp="label"
+          >
+            {categoryQuery.data
+              ?.filter(c => c.category_type === 'main')
+              .map(mainCat => {
+                const subCats = categoryQuery.data?.filter(s => s.parent_id === mainCat.id);
+                return (
+                  <Select.OptGroup key={mainCat.id} label={mainCat.name}>
+                    <Select.Option key={mainCat.id} value={mainCat.id} label={mainCat.name}>
+                      <Tooltip title={mainCat.definition} placement="right">
+                        <div style={{ fontWeight: 'bold' }}>{mainCat.name} (主大类)</div>
+                      </Tooltip>
+                    </Select.Option>
+                    {subCats?.map(sub => (
+                      <Select.Option key={sub.id} value={sub.id} label={sub.name}>
+                        <Tooltip title={sub.definition} placement="right">
+                          <div style={{ paddingLeft: 12 }}>└─ {sub.name}</div>
+                        </Tooltip>
+                      </Select.Option>
+                    ))}
+                  </Select.OptGroup>
+                );
+              })}
+          </Select>
+        )}
+      </Form.Item>
 
       <Row gutter={16}>
         <Col span={8}>

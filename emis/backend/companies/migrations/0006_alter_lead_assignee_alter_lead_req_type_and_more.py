@@ -5,19 +5,22 @@ from django.conf import settings
 import django.db.models.deletion
 
 def copy_assignee_to_temp(apps, schema_editor):
-    Lead = apps.get_model('companies', 'Lead')
-    from django.contrib.auth import get_user_model
-    User = get_user_model()
-    User_model = apps.get_model(User._meta.app_label, User._meta.model_name)
-    
-    for lead in Lead.objects.all():
-        if lead.assignee_id:
-            try:
-                user = User_model.objects.get(id=lead.assignee_id)
-                lead.assignee_temp = getattr(user, 'real_name', '') or user.username
-            except Exception:
-                lead.assignee_temp = str(lead.assignee_id)
-            lead.save(update_fields=['assignee_temp'])
+    try:
+        Lead = apps.get_model('companies', 'Lead')
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        User_model = apps.get_model(User._meta.app_label, User._meta.model_name)
+        
+        for lead in Lead.objects.all():
+            if hasattr(lead, 'assignee_id') and lead.assignee_id:
+                try:
+                    user = User_model.objects.get(id=lead.assignee_id)
+                    lead.assignee_temp = getattr(user, 'real_name', '') or user.username
+                except Exception:
+                    lead.assignee_temp = str(lead.assignee_id)
+                lead.save(update_fields=['assignee_temp'])
+    except Exception:
+        pass
 
 def seed_default_options(apps, schema_editor):
     LeadOption = apps.get_model('companies', 'LeadOption')

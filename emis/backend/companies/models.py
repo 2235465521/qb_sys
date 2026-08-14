@@ -65,6 +65,47 @@ class District(models.Model):
 
 
 # ============================================================
+# 企业所有制与身份分类标签模型
+# ============================================================
+
+class CompanyCategory(models.Model):
+    """
+    企业所有制与身份分类标签体系（树状多级结构）
+    包含 4 大类（国有企业、民营企业、港澳台投资企业、外商投资企业）及 19+ 个小类标签
+    """
+    CATEGORY_TYPE_CHOICES = [
+        ('main', '主大类'),
+        ('sub', '小类标签'),
+    ]
+
+    code = models.CharField('分类编码', max_length=50, unique=True, db_index=True)
+    name = models.CharField('分类名称', max_length=100, db_index=True)
+    category_type = models.CharField('分类类型', max_length=20, choices=CATEGORY_TYPE_CHOICES, default='sub')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE, null=True, blank=True,
+        related_name='children', verbose_name='所属父级分类'
+    )
+    definition = models.TextField('官方权威定义', blank=True, help_text='国资委或法律法规标准权威定义')
+    badge_color = models.CharField('标签颜色', max_length=30, blank=True, default='blue', help_text='前端展示 Badge 颜色')
+    sort_order = models.IntegerField('排序权重', default=0)
+    is_active = models.BooleanField('是否启用', default=True)
+
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    updated_at = models.DateTimeField('更新时间', auto_now=True)
+
+    class Meta:
+        db_table = 'companies_category'
+        verbose_name = '企业所有制分类与标签'
+        verbose_name_plural = '企业所有制分类与标签'
+        ordering = ['sort_order', 'id']
+
+    def __str__(self):
+        if self.parent:
+            return f"{self.parent.name} - {self.name}"
+        return self.name
+
+
+# ============================================================
 # 企业信息主表
 # ============================================================
 
@@ -79,6 +120,11 @@ class Company(models.Model):
     name = models.CharField('企业名称', max_length=200, db_index=True)
     credit_code = models.CharField('统一社会信用代码', max_length=25, unique=True)
     legal_person = models.CharField('法人', max_length=50, blank=True)
+
+    # 所有制分类与标签（多对多关联）
+    ownership_categories = models.ManyToManyField(
+        CompanyCategory, blank=True, related_name='companies', verbose_name='所有制分类与标签'
+    )
 
     # 行政区划（存储名称方便显示，外键方便联动）
     province = models.ForeignKey(

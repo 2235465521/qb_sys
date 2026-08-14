@@ -37,6 +37,21 @@ export interface District {
   city_id: number
 }
 
+// ── 企业所有制分类与标签 ──────────────────────────────
+
+export interface CompanyCategory {
+  id: number
+  code: string
+  name: string
+  category_type: 'main' | 'sub'
+  parent_id?: number | null
+  parent_name?: string
+  definition?: string
+  badge_color?: string
+  sort_order: number
+  is_active: boolean
+}
+
 // ── 企业 ─────────────────────────────────────────────────
 
 export interface Company {
@@ -57,6 +72,7 @@ export interface Company {
   status: 'active' | 'disabled'
   distance_km?: number | null
   standards_count?: number
+  ownership_categories?: CompanyCategory[]
   created_at: string
 }
 
@@ -65,6 +81,8 @@ export interface CompanySearchParams {
   province_id?: number
   city_id?: number
   district_id?: number
+  category_id?: number
+  category_code?: string
   lat?: number
   lng?: number
   radius_km?: number

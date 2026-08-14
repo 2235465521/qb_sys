@@ -15,7 +15,7 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onReset, loading }) =
   const [selectedProvince, setSelectedProvince] = useState<number>();
   const [selectedCity, setSelectedCity] = useState<number>();
 
-  const { provinceQuery, useCityQuery, useDistrictQuery } = useDictData();
+  const { provinceQuery, useCityQuery, useDistrictQuery, categoryQuery } = useDictData();
   const { data: cities } = useCityQuery(selectedProvince);
   const { data: districts } = useDistrictQuery(selectedCity);
 
@@ -77,10 +77,36 @@ const SearchForm: React.FC<SearchFormProps> = ({ onSearch, onReset, loading }) =
           </Select>
         </Form.Item>
         <Form.Item name="keyword" label="关键字">
-          <Input placeholder="企业名称 / 信用代码" allowClear style={{ width: 180 }} />
+          <Input placeholder="企业名称 / 信用代码" allowClear style={{ width: 170 }} />
+        </Form.Item>
+        <Form.Item name="category_id" label="所有制分类">
+          <Select
+            placeholder="所有制/属性标签"
+            style={{ width: 180 }}
+            allowClear
+            loading={categoryQuery.isLoading}
+          >
+            {categoryQuery.data
+              ?.filter(c => c.category_type === 'main')
+              .map(mainCat => {
+                const subCats = categoryQuery.data?.filter(s => s.parent_id === mainCat.id);
+                return (
+                  <Select.OptGroup key={mainCat.id} label={mainCat.name}>
+                    <Select.Option key={mainCat.id} value={mainCat.id}>
+                      【全部{mainCat.name}】
+                    </Select.Option>
+                    {subCats?.map(sub => (
+                      <Select.Option key={sub.id} value={sub.id}>
+                        {sub.name}
+                      </Select.Option>
+                    ))}
+                  </Select.OptGroup>
+                );
+              })}
+          </Select>
         </Form.Item>
         <Form.Item name="status" label="状态">
-          <Select style={{ width: 120 }}>
+          <Select style={{ width: 100 }}>
             <Select.Option value="">全部</Select.Option>
             <Select.Option value="active">正常</Select.Option>
             <Select.Option value="disabled">禁用</Select.Option>

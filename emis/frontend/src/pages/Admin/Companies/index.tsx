@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Button, Space, message, Modal, Checkbox, Switch, Row, Col, Divider, Radio } from 'antd';
-import { PlusOutlined, ExportOutlined, ImportOutlined } from '@ant-design/icons';
+import { Button, Space, message, Modal, Checkbox, Switch, Row, Col, Divider, Radio, Select, Form, Tooltip } from 'antd';
+import { PlusOutlined, ExportOutlined, ImportOutlined, TagsOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import DataTable from './components/DataTable';
 import ActionModal from './components/ActionModal';
 import ImportModal from './components/ImportModal';
 import { useCompanyData } from '@/hooks/useCompanyData';
+import { useDictData } from '@/hooks/useDictData';
 import type { Company, CompanySearchParams } from '@/types';
 import apiClient from '@/api/client';
 
@@ -16,6 +17,8 @@ const EXPORT_FIELDS_OPTIONS = [
   { label: '省份', value: 'province' },
   { label: '城市', value: 'city' },
   { label: '区县', value: 'district' },
+  { label: '所有制大类', value: 'ownership_category' },
+  { label: '所有制标签', value: 'ownership_tags' },
   { label: '经度', value: 'longitude' },
   { label: '纬度', value: 'latitude' },
   { label: '联系方式', value: 'contact' },
@@ -70,6 +73,12 @@ const CompanyListPage: React.FC = () => {
   const [includeStandards, setIncludeStandards] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  // 批量打标签 Modal 状态
+  const [batchTagModalVisible, setBatchTagModalVisible] = useState(false);
+  const [batchTagging, setBatchTagging] = useState(false);
+  const [batchTagForm] = Form.useForm();
+
+  const { categoryQuery } = useDictData();
   const { companyQuery, saveMutation, deleteMutation } = useCompanyData(params);
 
   const handleSearch = (values: CompanySearchParams) => {
@@ -103,6 +112,41 @@ const CompanyListPage: React.FC = () => {
     setEditingRecord(record);
     setIsViewOnly(true);
     setModalVisible(true);
+  };
+
+  const handleSyncOwnership = async (record: Company) => {
+    message.loading({ content: `正在智能识别【${record.name}】的所有制与属性标签...`, key: 'sync_tag' });
+    try {
+      const res = await apiClient.post(`/admin/companies/${record.id}/sync_ownership/`, { use_qcc: false });
+      message.success({ content: res.data.message || '识别成功并已保存！', key: 'sync_tag' });
+      companyQuery.refetch();
+    } catch (e) {
+      message.error({ content: '智能识别失败', key: 'sync_tag' });
+    }
+  };
+
+  const handleBatchTagSubmit = async () => {
+    try {
+      const values = await batchTagForm.validateFields();
+      if (!selectedRowKeys || selectedRowKeys.length === 0) {
+        message.warning('请先在表格中勾选企业');
+        return;
+      }
+      setBatchTagging(true);
+      const res = await apiClient.post('/admin/companies/batch_tag/', {
+        company_ids: selectedRowKeys,
+        category_ids: values.category_ids,
+        action: values.action || 'add',
+      });
+      message.success(res.data.message || '批量打标签成功！');
+      setBatchTagModalVisible(false);
+      batchTagForm.resetFields();
+      companyQuery.refetch();
+    } catch (e: any) {
+      message.error(e.response?.data?.error || '批量打标签失败');
+    } finally {
+      setBatchTagging(false);
+    }
   };
 
   const handleExportClick = () => {
@@ -172,6 +216,13 @@ const CompanyListPage: React.FC = () => {
           <Button type="primary" icon={<PlusOutlined />} onClick={handleAdd}>
             新增企业
           </Button>
+          <Button
+            icon={<TagsOutlined />}
+            disabled={selectedRowKeys.length === 0}
+            onClick={() => setBatchTagModalVisible(true)}
+          >
+            批量打标签 {selectedRowKeys.length > 0 ? `(${selectedRowKeys.length})` : ''}
+          </Button>
           <Button icon={<ImportOutlined />} onClick={() => setImportVisible(true)}>批量导入</Button>
           <Button type="primary" ghost icon={<ExportOutlined />} onClick={handleExportClick}>
             批量导出
@@ -198,6 +249,7 @@ const CompanyListPage: React.FC = () => {
         onSelectionChange={setSelectedRowKeys}
         onEdit={handleEdit}
         onViewDetails={handleViewDetails}
+        onSyncOwnership={handleSyncOwnership}
         onDelete={(id) => deleteMutation.mutate(id)}
         onChange={handleTableChange}
       />
@@ -222,6 +274,73 @@ const CompanyListPage: React.FC = () => {
           companyQuery.refetch();
         }}
       />
+
+      {/* 批量打标签弹窗 */}
+      <Modal
+        title={
+          <Space>
+            <TagsOutlined style={{ color: '#1890ff' }} />
+            <span>批量设置企业所有制与属性标签</span>
+          </Space>
+        }
+        open={batchTagModalVisible}
+        onCancel={() => setBatchTagModalVisible(false)}
+        onOk={handleBatchTagSubmit}
+        confirmLoading={batchTagging}
+        width={580}
+        okText="确认应用"
+        cancelText="取消"
+        destroyOnClose
+      >
+        <div style={{ marginBottom: 16, color: '#666', background: '#f5f5f5', padding: '8px 12px', borderRadius: 4 }}>
+          已选择 <b>{selectedRowKeys.length}</b> 家企业进行批量打标签操作。
+        </div>
+        <Form form={batchTagForm} layout="vertical" initialValues={{ action: 'add' }}>
+          <Form.Item name="action" label="操作方式" rules={[{ required: true }]}>
+            <Radio.Group>
+              <Radio value="add">追加标签（保留企业已有标签）</Radio>
+              <Radio value="replace">全量覆盖（替换为所选标签）</Radio>
+              <Radio value="remove">移除所选标签</Radio>
+            </Radio.Group>
+          </Form.Item>
+
+          <Form.Item
+            name="category_ids"
+            label="选择标签"
+            rules={[{ required: true, message: '请至少选择一个所有制分类或标签' }]}
+          >
+            <Select
+              mode="multiple"
+              placeholder="请选择要赋予或移除的所有制大类与小类标签"
+              style={{ width: '100%' }}
+              loading={categoryQuery.isLoading}
+              optionLabelProp="label"
+            >
+              {categoryQuery.data
+                ?.filter(c => c.category_type === 'main')
+                .map(mainCat => {
+                  const subCats = categoryQuery.data?.filter(s => s.parent_id === mainCat.id);
+                  return (
+                    <Select.OptGroup key={mainCat.id} label={mainCat.name}>
+                      <Select.Option key={mainCat.id} value={mainCat.id} label={mainCat.name}>
+                        <Tooltip title={mainCat.definition} placement="right">
+                          <div style={{ fontWeight: 'bold' }}>{mainCat.name} (主大类)</div>
+                        </Tooltip>
+                      </Select.Option>
+                      {subCats?.map(sub => (
+                        <Select.Option key={sub.id} value={sub.id} label={sub.name}>
+                          <Tooltip title={sub.definition} placement="right">
+                            <div style={{ paddingLeft: 12 }}>└─ {sub.name}</div>
+                          </Tooltip>
+                        </Select.Option>
+                      ))}
+                    </Select.OptGroup>
+                  );
+                })}
+            </Select>
+          </Form.Item>
+        </Form>
+      </Modal>
 
       {/* 模块二：高级导出配置弹窗 */}
       <Modal

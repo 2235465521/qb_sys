@@ -43,3 +43,25 @@ class DistrictListView(generics.ListAPIView):
         if city_id:
             qs = qs.filter(city_id=city_id)
         return qs
+
+
+class CompanyCategoryListView(generics.ListAPIView):
+    """GET /api/admin/dict/categories/ — 企业所有制分类与标签树字典"""
+    permission_classes = [permissions.AllowAny]
+    pagination_class = None
+
+    def get_serializer_class(self):
+        from companies.serializers import CompanyCategorySerializer
+        return CompanyCategorySerializer
+
+    def get_queryset(self):
+        from companies.models import CompanyCategory
+        qs = CompanyCategory.objects.filter(is_active=True).select_related('parent')
+        parent_id = self.request.query_params.get('parent_id')
+        category_type = self.request.query_params.get('category_type')
+        if parent_id:
+            qs = qs.filter(parent_id=parent_id)
+        if category_type:
+            qs = qs.filter(category_type=category_type)
+        return qs.order_by('sort_order', 'id')
+

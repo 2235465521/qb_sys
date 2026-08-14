@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '@/api/client';
-import type { Province, City, District } from '@/types';
+import type { Province, City, District, CompanyCategory } from '@/types';
 
 export const useDictData = () => {
   // 获取省份
@@ -41,7 +41,17 @@ export const useDictData = () => {
     staleTime: Infinity,
   });
 
-  return { provinceQuery, useCityQuery, useDistrictQuery };
+  // 获取企业所有制分类与标签
+  const categoryQuery = useQuery<CompanyCategory[]>({
+    queryKey: ['dict_categories'],
+    queryFn: async () => {
+      const { data } = await apiClient.get<CompanyCategory[] | { results: CompanyCategory[] }>('/admin/dict/categories/');
+      return Array.isArray(data) ? data : (data?.results || []);
+    },
+    staleTime: 1000 * 60 * 60,
+  });
+
+  return { provinceQuery, useCityQuery, useDistrictQuery, categoryQuery };
 };
 
 
