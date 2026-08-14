@@ -164,6 +164,7 @@ class AdvancedExportTestCase(TestCase):
         from standards.models import Standard, NormativeReference
         from standards.utils.archive_helpers import generate_advanced_export_file
         import os
+        import pandas as pd
         from django.conf import settings
 
         gb_std = Standard.objects.create(
@@ -172,7 +173,11 @@ class AdvancedExportTestCase(TestCase):
             title="测试国标",
             type="national",
             company=self.c1,
-            status="active"
+            status="active",
+            publish_date=datetime.date(2024, 1, 1),
+            implement_date=datetime.date(2024, 6, 1),
+            ics="35.240.50; 01.040.11",
+            ccs="L70; A00"
         )
         NormativeReference.objects.create(
             source_standard=self.s1,
@@ -189,6 +194,103 @@ class AdvancedExportTestCase(TestCase):
         )
         full_path_all = os.path.join(settings.MEDIA_ROOT, rel_path_all)
         self.assertTrue(os.path.exists(full_path_all))
+
+    def test_advanced_export_national_group_standards(self):
+        from standards.models import Standard, NormativeReference
+        from standards.utils.archive_helpers import generate_advanced_export_file
+        import os
+        import pandas as pd
+        from django.conf import settings
+
+        gb_std = Standard.objects.create(
+            standard_no="GB/T 12345-2024",
+            clean_id="GB/T 12345-2024",
+            title="测试国标",
+            type="national",
+            company=self.c1,
+            status="active",
+            publish_date=datetime.date(2024, 1, 1),
+            implement_date=datetime.date(2024, 6, 1),
+            ics="35.240.50; 01.040.11",
+            ccs="L70; A00"
+        )
+        NormativeReference.objects.create(
+            source_standard=self.s1,
+            cited_standard_no="GB/T 12345-2024",
+            cited_standard=gb_std
+        )
+
+        rel_path_all = generate_advanced_export_file(
+            advanced_filters={'agency_type_mode': 'include', 'agency_types': []},
+            export_scope='filtered',
+            export_content=['enterprise', 'enterprise_standard', 'other_standard'],
+            file_format='single_excel',
+            uuid_str='test3'
+        )
+        full_path_all = os.path.join(settings.MEDIA_ROOT, rel_path_all)
+        self.assertTrue(os.path.exists(full_path_all))
+
+        # 校验生成的 Excel 内容与新字段列名
+        xls = pd.ExcelFile(full_path_all)
+        self.assertIn('企标目录', xls.sheet_names)
+        self.assertIn('国行地团标目录', xls.sheet_names)
+
+        df_ent = pd.read_excel(xls, '企标目录')
+        self.assertIn('企业名称', df_ent.columns)
+        self.assertIn('发布日期', df_ent.columns)
+        self.assertIn('实施日期', df_ent.columns)
+
+        df_other = pd.read_excel(xls, '国行地团标目录')
+        self.assertIn('发布日期', df_other.columns)
+        self.assertIn('实施日期', df_other.columns)
+        self.assertIn('ICS', df_other.columns)
+        self.assertIn('ICS中文名称', df_other.columns)
+        self.assertIn('CCS', df_other.columns)
+        self.assertIn('CCS中文名称', df_other.columns)
+        self.assertIn('起草单位', df_other.columns)
+        self.assertIn('起草单位排名名次', df_other.columns)
+
+        # 检查记录输出结构
+        row_match = df_other[df_other['标准号'] == 'GB/T 12345-2024']
+        if not row_match.empty:
+            rec = row_match.iloc[0]
+            self.assertIn('35.240.50', str(rec['ICS']))
+            self.assertEqual(str(rec['发布日期']), '2024-01-01')
+            self.assertEqual(str(rec['实施日期']), '2024-06-01')
+
+    def test_format_codes_and_names_formatting(self):
+        from standards.utils.archive_helpers import format_codes_and_names
+
+        mock_ics_map = {
+            '35.240.50': '信息技术在工业中的应用',
+            '01.040.11': '医药卫生技术（词汇）',
+            '35.020': '信息技术(IT)综合'
+        }
+
+        # 测试空值、连字符输入
+        c, n = format_codes_and_names(None, mock_ics_map)
+        self.assertEqual(c, '-')
+        self.assertEqual(n, '-')
+
+        c, n = format_codes_and_names('-', mock_ics_map)
+        self.assertEqual(c, '-')
+        self.assertEqual(n, '-')
+
+        # 测试单值输入
+        c, n = format_codes_and_names('35.240.50', mock_ics_map)
+        self.assertEqual(c, '35.240.50')
+        self.assertEqual(n, '信息技术在工业中的应用')
+
+        # 测试多值复合输入与重复项去重
+        c, n = format_codes_and_names('35.240.50; 01.040.11, 35.240.50', mock_ics_map)
+        self.assertEqual(c, '35.240.50; 01.040.11')
+        self.assertEqual(n, '信息技术在工业中的应用; 医药卫生技术（词汇）')
+
+        # 测试未命中字典项
+        c, n = format_codes_and_names('35.240.50; UNKNOWN_CODE', mock_ics_map)
+        self.assertEqual(c, '35.240.50; UNKNOWN_CODE')
+        self.assertEqual(n, '信息技术在工业中的应用; -')
+
 
 
 
