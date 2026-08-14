@@ -42,6 +42,35 @@ interface AdvancedExportModalProps {
   onDispatchTask: (taskId: string, title: string, hasDownload: boolean, typeUrl: string, payload: any) => void;
 }
 
+const PREF_STORAGE_KEY = 'emis_advanced_export_preferences';
+
+interface AdvancedExportPreferences {
+  agency_type_mode?: 'include' | 'exclude';
+  agency_types?: string[];
+  export_content?: string[];
+  file_format?: 'single_excel' | 'separate_zip';
+}
+
+const loadExportPreferences = (): AdvancedExportPreferences => {
+  try {
+    const raw = localStorage.getItem(PREF_STORAGE_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (e) {
+    console.warn('Failed to load export preferences:', e);
+  }
+  return {};
+};
+
+const saveExportPreferences = (prefs: AdvancedExportPreferences) => {
+  try {
+    localStorage.setItem(PREF_STORAGE_KEY, JSON.stringify(prefs));
+  } catch (e) {
+    console.warn('Failed to save export preferences:', e);
+  }
+};
+
 export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
   visible,
   onCancel,
@@ -75,15 +104,19 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
       setSelectedProvince(searchParams.province_id ? Number(searchParams.province_id) : undefined);
       setSelectedCity(searchParams.city_id ? Number(searchParams.city_id) : undefined);
 
+      const savedPrefs = loadExportPreferences();
+      const mode = savedPrefs.agency_type_mode || 'include';
+      setAgencyMode(mode);
+
       form.setFieldsValue({
         export_scope: scope,
-        agency_type_mode: 'include',
-        agency_types: [],
+        agency_type_mode: mode,
+        agency_types: savedPrefs.agency_types || [],
         province_id: searchParams.province_id ? Number(searchParams.province_id) : undefined,
         city_id: searchParams.city_id ? Number(searchParams.city_id) : undefined,
         district_id: searchParams.district_id ? Number(searchParams.district_id) : undefined,
-        export_content: ['enterprise', 'enterprise_standard', 'other_standard'],
-        file_format: 'single_excel',
+        export_content: savedPrefs.export_content || ['enterprise', 'enterprise_standard', 'other_standard'],
+        file_format: savedPrefs.file_format || 'single_excel',
       });
     }
   }, [visible, selectedEnterprises, searchParams]);
@@ -97,6 +130,13 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
       }
 
       setLoading(true);
+
+      saveExportPreferences({
+        agency_type_mode: values.agency_type_mode,
+        agency_types: values.agency_types || [],
+        export_content: values.export_content,
+        file_format: values.file_format,
+      });
 
       const payload: any = {
         export_scope: values.export_scope,
