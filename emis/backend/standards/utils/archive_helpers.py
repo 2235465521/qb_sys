@@ -808,12 +808,11 @@ def generate_advanced_export_file(
                 '国民经济分类': std.company.industry_category if std.company else '',
             })
 
-    # 5. 准备国行地团标目录数据（全局去重）
+    # 5. 准备国行地团标目录数据（全局去重并归合选定起草单位）
     other_standard_rows = []
     if 'other_standard' in content_set:
         comp_ids = [c.id for c in company_list]
-        seen_nos = set()
-        other_items = []
+        other_items_map = {}
 
         # a. 名下直接关联的非企标标准 (国/行/地/团)
         direct_stds = Standard.objects.select_related('company').filter(
@@ -822,14 +821,20 @@ def generate_advanced_export_file(
         )
         for std in direct_stds:
             s_no = (std.standard_no or '').strip()
-            if not s_no or s_no in seen_nos:
+            if not s_no:
                 continue
-            seen_nos.add(s_no)
-            other_items.append({
-                's_no': s_no,
-                'std': std,
-                'industry_category': std.company.industry_category if std.company else ''
-            })
+            comp_name = std.company.name if std.company else ''
+            if s_no not in other_items_map:
+                other_items_map[s_no] = {
+                    's_no': s_no,
+                    'std': std,
+                    'industry_category': std.company.industry_category if std.company else '',
+                    'companies': [],
+                    'ranks': [],
+                    'fed_info': None
+                }
+            if comp_name and comp_name not in other_items_map[s_no]['companies']:
+                other_items_map[s_no]['companies'].append(comp_name)
 
         # b. 穿透 stsc_db 检索选定企业真正参与起草的非企标标准 (国/行/地/团)
         for company in company_list:
@@ -838,17 +843,27 @@ def generate_advanced_export_file(
                 fed_stds = summary_data.get('standards', [])
                 for fed in fed_stds:
                     s_no = (fed.get('standard_no') or '').strip()
-                    if not s_no or s_no in seen_nos:
+                    if not s_no:
                         continue
-                    seen_nos.add(s_no)
-                    other_items.append({
-                        's_no': s_no,
-                        'std': None,
-                        'fed_info': fed,
-                        'industry_category': company.industry_category or ''
-                    })
+                    if s_no not in other_items_map:
+                        other_items_map[s_no] = {
+                            's_no': s_no,
+                            'std': None,
+                            'industry_category': company.industry_category or '',
+                            'companies': [],
+                            'ranks': [],
+                            'fed_info': fed
+                        }
+                    comp_name = company.name
+                    if comp_name and comp_name not in other_items_map[s_no]['companies']:
+                        other_items_map[s_no]['companies'].append(comp_name)
+                    rank_order = fed.get('rank_order')
+                    if rank_order and not any(r[0] == comp_name for r in other_items_map[s_no]['ranks']):
+                        other_items_map[s_no]['ranks'].append((comp_name, rank_order))
             except Exception as fed_err:
                 logger.error(f"Failed to query STSC standards for company {company.name}: {fed_err}")
+
+        other_items = list(other_items_map.values())
 
         # 批量从 stsc_db / 本地 Standard 表抓取补全标题、状态、类型、ICS、CCS、日期与起草单位
         nos_to_fetch = [item['s_no'] for item in other_items]
@@ -901,17 +916,27 @@ def generate_advanced_export_file(
             pub_date = (std.publish_date.strftime('%Y-%m-%d') if std and std.publish_date else None) or d_info.get('release_date') or fed_info.get('release_date') or '-'
             imp_date = (std.implement_date.strftime('%Y-%m-%d') if std and std.implement_date else None) or d_info.get('implement_date') or fed_info.get('implement_date') or '-'
 
-            drafters_raw = fed_info.get('drafters') or d_info.get('drafter') or ''
-            if isinstance(drafters_raw, list):
-                drafters_disp = ", ".join(drafters_raw) if drafters_raw else '-'
-            elif isinstance(drafters_raw, str) and drafters_raw.strip():
-                drafters_disp = drafters_raw.strip()
+            # 起草单位：只提取选定导出目标中检索/归属的企业名称，避免列出全部几十家无关单位
+            matched_companies = item.get('companies') or []
+            if matched_companies:
+                drafters_disp = ", ".join(matched_companies)
             else:
-                drafters_disp = '-'
+                drafters_raw = fed_info.get('drafters') or d_info.get('drafter') or ''
+                if isinstance(drafters_raw, list):
+                    drafters_disp = ", ".join(drafters_raw[:2]) if drafters_raw else '-'
+                elif isinstance(drafters_raw, str) and drafters_raw.strip():
+                    drafters_disp = drafters_raw.strip()
+                else:
+                    drafters_disp = '-'
 
-            rank_order = fed_info.get('rank_order') or d_info.get('rank_order')
-            if rank_order:
-                rank_disp = f"第{rank_order}名"
+            # 起草单位排名名次
+            ranks = item.get('ranks') or []
+            if ranks:
+                rank_disp = ", ".join([f"第{r}名" for c, r in ranks])
+            elif fed_info.get('rank_order'):
+                rank_disp = f"第{fed_info.get('rank_order')}名"
+            elif d_info.get('rank_order'):
+                rank_disp = f"第{d_info.get('rank_order')}名"
             else:
                 rank_disp = '-'
 
