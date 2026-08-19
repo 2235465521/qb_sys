@@ -49,7 +49,10 @@ class CompanyBulkListSerializer(ListSerializer):
         
         # 批量获取 Redis 缓存中的深度统计摘要
         cache_keys = {f"company_federated_standards_summary:{obj.id}:expanded": obj for obj in iterable}
-        cached_data = cache.get_many(cache_keys.keys())
+        try:
+            cached_data = cache.get_many(cache_keys.keys()) or {}
+        except Exception:
+            cached_data = {}
         
         missing_objs = []
         for key, obj in cache_keys.items():
@@ -61,6 +64,7 @@ class CompanyBulkListSerializer(ListSerializer):
         # 对于缓存未命中的，使用 FederatedStandardService 多线程并发计算并写入缓存
         if missing_objs:
             import concurrent.futures
+            from django.db import connections
             
             def fetch_fed_count(obj):
                 try:
@@ -68,13 +72,21 @@ class CompanyBulkListSerializer(ListSerializer):
                     count = summary.get('total_standards', 0)
                 except Exception:
                     count = 0
+                finally:
+                    try:
+                        connections.close_all()
+                    except Exception:
+                        pass
                 return obj, count
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(missing_objs))) as executor:
                 futures = [executor.submit(fetch_fed_count, obj) for obj in missing_objs]
                 for future in concurrent.futures.as_completed(futures):
-                    obj, count = future.result()
-                    obj.federated_count = count
+                    try:
+                        obj, count = future.result()
+                        obj.federated_count = count
+                    except Exception:
+                        pass
                     
         return super().to_representation(data)
 
