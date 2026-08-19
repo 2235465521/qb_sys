@@ -353,34 +353,44 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
 
         # 归一化表头匹配
         headers_mapping = {
-            'std_no': ['企标编号*', '企标编号', '标准编号*', '标准编号', '企标号'],
-            'std_title': ['企标名称*', '企标名称', '标准名称*', '标准名称', '企标名'],
-            'company_name': ['起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称'],
-            'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码'],
-            'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '被引用标准号*', '被引用标准号', '引用的标准号'],
-            'latest_no': ['最新标准号', '最新被引用标准号']
+            'std_no': ['企标编号*', '企标编号', '标准编号*', '标准编号', '企标号', '标准号*', '标准号', '企标'],
+            'std_title': ['企标名称*', '企标名称', '标准名称*', '标准名称', '企标名', '标准名'],
+            'company_name': ['起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称', '企业名称*', '企业名称', '起草企业', '单位名称'],
+            'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码', '统一信用代码'],
+            'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '企标中引用的标准号', '被引用标准号*', '被引用标准号', '引用的标准号', '引用标准号', '引用标准编号', '被引用的标准号', '被引用标准', '引用标准'],
+            'latest_no': ['最新标准号', '最新被引用标准号', '发布时引用的完整标准号']
         }
 
         # 映射实际列名
         actual_cols = {}
+        cleaned_df_cols = {str(c).strip(): c for c in df.columns}
         for key, aliases in headers_mapping.items():
             for alias in aliases:
-                if alias in df.columns:
-                    actual_cols[key] = alias
+                if alias in cleaned_df_cols:
+                    actual_cols[key] = cleaned_df_cols[alias]
+                    break
+                alias_clean = alias.replace('*', '').strip()
+                for col_clean, orig_col in cleaned_df_cols.items():
+                    if col_clean.replace('*', '').strip() == alias_clean:
+                        actual_cols[key] = orig_col
+                        break
+                if key in actual_cols:
                     break
 
-        # 检查必要列是否具备
-        required_keys = ['std_no', 'std_title', 'company_name', 'credit_code', 'cited_no']
+        # 检查必要列是否具备（企标编号与引用标准号为核心必要列）
+        required_keys = ['std_no', 'cited_no']
         missing_cols = [k for k in required_keys if k not in actual_cols]
         if missing_cols:
-            raise ValueError(f"Excel 格式不匹配，缺失核心必要列，未匹配键: {missing_cols}")
+            raise ValueError(f"Excel 格式不匹配，缺失核心必要列（企标编号/引用标准号），未匹配键: {missing_cols}")
 
         col_std_no = actual_cols['std_no']
-        col_std_title = actual_cols['std_title']
-        col_company_name = actual_cols['company_name']
-        col_credit_code = actual_cols['credit_code']
+        col_std_title = actual_cols.get('std_title')
+        col_company_name = actual_cols.get('company_name')
+        col_credit_code = actual_cols.get('credit_code')
         col_cited_no = actual_cols['cited_no']
         col_latest_no = actual_cols.get('latest_no')
+
+        import uuid
 
         # 2. 循环遍历各行
         for idx, row in df.iterrows():
@@ -399,25 +409,19 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
 
             # 获取当前行字段
             std_no = str(row.get(col_std_no, '')).strip() if pd.notna(row.get(col_std_no)) else ''
-            std_title = str(row.get(col_std_title, '')).strip() if pd.notna(row.get(col_std_title)) else ''
-            company_name = str(row.get(col_company_name, '')).strip() if pd.notna(row.get(col_company_name)) else ''
-            credit_code = str(row.get(col_credit_code, '')).strip() if pd.notna(row.get(col_credit_code)) else ''
+            std_title = str(row.get(col_std_title, '')) if col_std_title and pd.notna(row.get(col_std_title)) else ''
+            std_title = std_title.strip() if std_title != 'nan' else ''
+            company_name = str(row.get(col_company_name, '')) if col_company_name and pd.notna(row.get(col_company_name)) else ''
+            company_name = company_name.strip() if company_name != 'nan' else ''
+            credit_code = str(row.get(col_credit_code, '')) if col_credit_code and pd.notna(row.get(col_credit_code)) else ''
+            credit_code = credit_code.strip() if credit_code != 'nan' else ''
             cited_no = str(row.get(col_cited_no, '')).strip() if pd.notna(row.get(col_cited_no)) else ''
             latest_no = str(row.get(col_latest_no, '')) if col_latest_no and pd.notna(row.get(col_latest_no)) else ''
-            latest_no = latest_no.strip()
+            latest_no = latest_no.strip() if latest_no != 'nan' else ''
 
-            # 数据完整性必填校验
+            # 数据完整性校验
             if not std_no or std_no == 'nan':
                 errors.append({'row': row_idx, 'reason': "企标编号不能为空"})
-                continue
-            if not std_title or std_title == 'nan':
-                errors.append({'row': row_idx, 'reason': "企标名称不能为空"})
-                continue
-            if not company_name or company_name == 'nan':
-                errors.append({'row': row_idx, 'reason': "起草单位不能为空"})
-                continue
-            if not credit_code or credit_code == 'nan':
-                errors.append({'row': row_idx, 'reason': "统一社会信用代码不能为空"})
                 continue
             if not cited_no or cited_no == 'nan':
                 errors.append({'row': row_idx, 'reason': "引用的国标/行标编号不能为空"})
@@ -427,32 +431,44 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             try:
                 with transaction.atomic():
                     # A. 查找或建档起草企业
-                    company, _ = Company.objects.get_or_create(
-                        credit_code=credit_code,
-                        defaults={
-                            'name': company_name,
-                            'status': 'active'
-                        }
-                    )
+                    company = None
+                    if credit_code:
+                        company, _ = Company.objects.get_or_create(
+                            credit_code=credit_code,
+                            defaults={
+                                'name': company_name or f'企业_{credit_code[-6:]}',
+                                'status': 'active'
+                            }
+                        )
+                    elif company_name:
+                        company = Company.objects.filter(name=company_name).first()
+                        if not company:
+                            company = Company.objects.create(
+                                name=company_name,
+                                credit_code=f'TEMP_{uuid.uuid4().hex[:14].upper()}',
+                                status='active'
+                            )
 
                     # B. 查找或建档企业标准主表
                     clean_id = generate_clean_id(std_no)
-                    standard, created_std = Standard.objects.get_or_create(
-                        standard_no=std_no,
-                        defaults={
-                            'clean_id': clean_id,
-                            'title': std_title,
-                            'company': company,
-                            'type': 'enterprise',
-                            'is_parsed': 'references_parsed'
-                        }
-                    )
-
-                    if not created_std:
+                    standard = Standard.objects.filter(clean_id=clean_id, type='enterprise').first()
+                    if not standard:
+                        standard = Standard.objects.create(
+                            standard_no=std_no,
+                            clean_id=clean_id,
+                            title=std_title or std_no,
+                            company=company,
+                            type='enterprise',
+                            is_parsed='references_parsed'
+                        )
+                    else:
                         # 联动更新主表状态为“已完成引用解析”
                         if standard.is_parsed == 'unparsed':
                             standard.is_parsed = 'references_parsed'
                             standard.save(update_fields=['is_parsed'])
+                        if not standard.company and company:
+                            standard.company = company
+                            standard.save(update_fields=['company'])
 
                     # C. 对齐系统中已有的被引标准
                     cited_std = Standard.objects.filter(standard_no=cited_no).first()

@@ -569,11 +569,13 @@ def import_standards_from_excel(file_obj) -> dict:
     """
     从爬取的 Excel 文件批量导入企标和企业信息（高度融合核心业务与 LBS 定位）
 
-    适合 crawled Excel 表头格式，并自动对齐去重、物理路径分层与直辖市二级结构兼容。
+    适合 crawled Excel 表头格式与官方标准模板，并自动对齐去重、物理路径分层与直辖市二级结构兼容。
     """
     import pandas as pd
+    import uuid
     from django.utils import timezone
     from companies.models import Company, Province, City, District
+    from standards.models import Standard
     
     result = {
         'success': 0,
@@ -589,8 +591,62 @@ def import_standards_from_excel(file_obj) -> dict:
         result['errors'].append(f'文件解析失败: {str(e)}')
         return result
         
-    today_str = timezone.now().strftime("%Y/%m/%d")
-    
+    if df.empty:
+        result['errors'].append('Excel 数据为空')
+        return result
+
+    # 归一化表头匹配
+    headers_mapping = {
+        'std_no': ['标准编号*', '标准编号', '企标编号*', '企标编号', '企标号', '标准号*', '标准号', '企标'],
+        'std_title': ['标准名称*', '标准名称', '企标名称*', '企标名称', '企标名', '标准名'],
+        'company_name': ['起草单位/企业名称*', '起草单位/企业名称', '起草单位*', '起草单位', '公司名称', '企业名称*', '企业名称', '起草企业', '单位名称'],
+        'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码', '统一信用代码'],
+        'legal_person': ['法定代表人*', '法定代表人', '法人'],
+        'address': ['注册地址*', '注册地址', '详细地址', '地址'],
+        'geo': ['行政区划*', '行政区划', '省市县', '所属区划'],
+        'pub_date': ['公开时间(YYYY-MM-DD)', '公开时间', '发布日期(YYYY-MM-DD)', '发布日期', '发布时间'],
+        'impl_date': ['实施日期(YYYY-MM-DD)', '实施日期', '实施时间'],
+        'status': ['标准状态(现行/废止/草案)', '标准状态'],
+        'pdf_filename': ['PDF文件名', '文件名', '磁盘阵列文件路径(可选)', '磁盘阵列文件路径'],
+        'ics': ['ICS', 'ICS分类号'],
+        'ccs': ['CCS', 'CCS分类号']
+    }
+
+    # 映射实际列名
+    actual_cols = {}
+    cleaned_df_cols = {str(c).strip(): c for c in df.columns}
+    for key, aliases in headers_mapping.items():
+        for alias in aliases:
+            if alias in cleaned_df_cols:
+                actual_cols[key] = cleaned_df_cols[alias]
+                break
+            # 尝试去星号匹配
+            alias_clean = alias.replace('*', '').strip()
+            for col_clean, orig_col in cleaned_df_cols.items():
+                if col_clean.replace('*', '').strip() == alias_clean:
+                    actual_cols[key] = orig_col
+                    break
+            if key in actual_cols:
+                break
+
+    col_std_no = actual_cols.get('std_no')
+    col_std_title = actual_cols.get('std_title')
+    col_company_name = actual_cols.get('company_name')
+    col_credit_code = actual_cols.get('credit_code')
+    col_legal_person = actual_cols.get('legal_person')
+    col_address = actual_cols.get('address')
+    col_geo = actual_cols.get('geo')
+    col_pub_date = actual_cols.get('pub_date')
+    col_impl_date = actual_cols.get('impl_date')
+    col_status = actual_cols.get('status')
+    col_pdf = actual_cols.get('pdf_filename')
+    col_ics = actual_cols.get('ics')
+    col_ccs = actual_cols.get('ccs')
+
+    if not col_std_no and not col_company_name and not col_credit_code:
+        result['errors'].append('未找到标准编号或企业相关列，请使用系统模板导入')
+        return result
+
     standards_to_create = []
     companies_created_count = 0
     companies_updated_count = 0
@@ -598,18 +654,18 @@ def import_standards_from_excel(file_obj) -> dict:
     
     with transaction.atomic():
         for idx, row in df.iterrows():
-            credit_code = str(row.get('统一社会信用代码', '')).strip()
-            company_name = str(row.get('起草单位/企业名称', '')).strip()
+            credit_code = str(row.get(col_credit_code, '')).strip() if col_credit_code and pd.notna(row.get(col_credit_code)) else ''
+            company_name = str(row.get(col_company_name, '')).strip() if col_company_name and pd.notna(row.get(col_company_name)) else ''
             
-            if not credit_code or credit_code == 'nan' or not company_name or company_name == 'nan':
-                continue
-                
+            if credit_code == 'nan': credit_code = ''
+            if company_name == 'nan': company_name = ''
+
             # --- 步骤 A: 级联匹配省市区外键 ---
             province = None
             city = None
             district = None
             
-            geo_str = str(row.get('行政区划', '')).strip()
+            geo_str = str(row.get(col_geo, '')).strip() if col_geo and pd.notna(row.get(col_geo)) else ''
             if geo_str and geo_str != 'nan' and '-' in geo_str:
                 geo_parts = geo_str.split('-')
                 if len(geo_parts) >= 1:
@@ -639,50 +695,69 @@ def import_standards_from_excel(file_obj) -> dict:
                 company_lat = city.latitude
                 company_lng = city.longitude
 
-            # --- 步骤 C: 新建或安全更新企业信息（按照信用代码去重） ---
-            legal_person = str(row.get('法定代表人', '')).strip()
-            if not legal_person or legal_person == 'nan':
-                legal_person = ''
+            # --- 步骤 C: 新建或安全更新企业信息 ---
+            company = None
+            legal_person = str(row.get(col_legal_person, '')).strip() if col_legal_person and pd.notna(row.get(col_legal_person)) else ''
+            if legal_person == 'nan': legal_person = ''
                 
-            address = str(row.get('注册地址', '')).strip()
-            if not address or address == 'nan':
-                address = ''
+            address = str(row.get(col_address, '')).strip() if col_address and pd.notna(row.get(col_address)) else ''
+            if address == 'nan': address = ''
 
-            company, created = Company.objects.get_or_create(
-                credit_code=credit_code,
-                defaults={
-                    'name': company_name,
-                    'legal_person': legal_person,
-                    'address': address,
-                    'province': province,
-                    'city': city,
-                    'district': district,
-                    'latitude': company_lat,
-                    'longitude': company_lng,
-                    'status': 'active'
-                }
-            )
-            
-            if created:
-                companies_created_count += 1
-            else:
-                updated = False
-                if not company.latitude and company_lat:
-                    company.latitude = company_lat
-                    company.longitude = company_lng
-                    updated = True
-                if not company.district and district:
-                    company.province = province
-                    company.city = city
-                    company.district = district
-                    updated = True
-                if updated:
-                    company.save()
-                    companies_updated_count += 1
+            if credit_code:
+                company, created = Company.objects.get_or_create(
+                    credit_code=credit_code,
+                    defaults={
+                        'name': company_name or f'企业_{credit_code[-6:]}',
+                        'legal_person': legal_person,
+                        'address': address,
+                        'province': province,
+                        'city': city,
+                        'district': district,
+                        'latitude': company_lat,
+                        'longitude': company_lng,
+                        'status': 'active'
+                    }
+                )
+                if created:
+                    companies_created_count += 1
+                else:
+                    updated = False
+                    if company_name and company.name != company_name:
+                        company.name = company_name
+                        updated = True
+                    if not company.latitude and company_lat:
+                        company.latitude = company_lat
+                        company.longitude = company_lng
+                        updated = True
+                    if not company.district and district:
+                        company.province = province
+                        company.city = city
+                        company.district = district
+                        updated = True
+                    if updated:
+                        company.save()
+                        companies_updated_count += 1
+            elif company_name:
+                company = Company.objects.filter(name=company_name).first()
+                if not company:
+                    temp_code = f'TEMP_{uuid.uuid4().hex[:14].upper()}'
+                    company = Company.objects.create(
+                        name=company_name,
+                        credit_code=temp_code,
+                        legal_person=legal_person,
+                        address=address,
+                        province=province,
+                        city=city,
+                        district=district,
+                        latitude=company_lat,
+                        longitude=company_lng,
+                        status='active'
+                    )
+                    companies_created_count += 1
             
             # --- 步骤 D: 拼装标准记录并建立外键绑定 ---
-            standard_no = str(row.get('标准编号', '')).strip()
-            standard_title = str(row.get('标准名称', '')).strip()
+            standard_no = str(row.get(col_std_no, '')).strip() if col_std_no and pd.notna(row.get(col_std_no)) else ''
+            standard_title = str(row.get(col_std_title, '')).strip() if col_std_title and pd.notna(row.get(col_std_title)) else ''
             if standard_title.startswith('《') and standard_title.endswith('》'):
                 standard_title = standard_title[1:-1].strip()
             
@@ -696,23 +771,34 @@ def import_standards_from_excel(file_obj) -> dict:
                 continue
                 
             publish_date = None
-            pub_date_val = row.get('发布日期') if '发布日期' in row else row.get('发布时间')
-            if pd.notnull(pub_date_val):
+            if col_pub_date and pd.notnull(row.get(col_pub_date)):
                 try:
-                    publish_date = pd.to_datetime(pub_date_val).date()
-                except:
+                    publish_date = pd.to_datetime(row.get(col_pub_date)).date()
+                except Exception:
                     pass
 
+            implement_date = None
+            if col_impl_date and pd.notnull(row.get(col_impl_date)):
+                try:
+                    implement_date = pd.to_datetime(row.get(col_impl_date)).date()
+                except Exception:
+                    pass
+
+            if publish_date and not implement_date:
+                implement_date = publish_date
             
-            status_str = str(row.get('标准状态', ''))
+            status_str = str(row.get(col_status, '')) if col_status and pd.notna(row.get(col_status)) else ''
             standard_status = 'active'
             if '废止' in status_str:
                 standard_status = 'deprecated'
             elif '草案' in status_str:
                 standard_status = 'draft'
 
-            pdf_filename = str(row.get('PDF文件名', '')).strip()
+            pdf_filename = str(row.get(col_pdf, '')).strip() if col_pdf and pd.notna(row.get(col_pdf)) else ''
             pdf_db_path = f"整合/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
+
+            ics_val = str(row.get(col_ics, '')).strip() if col_ics and pd.notna(row.get(col_ics)) else ''
+            ccs_val = str(row.get(col_ccs, '')).strip() if col_ccs and pd.notna(row.get(col_ccs)) else ''
             
             new_standard = Standard(
                 standard_no=standard_no,
@@ -722,7 +808,10 @@ def import_standards_from_excel(file_obj) -> dict:
                 company=company,
                 pdf_file=pdf_db_path,
                 publish_date=publish_date,
-                status=standard_status
+                implement_date=implement_date,
+                status=standard_status,
+                ics=ics_val if ics_val != 'nan' else '',
+                ccs=ccs_val if ccs_val != 'nan' else ''
             )
             standards_to_create.append(new_standard)
             
@@ -958,9 +1047,10 @@ def generate_reference_import_template_v2() -> tuple:
 
 def import_references_from_excel_v2(file_obj) -> dict:
     """
-    后台导入企标规范性引用，包含严格的行级数据校验
+    后台导入企标规范性引用，包含严格的行级数据校验与灵活的表头别名兼容
     对正确的数据执行入库，并收集所有错误反馈给前端
     """
+    import re
     import pandas as pd
     from django.db import transaction
     from django.db.models import F
@@ -980,63 +1070,76 @@ def import_references_from_excel_v2(file_obj) -> dict:
     if df.empty:
         result['errors'].append({'row': 0, 'error': 'Excel 文件内容为空'})
         return result
-        
-    # 必要表头校验
-    expected_headers = ['企标编号*', '引用的国标/行标编号*']
-    for header in expected_headers:
-        if header not in df.columns:
-            clean_header = header.replace('*', '')
-            found = False
-            for col in df.columns:
-                if clean_header in str(col):
-                    df.rename(columns={col: header}, inplace=True)
-                    found = True
-                    break
-            if not found:
-                result['errors'].append({'row': 1, 'error': f"Excel 模板格式错误，缺失必要列: '{header}'"})
-                return result
 
-    # 识别并重命名“最新标准号”列（防止用户上传的 Excel 包含空格、星号等微小字样差异）
-    latest_header = '最新标准号'
-    if latest_header not in df.columns:
-        for col in df.columns:
-            if '最新标准号' in str(col) or '最新被引用标准号' in str(col):
-                df.rename(columns={col: latest_header}, inplace=True)
+    # 归一化表头匹配
+    headers_mapping = {
+        'source_no': ['企标编号*', '企标编号', '标准编号*', '标准编号', '企标号', '标准号*', '标准号', '企标'],
+        'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '企标中引用的标准号', '被引用标准号*', '被引用标准号', '引用的标准号', '引用标准号', '引用标准编号', '被引用的标准号', '引用标准', '被引用标准'],
+        'cited_title': ['被引用标准名称', '引用标准名称', '被引用标准名'],
+        'latest_no': ['最新标准号', '最新被引用标准号', '发布时引用的完整标准号']
+    }
+
+    # 映射实际列名
+    actual_cols = {}
+    cleaned_df_cols = {str(c).strip(): c for c in df.columns}
+    for key, aliases in headers_mapping.items():
+        for alias in aliases:
+            if alias in cleaned_df_cols:
+                actual_cols[key] = cleaned_df_cols[alias]
+                break
+            alias_clean = alias.replace('*', '').strip()
+            for col_clean, orig_col in cleaned_df_cols.items():
+                if col_clean.replace('*', '').strip() == alias_clean:
+                    actual_cols[key] = orig_col
+                    break
+            if key in actual_cols:
                 break
 
-    # 1. 缓存加载全部输入企标，防止 N+1 查询挂起
-    source_nos = df['企标编号*'].dropna().astype(str).str.strip().unique().tolist()
-    standard_map = {
-        std.standard_no: std
-        for std in Standard.objects.filter(standard_no__in=source_nos, type='enterprise')
-    }
+    col_source_no = actual_cols.get('source_no')
+    col_cited_no = actual_cols.get('cited_no')
+    col_latest_no = actual_cols.get('latest_no')
+    col_cited_title = actual_cols.get('cited_title')
+
+    if not col_source_no or not col_cited_no:
+        result['errors'].append({
+            'row': 1,
+            'error': f"Excel 模板格式错误，缺失必要列: '企标编号' 或 '引用的国标/行标编号' (当前识别: 企标列={col_source_no}, 引用列={col_cited_no})"
+        })
+        return result
+
+    # 1. 缓存加载全部输入企标，防止 N+1 查询挂起（支持 standard_no 与 clean_id 双向匹配）
+    source_nos = df[col_source_no].dropna().astype(str).str.strip().unique().tolist()
+    clean_ids = [generate_clean_id(s) for s in source_nos]
+    
+    stds_found = Standard.objects.filter(clean_id__in=clean_ids, type='enterprise')
+    standard_map = {std.standard_no: std for std in stds_found}
+    standard_clean_map = {std.clean_id: std for std in stds_found}
     
     # 2. 缓存已存在的国/行标以便匹配
-    cited_nos = df['引用的国标/行标编号*'].dropna().astype(str).str.strip().unique().tolist()
-    cited_std_map = {
-        std.standard_no: std
-        for std in Standard.objects.filter(standard_no__in=cited_nos)
-    }
+    cited_nos = df[col_cited_no].dropna().astype(str).str.strip().unique().tolist()
+    cited_stds_found = Standard.objects.filter(standard_no__in=cited_nos)
+    cited_std_map = {std.standard_no: std for std in cited_stds_found}
 
     # 3. 逐行处理及校验
     with transaction.atomic():
         for idx, row in df.iterrows():
             row_idx = idx + 2  # Excel 实际数据从第 2 行开始
             
-            source_no = str(row.get('企标编号*', '')).strip() if pd.notna(row.get('企标编号*', '')) else ''
-            cited_no = str(row.get('引用的国标/行标编号*', '')).strip() if pd.notna(row.get('引用的国标/行标编号*', '')) else ''
-            latest_no = str(row.get('最新标准号', '')).strip() if pd.notna(row.get('最新标准号', '')) else ''
+            source_no = str(row.get(col_source_no, '')).strip() if pd.notna(row.get(col_source_no, '')) else ''
+            cited_no = str(row.get(col_cited_no, '')).strip() if pd.notna(row.get(col_cited_no, '')) else ''
+            latest_no = str(row.get(col_latest_no, '')).strip() if col_latest_no and pd.notna(row.get(col_latest_no, '')) else ''
             
             # A. 必填字段格式校验
             if not source_no or source_no == 'nan':
-                result['errors'].append({'row': row_idx, 'error': "必填列 '企标编号*' 为空"})
+                result['errors'].append({'row': row_idx, 'error': "必填列 '企标编号' 为空"})
                 continue
             if not cited_no or cited_no == 'nan' or not re.search(r'[a-zA-Z0-9]', cited_no):
-                result['errors'].append({'row': row_idx, 'error': "必填列 '引用的国标/行标编号*' 为空或格式无效"})
+                result['errors'].append({'row': row_idx, 'error': "必填列 '引用的国标/行标编号' 为空或格式无效"})
                 continue
                 
-            # B. 主体存在性校验
-            standard = standard_map.get(source_no)
+            # B. 主体存在性校验 (优先按原始编号，其次按 clean_id)
+            clean_s_id = generate_clean_id(source_no)
+            standard = standard_map.get(source_no) or standard_clean_map.get(clean_s_id)
             if not standard:
                 result['errors'].append({
                     'row': row_idx, 

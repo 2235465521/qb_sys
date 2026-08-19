@@ -85,11 +85,18 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
       } else if (data.type === 'sync') {
         setUploading(false);
         setSyncResult(data.data);
-        message.success(data.message || '同步导入解析完成');
+        const successCount = (data.data?.success || 0) + (data.data?.success_count || 0);
+        const skippedCount = data.data?.skipped || 0;
+        if (successCount === 0 && skippedCount === 0 && (!data.data?.errors || data.data.errors.length === 0)) {
+          message.warning(data.message || '导入解析完成，但未发现有效数据行');
+        } else {
+          message.success(data.message || `同步导入解析完成（成功 ${successCount} 条，跳过重复 ${skippedCount} 条）`);
+        }
         onSuccess();
       }
     } catch (error: any) {
-      const errMsg = error?.response?.data?.error || '上传解析失败，请检查文件模版';
+      const respData = error?.response?.data;
+      const errMsg = respData?.error || respData?.detail || respData?.message || error?.message || '上传解析失败，请检查文件模版';
       message.error(errMsg);
       setUploading(false);
     }
