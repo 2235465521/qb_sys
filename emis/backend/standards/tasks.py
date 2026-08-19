@@ -357,6 +357,15 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             'std_title': ['企标名称*', '企标名称', '标准名称*', '标准名称', '企标名', '标准名'],
             'company_name': ['起草单位*', '起草单位', '起草单位/企业名称*', '起草单位/企业名称', '公司名称', '企业名称*', '企业名称', '起草企业', '单位名称'],
             'credit_code': ['统一社会信用代码*', '统一社会信用代码', '信用代码*', '信用代码', '统一信用代码'],
+            'legal_person': ['法定代表人*', '法定代表人', '法人'],
+            'address': ['注册地址*', '注册地址', '详细地址', '地址'],
+            'geo': ['行政区划*', '行政区划', '省市县', '所属区划'],
+            'pub_date': ['公开时间(YYYY-MM-DD)', '公开时间', '发布日期(YYYY-MM-DD)', '发布日期', '发布时间'],
+            'impl_date': ['实施日期(YYYY-MM-DD)', '实施日期', '实施时间'],
+            'status': ['标准状态(现行/废止/草案)', '标准状态'],
+            'pdf_filename': ['PDF文件名', '文件名', '磁盘阵列文件路径(可选)', '磁盘阵列文件路径'],
+            'ics': ['ICS', 'ICS分类号'],
+            'ccs': ['CCS', 'CCS分类号'],
             'cited_no': ['引用的国标/行标编号*', '引用的国标/行标编号', '企标中引用的标准号', '被引用标准号*', '被引用标准号', '引用的标准号', '引用标准号', '引用标准编号', '被引用的标准号', '被引用标准', '引用标准'],
             'latest_no': ['最新标准号', '最新被引用标准号', '发布时引用的完整标准号']
         }
@@ -377,20 +386,27 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                 if key in actual_cols:
                     break
 
-        # 检查必要列是否具备（企标编号与引用标准号为核心必要列）
-        required_keys = ['std_no', 'cited_no']
-        missing_cols = [k for k in required_keys if k not in actual_cols]
-        if missing_cols:
-            raise ValueError(f"Excel 格式不匹配，缺失核心必要列（企标编号/引用标准号），未匹配键: {missing_cols}")
-
-        col_std_no = actual_cols['std_no']
+        col_std_no = actual_cols.get('std_no')
         col_std_title = actual_cols.get('std_title')
         col_company_name = actual_cols.get('company_name')
         col_credit_code = actual_cols.get('credit_code')
-        col_cited_no = actual_cols['cited_no']
+        col_legal_person = actual_cols.get('legal_person')
+        col_address = actual_cols.get('address')
+        col_geo = actual_cols.get('geo')
+        col_pub_date = actual_cols.get('pub_date')
+        col_impl_date = actual_cols.get('impl_date')
+        col_status = actual_cols.get('status')
+        col_pdf = actual_cols.get('pdf_filename')
+        col_ics = actual_cols.get('ics')
+        col_ccs = actual_cols.get('ccs')
+        col_cited_no = actual_cols.get('cited_no')
         col_latest_no = actual_cols.get('latest_no')
 
+        if not col_std_no and not col_company_name and not col_credit_code:
+            raise ValueError("Excel 格式不匹配，未发现标准编号或企业相关列，请使用官方模板")
+
         import uuid
+        from companies.models import Province, City, District
 
         # 2. 循环遍历各行
         for idx, row in df.iterrows():
@@ -408,35 +424,87 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                 }, timeout=86400)
 
             # 获取当前行字段
-            std_no = str(row.get(col_std_no, '')).strip() if pd.notna(row.get(col_std_no)) else ''
+            std_no = str(row.get(col_std_no, '')).strip() if col_std_no and pd.notna(row.get(col_std_no)) else ''
+            if std_no == 'nan': std_no = ''
+            
             std_title = str(row.get(col_std_title, '')) if col_std_title and pd.notna(row.get(col_std_title)) else ''
             std_title = std_title.strip() if std_title != 'nan' else ''
+            if std_title.startswith('《') and std_title.endswith('》'):
+                std_title = std_title[1:-1].strip()
+
             company_name = str(row.get(col_company_name, '')) if col_company_name and pd.notna(row.get(col_company_name)) else ''
             company_name = company_name.strip() if company_name != 'nan' else ''
+
             credit_code = str(row.get(col_credit_code, '')) if col_credit_code and pd.notna(row.get(col_credit_code)) else ''
             credit_code = credit_code.strip() if credit_code != 'nan' else ''
-            cited_no = str(row.get(col_cited_no, '')).strip() if pd.notna(row.get(col_cited_no)) else ''
+
+            legal_person = str(row.get(col_legal_person, '')) if col_legal_person and pd.notna(row.get(col_legal_person)) else ''
+            legal_person = legal_person.strip() if legal_person != 'nan' else ''
+
+            address = str(row.get(col_address, '')) if col_address and pd.notna(row.get(col_address)) else ''
+            address = address.strip() if address != 'nan' else ''
+
+            geo_str = str(row.get(col_geo, '')) if col_geo and pd.notna(row.get(col_geo)) else ''
+            geo_str = geo_str.strip() if geo_str != 'nan' else ''
+
+            cited_no = str(row.get(col_cited_no, '')).strip() if col_cited_no and pd.notna(row.get(col_cited_no)) else ''
+            if cited_no == 'nan': cited_no = ''
+
             latest_no = str(row.get(col_latest_no, '')) if col_latest_no and pd.notna(row.get(col_latest_no)) else ''
             latest_no = latest_no.strip() if latest_no != 'nan' else ''
 
             # 数据完整性校验
-            if not std_no or std_no == 'nan':
-                errors.append({'row': row_idx, 'reason': "企标编号不能为空"})
-                continue
-            if not cited_no or cited_no == 'nan':
-                errors.append({'row': row_idx, 'reason': "引用的国标/行标编号不能为空"})
+            if not std_no:
+                errors.append({'row': row_idx, 'reason': "标准编号不能为空"})
                 continue
 
             # 使用行级数据库事务（原子性写入主表+子表）
             try:
                 with transaction.atomic():
-                    # A. 查找或建档起草企业
+                    # --- 步骤 A: 级联匹配省市区外键 ---
+                    province = None
+                    city = None
+                    district = None
+                    if geo_str and '-' in geo_str:
+                        geo_parts = geo_str.split('-')
+                        if len(geo_parts) >= 1:
+                            province = Province.objects.filter(name__icontains=geo_parts[0].replace("省", "")).first()
+                        if len(geo_parts) == 2 and province:
+                            city = City.objects.filter(name__in=["市辖区", province.name.replace("市", "")], province=province).first()
+                            if not city:
+                                city = City.objects.filter(province=province).first()
+                            if city:
+                                district = District.objects.filter(name__icontains=geo_parts[1], city=city).first()
+                        else:
+                            if len(geo_parts) >= 2 and province:
+                                city = City.objects.filter(name__icontains=geo_parts[1].replace("市", ""), province=province).first()
+                            if len(geo_parts) >= 3 and city:
+                                district = District.objects.filter(name__icontains=geo_parts[2], city=city).first()
+
+                    # LBS 经纬度
+                    company_lat = None
+                    company_lng = None
+                    if district and district.latitude and district.longitude:
+                        company_lat = district.latitude
+                        company_lng = district.longitude
+                    elif city and city.latitude and city.longitude:
+                        company_lat = city.latitude
+                        company_lng = city.longitude
+
+                    # --- 步骤 B: 查找或建档起草企业 ---
                     company = None
                     if credit_code:
                         company, _ = Company.objects.get_or_create(
                             credit_code=credit_code,
                             defaults={
                                 'name': company_name or f'企业_{credit_code[-6:]}',
+                                'legal_person': legal_person,
+                                'address': address,
+                                'province': province,
+                                'city': city,
+                                'district': district,
+                                'latitude': company_lat,
+                                'longitude': company_lng,
                                 'status': 'active'
                             }
                         )
@@ -446,12 +514,48 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                             company = Company.objects.create(
                                 name=company_name,
                                 credit_code=f'TEMP_{uuid.uuid4().hex[:14].upper()}',
+                                legal_person=legal_person,
+                                address=address,
+                                province=province,
+                                city=city,
+                                district=district,
+                                latitude=company_lat,
+                                longitude=company_lng,
                                 status='active'
                             )
 
-                    # B. 查找或建档企业标准主表
+                    # --- 步骤 C: 解析发布/实施日期/状态/PDF ---
+                    publish_date = None
+                    if col_pub_date and pd.notnull(row.get(col_pub_date)):
+                        try: publish_date = pd.to_datetime(row.get(col_pub_date)).date()
+                        except Exception: pass
+
+                    implement_date = None
+                    if col_impl_date and pd.notnull(row.get(col_impl_date)):
+                        try: implement_date = pd.to_datetime(row.get(col_impl_date)).date()
+                        except Exception: pass
+
+                    if publish_date and not implement_date:
+                        implement_date = publish_date
+
+                    status_str = str(row.get(col_status, '')) if col_status and pd.notna(row.get(col_status)) else ''
+                    standard_status = 'active'
+                    if '废止' in status_str:
+                        standard_status = 'deprecated'
+                    elif '草案' in status_str:
+                        standard_status = 'draft'
+
+                    pdf_filename = str(row.get(col_pdf, '')).strip() if col_pdf and pd.notna(row.get(col_pdf)) else ''
+                    pdf_db_path = f"整合/{pdf_filename}" if pdf_filename and pdf_filename != 'nan' else ''
+
+                    ics_val = str(row.get(col_ics, '')).strip() if col_ics and pd.notna(row.get(col_ics)) else ''
+                    ccs_val = str(row.get(col_ccs, '')).strip() if col_ccs and pd.notna(row.get(col_ccs)) else ''
+
+                    # --- 步骤 D: 查找或建档企业标准主表 ---
                     clean_id = generate_clean_id(std_no)
                     standard = Standard.objects.filter(clean_id=clean_id, type='enterprise').first()
+                    is_parsed_val = 'references_parsed' if cited_no else 'unparsed'
+
                     if not standard:
                         standard = Standard.objects.create(
                             standard_no=std_no,
@@ -459,39 +563,54 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                             title=std_title or std_no,
                             company=company,
                             type='enterprise',
-                            is_parsed='references_parsed'
+                            pdf_file=pdf_db_path,
+                            publish_date=publish_date,
+                            implement_date=implement_date,
+                            status=standard_status,
+                            ics=ics_val if ics_val != 'nan' else '',
+                            ccs=ccs_val if ccs_val != 'nan' else '',
+                            is_parsed=is_parsed_val
                         )
                     else:
-                        # 联动更新主表状态为“已完成引用解析”
-                        if standard.is_parsed == 'unparsed':
-                            standard.is_parsed = 'references_parsed'
-                            standard.save(update_fields=['is_parsed'])
+                        # 安全补充缺失字段
+                        updates = []
                         if not standard.company and company:
                             standard.company = company
-                            standard.save(update_fields=['company'])
+                            updates.append('company')
+                        if not standard.publish_date and publish_date:
+                            standard.publish_date = publish_date
+                            updates.append('publish_date')
+                        if not standard.implement_date and implement_date:
+                            standard.implement_date = implement_date
+                            updates.append('implement_date')
+                        if pdf_db_path and not standard.pdf_file:
+                            standard.pdf_file = pdf_db_path
+                            updates.append('pdf_file')
+                        if cited_no and standard.is_parsed == 'unparsed':
+                            standard.is_parsed = 'references_parsed'
+                            updates.append('is_parsed')
+                        if updates:
+                            standard.save(update_fields=updates)
 
-                    # C. 对齐系统中已有的被引标准
-                    cited_std = Standard.objects.filter(standard_no=cited_no).first()
+                    # --- 步骤 E: 写入关联引用记录明细（若包含引用列） ---
+                    if cited_no:
+                        cited_std = Standard.objects.filter(standard_no=cited_no).first()
+                        ref, created_ref = NormativeReference.objects.get_or_create(
+                            source_standard=standard,
+                            cited_standard_no=cited_no,
+                            defaults={
+                                'cited_standard': cited_std,
+                                'latest_standard_no': latest_no or cited_no
+                            }
+                        )
 
-                    # D. 写入关联引用记录明细
-                    ref, created_ref = NormativeReference.objects.get_or_create(
-                        source_standard=standard,
-                        cited_standard_no=cited_no,
-                        defaults={
-                            'cited_standard': cited_std,
-                            'latest_standard_no': latest_no or cited_no
-                        }
-                    )
-
-                    if created_ref:
-                        # 累加被引统计计数
-                        if cited_std:
-                            Standard.objects.filter(pk=cited_std.pk).update(citation_count=F('citation_count') + 1)
-                    else:
-                        # 如已存在则安全更新最新标准号
-                        if latest_no and ref.latest_standard_no != latest_no:
-                            ref.latest_standard_no = latest_no
-                            ref.save(update_fields=['latest_standard_no'])
+                        if created_ref:
+                            if cited_std:
+                                Standard.objects.filter(pk=cited_std.pk).update(citation_count=F('citation_count') + 1)
+                        else:
+                            if latest_no and ref.latest_standard_no != latest_no:
+                                ref.latest_standard_no = latest_no
+                                ref.save(update_fields=['latest_standard_no'])
 
                 success_count += 1
 

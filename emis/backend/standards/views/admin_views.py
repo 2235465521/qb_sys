@@ -333,9 +333,9 @@ class StandardSmartImportView(APIView):
         has_std_no = any(k in columns or k in columns_clean for k in std_no_keys)
         has_std_title = any(k in columns or k in columns_clean for k in std_title_keys)
 
-        # 3. 决策路由
-        if has_reference and (has_company or has_std_title):
-            # 混合导入（包含企标主信息与引用关系） -> 走异步
+        # 3. 决策路由与统一异步解耦执行
+        if has_std_no or has_company or has_reference:
+            # 无论混合表、纯企标还是纯引用，统一走异步任务（防 HTTP 超时 502/504）
             task_token = str(uuid.uuid4())
             temp_dir = settings.MEDIA_ROOT / 'temp_uploads'
             temp_dir.mkdir(parents=True, exist_ok=True)
@@ -361,26 +361,8 @@ class StandardSmartImportView(APIView):
             return Response({
                 'type': 'async',
                 'task_id': task_token,
-                'message': '文件包含企业/企标与引用关系，已提交后台异步排队处理。'
+                'message': '文件上传成功，已提交后台排队处理。'
             }, status=status.HTTP_202_ACCEPTED)
-
-        elif has_reference and not has_company and not has_std_title:
-            # 纯引用导入 -> 走同步
-            result = services.import_references_from_excel_v2(file_obj)
-            return Response({
-                'type': 'sync',
-                'data': result,
-                'message': '解析完成，纯引用关系导入成功。'
-            }, status=status.HTTP_200_OK)
-
-        elif has_std_no or has_company:
-            # 纯企标及企业导入 -> 走同步
-            result = services.import_standards_from_excel(file_obj)
-            return Response({
-                'type': 'sync',
-                'data': result,
-                'message': '解析完成，企业与企标资产导入成功。'
-            }, status=status.HTTP_200_OK)
 
         else:
             return Response({'error': '无法识别文件内容，未发现有效的企业、企标编号或引用号列，请使用官方模板'}, status=status.HTTP_400_BAD_REQUEST)
