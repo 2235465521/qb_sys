@@ -1,8 +1,12 @@
 """
 companies.ownership_service — 企业所有制标签与分类漏斗分层智能识别引擎 (Tiered Funnel Engine)
 
-方案一（漏斗分层法）：
-  Tier 1（本地 0 成本高精度规则引擎，覆盖约 90%+ 存量企业）：
+覆盖全主体类型：
+  Tier 0（非企业机构：事业单位、科研院所、高校、社会组织、国家机关，0成本）：
+    - 统一社会信用代码 12 开头 或 高校/院所名称特征 -> 自动判定【事业单位与科研高校】（高等院校 / 科研院所 / 事业单位）
+    - 统一社会信用代码 51/52/53 开头 或 协会/学会名称特征 -> 自动判定【社会团体与行业组织】
+    - 统一社会信用代码 11 开头 或 机关/管委会名称特征 -> 自动判定【国家机关与政务机构】
+  Tier 1（本地 0 成本高精度企业规则引擎，覆盖约 90%+ 存量企业）：
     - 确定性民营企业（自然人独资/控股/合伙/个体） -> 100% 自动打标（0 成本）
     - 确定性外资/港澳台（法定工商类型明确） -> 100% 自动打标（0 成本）
     - 确定性央企/国资（国资委 98 家央企名录白名单 + 国有独资/全资） -> 100% 自动打标（0 成本）
@@ -70,9 +74,9 @@ class OwnershipTagService:
     # ============================================================
 
     @classmethod
-    def funnel_classify(cls, name: str, company_type: str = '') -> dict:
+    def funnel_classify(cls, name: str, company_type: str = '', credit_code: str = '') -> dict:
         """
-        单家企业漏斗分层判定算法
+        全量机构/企业主体漏斗分层判定算法
         
         Returns:
             {
@@ -86,6 +90,80 @@ class OwnershipTagService:
         """
         name = (name or '').strip()
         ctype = (company_type or '').strip()
+        code = (credit_code or '').strip()
+
+        is_corp = any(kw in name for kw in ['有限公司', '股份有限公司', '有限责任公司', '合伙企业'])
+
+        # ────────────────────────────────────────────────────────
+        # [Tier 0.1] 事业单位与科研高校 (Public Institutions & Universities)
+        # ────────────────────────────────────────────────────────
+        # 统一社会信用代码以 12 开头（国家编办管理的事业单位），或名称为高校/科研所且非商业公司
+        is_univ = any(kw in name for kw in ['大学', '学院', '学校', '高等专科学校']) and not is_corp
+        is_research = any(kw in name for kw in ['研究院', '研究所', '研究中心', '计量院', '质检院', '标准化院', '勘察设计院']) and not is_corp
+        is_institution_code = code.startswith('12') or '事业单位' in ctype
+
+        if is_institution_code or is_univ or is_research:
+            if is_univ:
+                return {
+                    'tier': 1,
+                    'confidence': 'HIGH',
+                    'matched_rule': f'高等院校名称/事业单位代码(12): {name}',
+                    'tag_codes': ['public_institution', 'higher_education'],
+                    'is_ambiguous': False,
+                    'ambiguity_reason': ''
+                }
+            elif is_research or any(kw in name for kw in ['研究院', '研究所', '中心', '设计院']):
+                return {
+                    'tier': 1,
+                    'confidence': 'HIGH',
+                    'matched_rule': f'科研院所名称/事业单位代码(12): {name}',
+                    'tag_codes': ['public_institution', 'research_institute'],
+                    'is_ambiguous': False,
+                    'ambiguity_reason': ''
+                }
+            else:
+                return {
+                    'tier': 1,
+                    'confidence': 'HIGH',
+                    'matched_rule': f'事业单位机构代码(12)/公共服务机构: {name}',
+                    'tag_codes': ['public_institution', 'public_organization'],
+                    'is_ambiguous': False,
+                    'ambiguity_reason': ''
+                }
+
+        # ────────────────────────────────────────────────────────
+        # [Tier 0.2] 社会团体与行业组织 (Social Organizations)
+        # ────────────────────────────────────────────────────────
+        # 统一社会信用代码以 51/52/53 开头（民政部门登记），或名称为协会/学会/商会/联合会等且非商业公司
+        is_social_code = code.startswith(('51', '52', '53')) or '社会团体' in ctype or '民办非企业' in ctype or '基金会' in ctype
+        is_social_name = any(name.endswith(kw) for kw in ['协会', '学会', '联合会', '商会', '促进会', '研究会', '基金会', '联谊会']) and not is_corp
+
+        if is_social_code or is_social_name:
+            return {
+                'tier': 1,
+                'confidence': 'HIGH',
+                'matched_rule': f'社会团体/行业协会特征: {name}',
+                'tag_codes': ['social_organization', 'industry_association'],
+                'is_ambiguous': False,
+                'ambiguity_reason': ''
+            }
+
+        # ────────────────────────────────────────────────────────
+        # [Tier 0.3] 国家机关与政务机构 (Government Agencies)
+        # ────────────────────────────────────────────────────────
+        # 统一社会信用代码以 11 开头（机关），或名称为人民政府/委员会/管理局且非商业公司
+        is_gov_code = code.startswith('11') or '机关' in ctype
+        is_gov_name = any(name.endswith(kw) for kw in ['人民政府', '委员会', '管理委员会', '管理局', '厅', '委', '局']) and not is_corp
+
+        if is_gov_code or is_gov_name:
+            return {
+                'tier': 1,
+                'confidence': 'HIGH',
+                'matched_rule': f'国家机关/行政部门特征: {name}',
+                'tag_codes': ['government_agency', 'government_agency_sub'],
+                'is_ambiguous': False,
+                'ambiguity_reason': ''
+            }
 
         # ────────────────────────────────────────────────────────
         # [Tier 1.1] 确定性民营企业 (约占 80%~90%，0 成本直接过滤)
@@ -228,7 +306,7 @@ class OwnershipTagService:
             }
 
         # ────────────────────────────────────────────────────────
-        # [Tier 1.5] 默认常规民营有限责任公司 (0 成本)
+        # [Tier 1.5] 默认常规民营商业企业 (0 成本)
         # ────────────────────────────────────────────────────────
         return {
             'tier': 1,
@@ -346,7 +424,7 @@ class OwnershipTagService:
 
         if not tag_codes:
             # 走漏斗规则兜底
-            rule_res = cls.funnel_classify(company.name, econ_kind)
+            rule_res = cls.funnel_classify(company.name, econ_kind, company.credit_code)
             tag_codes.update(rule_res['tag_codes'])
 
         return cls.apply_tags_to_company(company, list(tag_codes))
@@ -354,5 +432,5 @@ class OwnershipTagService:
     @classmethod
     def predict_and_assign_by_rules(cls, company: Company) -> list:
         """调用漏斗分层算法为单家企业快速打标"""
-        res = cls.funnel_classify(company.name, company.company_type)
+        res = cls.funnel_classify(company.name, company.company_type, company.credit_code)
         return cls.apply_tags_to_company(company, res['tag_codes'])

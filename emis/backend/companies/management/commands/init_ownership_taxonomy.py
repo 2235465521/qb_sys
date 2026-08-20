@@ -3,10 +3,10 @@ from companies.models import CompanyCategory
 
 
 class Command(BaseCommand):
-    help = '初始化企业所有制分类与标签体系字典（4大类 + 19小类及官方权威定义）'
+    help = '初始化企业所有制分类与标签体系字典（包含国企、民企、外资、港澳台、事业单位与科研高校、社会组织、国家机关等）'
 
     def handle(self, *args, **options):
-        # 1. 四大主分类 (Main Categories)
+        # 1. 主分类 (Main Categories)
         main_categories_data = [
             {
                 'code': 'state_owned',
@@ -39,6 +39,30 @@ class Command(BaseCommand):
                 'badge_color': 'orange',
                 'sort_order': 40,
                 'definition': '指外国企业、外国人或其他经济组织依照中国法律法规在中国境内设立的投资企业。'
+            },
+            {
+                'code': 'public_institution',
+                'name': '事业单位与科研高校',
+                'category_type': 'main',
+                'badge_color': 'gold',
+                'sort_order': 50,
+                'definition': '指国家为了社会公益目的，由国家机关举办或者其他组织利用国有资产举办的社会服务组织，包括公立高等院校、科研院所、检验检测机构、公立医院等。'
+            },
+            {
+                'code': 'social_organization',
+                'name': '社会团体与行业组织',
+                'category_type': 'main',
+                'badge_color': 'magenta',
+                'sort_order': 60,
+                'definition': '指中国公民或单位自愿组成，为实现会员共同意愿，按照其章程开展活动的非营利性社会组织，包括行业协会、学会、联合会、商会、促进会、基金会等。'
+            },
+            {
+                'code': 'government_agency',
+                'name': '国家机关与政务机构',
+                'category_type': 'main',
+                'badge_color': 'red',
+                'sort_order': 70,
+                'definition': '指行使国家行政职权、管理国家行政事务的各级人民政府及其所属各工作部门或各类管理委员会。'
             },
         ]
 
@@ -177,7 +201,7 @@ class Command(BaseCommand):
                 'name': '港澳台投资股份有限公司',
                 'badge_color': 'purple',
                 'sort_order': 34,
-                'definition': '指根据国家有关规定，经外经贸部依法批准设立，其中港、澳、台商的股本占公司注册资本的比例达25%以上的股份有限公司。凡其中港、澳、台商的股本占公司注册资本的比例小于25%的，属于内资企业中的股份有限公司。'
+                'definition': '指根据国家有关规定，经外经贸部依法批准设立，其中港、澳、台商的股本占公司注册资本的比例达25%以上的股份有限公司。'
             },
             {
                 'parent_code': 'hmt_invested',
@@ -185,7 +209,7 @@ class Command(BaseCommand):
                 'name': '其他港澳台投资企业',
                 'badge_color': 'purple',
                 'sort_order': 35,
-                'definition': '指在中国境内参照《外国企业或个人在中国境内设立合伙企业管理办法》和《外商投资合伙企业登记管理规定》，依法设立的港、澳、台商投资合伙企业等。'
+                'definition': '指在中国境内参照有关规定依法设立的港、澳、台商投资合伙企业及其他组织等。'
             },
 
             # ── 外商投资企业子类 ────────────────────
@@ -211,7 +235,7 @@ class Command(BaseCommand):
                 'name': '外资企业（独资）',
                 'badge_color': 'orange',
                 'sort_order': 43,
-                'definition': '指依照《中华人民共和国外资企业法》等有关法律在中国境内设立的全部资本由外国投资者投资的企业，不包括外国的企业和其他经济组织在中国境内的分支机构。'
+                'definition': '指依照《中华人民共和国外资企业法》等有关法律在中国境内设立的全部资本由外国投资者投资的企业。'
             },
             {
                 'parent_code': 'foreign_invested',
@@ -227,7 +251,53 @@ class Command(BaseCommand):
                 'name': '其他外商投资企业',
                 'badge_color': 'orange',
                 'sort_order': 45,
-                'definition': '指外商投资合伙企业和其他未区分的外商投资企业，其中外商投资合伙企业是指2个以上外国企业或者个人在中国境内设立的合伙企业，以及外国企业或者个人与中国的自然人、法人和其他组织在中国境内设立的合伙企业。'
+                'definition': '指外商投资合伙企业和其他未区分的外商投资企业。'
+            },
+
+            # ── 事业单位与科研高校子类 ──────────────
+            {
+                'parent_code': 'public_institution',
+                'code': 'higher_education',
+                'name': '高等院校',
+                'badge_color': 'gold',
+                'sort_order': 51,
+                'definition': '指教育部及各省市教育行政主管部门审批设立的大学、学院、高等职业技术学校等公立或非营利性高等学府。'
+            },
+            {
+                'parent_code': 'public_institution',
+                'code': 'research_institute',
+                'name': '科研院所',
+                'badge_color': 'volcano',
+                'sort_order': 52,
+                'definition': '指中国科学院、中国工程院、国家各部委及地方所属的科学技术研究院、研究所、标准化/计量/检验检测等专业科研技术机构。'
+            },
+            {
+                'parent_code': 'public_institution',
+                'code': 'public_organization',
+                'name': '事业单位/公共机构',
+                'badge_color': 'gold',
+                'sort_order': 53,
+                'definition': '指国家为了社会公益目的，由国家机关举办或者其他组织利用国有资产举办的从事教育、文化、卫生、监测等社会公益服务的各级各类事业单位。'
+            },
+
+            # ── 社会团体与行业组织子类 ──────────────
+            {
+                'parent_code': 'social_organization',
+                'code': 'industry_association',
+                'name': '行业协会/学会',
+                'badge_color': 'magenta',
+                'sort_order': 61,
+                'definition': '由企业、事业单位或专业技术人员组成的全国性或地方性行业协会、学会、联合会、商会或研究会等非营利性社会组织。'
+            },
+
+            # ── 国家机关与政务机构子类 ──────────────
+            {
+                'parent_code': 'government_agency',
+                'code': 'government_agency_sub',
+                'name': '行政机关/管委会',
+                'badge_color': 'red',
+                'sort_order': 71,
+                'definition': '指行使国家行政职权、管理国家行政事务的各级人民政府及其所属各工作部门或园区管理委员会。'
             },
         ]
 
@@ -248,4 +318,4 @@ class Command(BaseCommand):
             status_text = '创建' if created else '更新'
             self.stdout.write(f"  [{status_text}] 小类标签: {cat.name} ({cat.code}) -> 所属: {parent_cat.name}")
 
-        self.stdout.write(self.style.SUCCESS("成功初始化企业所有制分类与标签体系！"))
+        self.stdout.write(self.style.SUCCESS("成功初始化全体系分类与标签（含企事业单位、高校、科研院所、社会组织）！"))

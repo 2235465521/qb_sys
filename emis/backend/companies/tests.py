@@ -313,6 +313,33 @@ class OwnershipCategoryTests(APITestCase):
         self.assertTrue(res_ambiguous['is_ambiguous'])
         self.assertIn('投资控股', res_ambiguous['ambiguity_reason'])
 
+        # 5. 高等院校 (清华大学、浙江大学等)
+        res_univ = OwnershipTagService.funnel_classify("清华大学", "事业单位", "12100000400000624D")
+        self.assertEqual(res_univ['tier'], 1)
+        self.assertIn('public_institution', res_univ['tag_codes'])
+        self.assertIn('higher_education', res_univ['tag_codes'])
+        self.assertNotIn('private', res_univ['tag_codes'])
+
+        # 6. 科研院所 (中国标准化研究院、中国信息通信研究院等)
+        res_research = OwnershipTagService.funnel_classify("中国标准化研究院", "事业单位", "1210000071789999XX")
+        self.assertEqual(res_research['tier'], 1)
+        self.assertIn('public_institution', res_research['tag_codes'])
+        self.assertIn('research_institute', res_research['tag_codes'])
+        self.assertNotIn('private', res_research['tag_codes'])
+
+        # 7. 行业协会与学会 (中国汽车工程学会等)
+        res_assoc = OwnershipTagService.funnel_classify("中国汽车工程学会", "社会团体", "51100000500001234X")
+        self.assertEqual(res_assoc['tier'], 1)
+        self.assertIn('social_organization', res_assoc['tag_codes'])
+        self.assertIn('industry_association', res_assoc['tag_codes'])
+        self.assertNotIn('private', res_assoc['tag_codes'])
+
+        # 8. 国家行政机关
+        res_gov = OwnershipTagService.funnel_classify("深圳市市场监督管理局", "机关", "11440300007541234X")
+        self.assertEqual(res_gov['tier'], 1)
+        self.assertIn('government_agency', res_gov['tag_codes'])
+        self.assertNotIn('private', res_gov['tag_codes'])
+
 
 
 
