@@ -15,7 +15,6 @@ import re
 import time
 import hashlib
 import logging
-import requests
 from django.conf import settings
 from companies.models import Company, CompanyCategory
 
@@ -291,11 +290,15 @@ class OwnershipTagService:
         }
 
         try:
+            import requests
             resp = requests.get(url, headers=headers, params=params, timeout=10)
             if resp.status_code == 200:
                 res_json = resp.json()
                 if res_json.get('Status') == '200':
                     return res_json.get('Result', {})
+        except ImportError:
+            logger.warning("未安装 requests 库，无法发起 QCC 网络请求。请运行 pip install requests")
+            return None
         except Exception as e:
             logger.error(f"请求 QCC API 异常: {str(e)}")
 
