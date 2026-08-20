@@ -289,6 +289,30 @@ class OwnershipCategoryTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(len(response.data['tags']) > 0)
 
+    def test_funnel_classification_all_tiers(self):
+        from companies.ownership_service import OwnershipTagService
+
+        # 1. 确定性民营企业
+        res_private = OwnershipTagService.funnel_classify("北京某某科技有限公司", "有限责任公司(自然人投资或控股)")
+        self.assertEqual(res_private['tier'], 1)
+        self.assertIn('private', res_private['tag_codes'])
+
+        # 2. 确定性外资企业
+        res_foreign = OwnershipTagService.funnel_classify("某某(中国)投资有限公司", "有限责任公司(中外合资)")
+        self.assertEqual(res_foreign['tier'], 1)
+        self.assertIn('foreign_invested', res_foreign['tag_codes'])
+
+        # 3. 央企白名单
+        res_central = OwnershipTagService.funnel_classify("中国石油天然气股份有限公司吉林分公司", "分公司")
+        self.assertEqual(res_central['tier'], 1)
+        self.assertIn('state_owned', res_central['tag_codes'])
+
+        # 4. Tier 2 存疑国资/城投企业 (之前抛出 NameError kw 的代码分支)
+        res_ambiguous = OwnershipTagService.funnel_classify("某某市城市建设投资控股集团有限公司", "有限责任公司")
+        self.assertEqual(res_ambiguous['tier'], 2)
+        self.assertTrue(res_ambiguous['is_ambiguous'])
+        self.assertIn('投资控股', res_ambiguous['ambiguity_reason'])
+
 
 
 

@@ -204,7 +204,8 @@ class OwnershipTagService:
             '产业投资', '国有', '省属', '市属'
         ]
 
-        if any(kw in name for kw in state_ambiguous_keywords) or '国有' in ctype:
+        matched_kw = next((kw for kw in state_ambiguous_keywords if kw in name), None)
+        if matched_kw or '国有' in ctype:
             # 存疑国企候选：先基于文本给出预估标签，但标明 NEEDS_API
             predicted_tags = ['state_owned']
             if any(p in name for p in ['省', '自治区']):
@@ -216,13 +217,14 @@ class OwnershipTagService:
             else:
                 predicted_tags.append('state_controlled')
 
+            reason_str = matched_kw if matched_kw else ('工商类型含国有' if '国有' in ctype else '国资特征')
             return {
                 'tier': 2,
                 'confidence': 'NEEDS_API',
-                'matched_rule': f'名称/工商包含国资投资特征关键词，但股权层级需穿透',
+                'matched_rule': f'名称/工商包含国资投资特征关键词({reason_str})，股权层级需穿透',
                 'tag_codes': predicted_tags,
                 'is_ambiguous': True,
-                'ambiguity_reason': f'企业名称包含“{kw}”，股权归属（央企/省属/市属/民营控股）建议通过 API 精准穿透'
+                'ambiguity_reason': f'企业名称/类型包含“{reason_str}”，股权归属（央企/省属/市属/民营控股）建议通过 API 精准穿透'
             }
 
         # ────────────────────────────────────────────────────────
