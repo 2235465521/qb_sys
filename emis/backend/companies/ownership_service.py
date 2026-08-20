@@ -427,10 +427,10 @@ class OwnershipTagService:
             rule_res = cls.funnel_classify(company.name, econ_kind, company.credit_code)
             tag_codes.update(rule_res['tag_codes'])
 
-        return cls.apply_tags_to_company(company, list(tag_codes))
+        return cls.apply_tags_to_company(company, list(tag_codes), clear_existing=True)
 
     @classmethod
     def predict_and_assign_by_rules(cls, company: Company) -> list:
         """调用漏斗分层算法为单家企业快速打标"""
         res = cls.funnel_classify(company.name, company.company_type, company.credit_code)
-        return cls.apply_tags_to_company(company, res['tag_codes'])
+        return cls.apply_tags_to_company(company, res['tag_codes'], clear_existing=True)

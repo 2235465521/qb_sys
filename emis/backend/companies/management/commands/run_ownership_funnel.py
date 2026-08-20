@@ -18,18 +18,28 @@ class Command(BaseCommand):
             '--mode',
             type=str,
             default='scan',
-            choices=['scan', 'apply-tier1', 'apply-tier2', 'all'],
-            help='运行模式：scan (仅扫描统计漏斗报告) | apply-tier1 (执行Tier1确定性打标，0成本) | apply-tier2 (仅对存疑企业调API穿透) | all (全量执行)'
+            choices=['scan', 'apply-tier1', 'apply-tier2', 'clear-all', 'all'],
+            help='运行模式：scan (仅扫描统计漏斗报告) | apply-tier1 (执行Tier1确定性打标，0成本) | apply-tier2 (仅对存疑企业调API穿透) | clear-all (一键清空所有历史标签) | all (全量执行)'
         )
         parser.add_argument('--limit', type=int, default=0, help='处理上限数量（0 为全部）')
         parser.add_argument('--batch-size', type=int, default=2000, help='每批处理提交数量')
-        parser.add_argument('--force', action='store_true', help='强制覆盖已有标签的企业')
+        parser.add_argument('--force', action='store_true', help='强制覆盖并清空旧标签重新打标')
 
     def handle(self, *args, **options):
         mode = options['mode']
         limit = options['limit']
         batch_size = options['batch_size']
         force = options['force']
+
+        CompanyCategoryRelation = Company.ownership_categories.through
+
+        # ── 0. CLEAR-ALL 模式：一键清空所有主体的标签关联 ──────────────────────
+        if mode == 'clear-all':
+            total_tags = CompanyCategoryRelation.objects.count()
+            self.stdout.write(self.style.WARNING(f"正在一键清空数据库中已存在的全部 {total_tags} 条主体标签关联..."))
+            CompanyCategoryRelation.objects.all().delete()
+            self.stdout.write(self.style.SUCCESS("清空完成！所有主体的历史所有制与机构标签已全部重置。"))
+            return
 
         qs = Company.objects.filter(is_deleted=False)
         if not force and mode != 'scan':
@@ -48,7 +58,7 @@ class Command(BaseCommand):
         # 统计计数器
         stats = {
             'tier1_private': 0,          # 确定性民营
-            'tier1_institutions': 0,     # 事业单位与科研高校 (大学、研究院等)
+            'tier1_institutions': 0,     # 事业单位与科研高校 (大学、研究院所等)
             'tier1_social_orgs': 0,      # 社会团体与行业协会
             'tier1_gov_agencies': 0,     # 国家机关
             'tier1_foreign_hmt': 0,      # 确定性外资/港澳台
@@ -124,21 +134,19 @@ class Command(BaseCommand):
             self.stdout.write(f"   [-] 采用方案一漏斗过滤后花费: 仅需约 {funnel_api_cost} 元 ({stats['tier2_ambiguous']} 次调用)")
             self.stdout.write(self.style.SUCCESS(f"   [!] 本次漏斗过滤直接为您节省资金: 约 {saved_cost} 元 (节省比例 {tier1_ratio}%)！"))
             self.stdout.write("\n下一步操作指南：")
-            self.stdout.write("   1. 运行 `python manage.py run_ownership_funnel --mode apply-tier1` 即刻完成全部确定性主体的 0 成本打标。")
+            self.stdout.write("   1. 运行 `python manage.py run_ownership_funnel --mode apply-tier1 --force` 即刻覆盖并更新全部确定性主体的 0 成本打标。")
             self.stdout.write("   2. 运行 `python manage.py run_ownership_funnel --mode apply-tier2 --limit 100` 对存疑企业按需调用 API 穿透。\n")
             return
 
         # ── 2. APPLY-TIER1 模式：执行本地 0 成本全量打标 ────────────────────────
         if mode in ['apply-tier1', 'all']:
             start_time = time.time()
-            self.stdout.write("正在执行 Tier 1 本地 0 成本批量打标...")
-            
-            # 使用 Through 模型批量写入关联，性能提升 50 倍以上
-            CompanyCategoryRelation = Company.ownership_categories.through
+            self.stdout.write("正在执行 Tier 1 本地 0 成本批量打标（自动清理覆盖旧标签）...")
             
             processed = 0
             applied_count = 0
             batch_relations = []
+            batch_company_ids = []
             
             # 分批查询
             company_objs = qs[:limit] if limit > 0 else qs
@@ -159,21 +167,28 @@ class Command(BaseCommand):
                         if cat.parent_id:
                             categories_to_link.add(cat.parent_id)
 
-                for cat_id in categories_to_link:
-                    batch_relations.append(CompanyCategoryRelation(company_id=company.id, companycategory_id=cat_id))
+                if categories_to_link:
+                    batch_company_ids.append(company.id)
+                    for cat_id in categories_to_link:
+                        batch_relations.append(CompanyCategoryRelation(company_id=company.id, companycategory_id=cat_id))
 
                 applied_count += 1
 
                 if len(batch_relations) >= 5000:
+                    if batch_company_ids:
+                        CompanyCategoryRelation.objects.filter(company_id__in=batch_company_ids).delete()
                     CompanyCategoryRelation.objects.bulk_create(batch_relations, ignore_conflicts=True)
                     batch_relations = []
+                    batch_company_ids = []
                     self.stdout.write(f"已完成 {processed}/{total_count} 家主体打标...")
 
             if batch_relations:
+                if batch_company_ids:
+                    CompanyCategoryRelation.objects.filter(company_id__in=batch_company_ids).delete()
                 CompanyCategoryRelation.objects.bulk_create(batch_relations, ignore_conflicts=True)
 
             duration = round(time.time() - start_time, 2)
-            self.stdout.write(self.style.SUCCESS(f"Tier 1 本地打标完成！成功为 {applied_count} 家主体写入所有制与机构标签 (耗时 {duration} 秒, 花费 0 元)。"))
+            self.stdout.write(self.style.SUCCESS(f"Tier 1 本地打标完成！成功为 {applied_count} 家主体写入最新所有制与机构标签 (耗时 {duration} 秒, 花费 0 元)。"))
 
         # ── 3. APPLY-TIER2 模式：仅对存疑企业调用 QCC API 穿透 ─────────────────
         if mode in ['apply-tier2', 'all']:
