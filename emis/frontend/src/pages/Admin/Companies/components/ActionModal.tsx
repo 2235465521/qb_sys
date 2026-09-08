@@ -184,7 +184,21 @@ const ActionModal: React.FC<ActionModalProps> = ({
     }
     try {
       const values = await form.validateFields();
-      onOk({ ...editingRecord, ...values });
+      const payload: any = { ...values };
+      if (editingRecord?.id) {
+        payload.id = editingRecord.id;
+      }
+      // 规范化空值，避免 DRF 校验报错
+      if (payload.established_date === '') {
+        payload.established_date = null;
+      }
+      if (payload.latitude === '' || payload.latitude === undefined) {
+        payload.latitude = null;
+      }
+      if (payload.longitude === '' || payload.longitude === undefined) {
+        payload.longitude = null;
+      }
+      onOk(payload);
     } catch (error) {
       // Validation failed
     }
@@ -525,8 +539,8 @@ const ActionModal: React.FC<ActionModalProps> = ({
   );
 
   const tabItems = [
-    { label: '基础与位置信息', key: 'basic', children: basicInfoTab },
-    { label: '详细与分类信息', key: 'advanced', children: advancedInfoTab },
+    { label: '基础与位置信息', key: 'basic', children: basicInfoTab, forceRender: true },
+    { label: '详细与分类信息', key: 'advanced', children: advancedInfoTab, forceRender: true },
   ];
 
   return (

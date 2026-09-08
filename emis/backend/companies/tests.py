@@ -4,7 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import RefreshToken
-from companies.models import Lead, FollowUp, Attachment, Company
+from companies.models import Lead, FollowUp, Attachment, Company, Province, City, District, CompanyCategory
 
 User = get_user_model()
 
@@ -339,6 +339,93 @@ class OwnershipCategoryTests(APITestCase):
         self.assertEqual(res_gov['tier'], 1)
         self.assertIn('government_agency', res_gov['tag_codes'])
         self.assertNotIn('private', res_gov['tag_codes'])
+
+
+class CompanyEditAPITests(APITestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username='admin_test',
+            password='password123',
+            role='admin',
+            is_staff=True,
+            is_superuser=True
+        )
+        token = RefreshToken.for_user(self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {token.access_token}')
+
+        self.province = Province.objects.create(code='110000', name='北京市')
+        self.city = City.objects.create(code='110100', name='市辖区', province=self.province)
+        self.district = District.objects.create(code='110102', name='西城区', city=self.city)
+        self.cat1 = CompanyCategory.objects.create(code='state_owned', name='国有企业', category_type='main')
+        self.cat2 = CompanyCategory.objects.create(code='central_soe', name='央企', category_type='sub', parent=self.cat1)
+
+        self.company = Company.objects.create(
+            name="北京矿冶研究总院",
+            credit_code="91110102101151422H",
+            status="active",
+            address="北京市西城区文兴街1号（德胜园区）",
+            province=self.province,
+            city=self.city,
+            district=self.district
+        )
+        self.company.ownership_categories.add(self.cat1, self.cat2)
+
+    def test_update_company_with_null_and_empty_fields(self):
+        """测试前端编辑企业保存时，带空字段/null/空字符串日期以及只读字段的场景"""
+        url = f'/api/admin/companies/{self.company.id}/'
+        # 模拟前端表单提交的数据包（包含 null 的可选字段、空字符串日期等）
+        payload = {
+            'id': self.company.id,
+            'name': '北京矿冶研究总院',
+            'credit_code': '91110102101151422H',
+            'province_id': self.province.id,
+            'city_id': self.city.id,
+            'district_id': self.district.id,
+            'ownership_category_ids': [self.cat1.id, self.cat2.id],
+            'status': 'active',
+            'address': '北京市西城区文兴街1号（德胜园区）',
+            'legal_person': None,
+            'contact': None,
+            'latitude': None,
+            'longitude': None,
+            'established_date': '',  # 前端 HTML date input 清空时产生空字符串
+            'company_size': None,
+            'registered_address': None,
+            'registered_zipcode': None,
+            'valid_mobile': None,
+            'more_phones': None,
+            'email': None,
+            'company_type': None,
+            'registration_no': None,
+            'organization_code': None,
+            'industry_category': None,
+            'industry_major': None,
+            'industry_middle': None,
+            'industry_minor': None,
+            'english_name': None,
+            'former_names': None,
+            'website_url': None,
+            'mailing_address': None,
+            'mailing_address_zip': None,
+            'business_scope': None,
+            'registration_status': None,
+            # 前端列表携带的只读辅助字段
+            'province_name': '北京市',
+            'city_name': '市辖区',
+            'district_name': '西城区',
+            'standards_count': 10,
+            'distance_km': None,
+            'ownership_categories': [{'id': self.cat1.id, 'name': self.cat1.name}],
+        }
+
+        # 测试 PUT 请求（当前前端使用的请求方式）
+        response = self.client.put(url, payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, f"PUT failed: {response.data}")
+
+        # 测试 PATCH 请求
+        response_patch = self.client.patch(url, payload, format='json')
+        self.assertEqual(response_patch.status_code, status.HTTP_200_OK, f"PATCH failed: {response_patch.data}")
+
 
 
 

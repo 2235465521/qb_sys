@@ -136,13 +136,13 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
     city = CitySerializer(read_only=True)
     district = DistrictSerializer(read_only=True)
     province_id = serializers.PrimaryKeyRelatedField(
-        queryset=Province.objects.all(), source='province', write_only=True, required=False
+        queryset=Province.objects.all(), source='province', write_only=True, required=False, allow_null=True
     )
     city_id = serializers.PrimaryKeyRelatedField(
-        queryset=City.objects.all(), source='city', write_only=True, required=False
+        queryset=City.objects.all(), source='city', write_only=True, required=False, allow_null=True
     )
     district_id = serializers.PrimaryKeyRelatedField(
-        queryset=District.objects.all(), source='district', write_only=True, required=False
+        queryset=District.objects.all(), source='district', write_only=True, required=False, allow_null=True
     )
     ownership_categories = CompanyCategorySerializer(many=True, read_only=True)
     ownership_category_ids = serializers.PrimaryKeyRelatedField(
@@ -169,6 +169,37 @@ class CompanyDetailSerializer(serializers.ModelSerializer):
             'business_scope', 'registration_status',
         ]
         read_only_fields = ['id', 'is_deleted', 'created_at', 'updated_at']
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, 'copy') else dict(data)
+
+        # 1. 规范化日期字段：空字符串或非法格式转为 None
+        if 'established_date' in data and not data['established_date']:
+            data['established_date'] = None
+
+        # 2. 规范化经纬度数值字段：空字符串或 null 转为 None
+        for geo_field in ('latitude', 'longitude'):
+            if geo_field in data and (data[geo_field] == '' or data[geo_field] is None):
+                data[geo_field] = None
+
+        # 3. 规范化外键字段：空字符串转为 None
+        for fk_field in ('province_id', 'city_id', 'district_id'):
+            if fk_field in data and data[fk_field] == '':
+                data[fk_field] = None
+
+        # 4. 规范化文本字段：None 转为空字符串（防止 MySQL NOT NULL 约束或 DRF 校验报错）
+        str_fields = [
+            'legal_person', 'contact', 'address', 'registered_address', 'registered_zipcode',
+            'valid_mobile', 'more_phones', 'email', 'company_type', 'registration_no',
+            'organization_code', 'industry_category', 'industry_major', 'industry_middle',
+            'industry_minor', 'company_size', 'english_name', 'former_names', 'website_url',
+            'mailing_address', 'mailing_address_zip', 'business_scope', 'registration_status'
+        ]
+        for f in str_fields:
+            if f in data and data[f] is None:
+                data[f] = ''
+
+        return super().to_internal_value(data)
 
 
 from .models import Company, Province, City, District, Lead, FollowUp, Attachment, LeadOption, CompanyCategory

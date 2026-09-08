@@ -19,7 +19,7 @@ export const useCompanyData = (params: CompanySearchParams) => {
   const saveMutation = useMutation({
     mutationFn: async (values: Partial<Company>) => {
       if (values.id) {
-        return apiClient.put(`/admin/companies/${values.id}/`, values);
+        return apiClient.patch(`/admin/companies/${values.id}/`, values);
       }
       return apiClient.post('/admin/companies/', values);
     },
@@ -27,6 +27,26 @@ export const useCompanyData = (params: CompanySearchParams) => {
       message.success('操作成功');
       queryClient.invalidateQueries({ queryKey: ['admin_companies'] });
       companyQuery.refetch();
+    },
+    onError: (error: any) => {
+      const data = error.response?.data;
+      let errorMsg = '保存失败，请检查输入项';
+      if (typeof data === 'string') {
+        errorMsg = data;
+      } else if (data && typeof data === 'object') {
+        const firstKey = Object.keys(data)[0];
+        const val = data[firstKey];
+        if (Array.isArray(val) && val.length > 0) {
+          errorMsg = `${val[0]}`;
+        } else if (typeof val === 'string') {
+          errorMsg = val;
+        } else if (data.error) {
+          errorMsg = data.error;
+        } else if (data.detail) {
+          errorMsg = data.detail;
+        }
+      }
+      message.error(errorMsg);
     },
   });
 
