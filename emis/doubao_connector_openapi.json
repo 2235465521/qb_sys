@@ -1,0 +1,241 @@
+﻿{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "企标管理系统 (EMIS) 豆包连接器",
+    "description": "提供企业标准（企标）及团体标准（团标）的数据查询与下载能力。根据公司名称实时检索其名下所有标准资产及 PDF 原文下载链接。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:8000",
+      "description": "EMIS 企标管理系统服务地址（如在公网部署，请修改为实际域名或公网 IP）"
+    }
+  ],
+  "paths": {
+    "/api/open/doubao/company-standards/": {
+      "get": {
+        "summary": "查询指定公司名下的企业标准与团体标准",
+        "description": "当用户询问某家公司、企业名下有哪些标准、企标、团标，或者需要获取某企业标准文件及下载地址时调用此接口。支持输入企业全称或关键词（如'华为'、'比亚迪'）。",
+        "operationId": "getCompanyStandards",
+        "parameters": [
+          {
+            "name": "company_name",
+            "in": "query",
+            "description": "企业全称或检索关键词，例如：'比亚迪'、'宁德时代新能源科技股份有限公司'",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "standard_type",
+            "in": "query",
+            "description": "标准类型筛选：all（全部，默认）、enterprise（仅企业标准）、group（仅团体标准）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "enterprise",
+                "group"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "标准实施状态筛选：all（全部，默认）、active（现行）、deprecated（废止）",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "all",
+                "active",
+                "deprecated"
+              ],
+              "default": "all"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "单次返回的最大标准条数，默认 20 条，最大 50 条",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功返回企业信息及标准清单",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "description": "请求是否成功"
+                    },
+                    "matched": {
+                      "type": "boolean",
+                      "description": "是否匹配到企业"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "提示消息"
+                    },
+                    "company": {
+                      "type": "object",
+                      "description": "主匹配企业的核心信息",
+                      "properties": {
+                        "id": {
+                          "type": "integer",
+                          "description": "企业 ID"
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "企业官方全称"
+                        },
+                        "credit_code": {
+                          "type": "string",
+                          "description": "统一社会信用代码"
+                        },
+                        "legal_person": {
+                          "type": "string",
+                          "description": "法定代表人"
+                        },
+                        "region": {
+                          "type": "string",
+                          "description": "所在省市区"
+                        },
+                        "ownership_categories": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "企业所有制分类标签，如央企、民营企业等"
+                        },
+                        "standards_count_in_db": {
+                          "type": "integer",
+                          "description": "系统中该企业持有的标准总数"
+                        }
+                      }
+                    },
+                    "total_standards": {
+                      "type": "integer",
+                      "description": "符合筛选条件的总标准数量"
+                    },
+                    "returned_count": {
+                      "type": "integer",
+                      "description": "本次响应列表包含的标准数量"
+                    },
+                    "standards": {
+                      "type": "array",
+                      "description": "标准列表明细",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "description": "标准 ID"
+                          },
+                          "standard_no": {
+                            "type": "string",
+                            "description": "标准号（如 Q/BYD 001-2024）"
+                          },
+                          "title": {
+                            "type": "string",
+                            "description": "标准名称"
+                          },
+                          "type": {
+                            "type": "string",
+                            "description": "类型标识（enterprise/group）"
+                          },
+                          "type_display": {
+                            "type": "string",
+                            "description": "标准类型名称（企业标准/团体标准）"
+                          },
+                          "status": {
+                            "type": "string",
+                            "description": "状态标识（active/deprecated）"
+                          },
+                          "status_display": {
+                            "type": "string",
+                            "description": "状态显示名称（现行/废止）"
+                          },
+                          "publish_date": {
+                            "type": "string",
+                            "description": "发布日期"
+                          },
+                          "implement_date": {
+                            "type": "string",
+                            "description": "实施日期"
+                          },
+                          "has_pdf": {
+                            "type": "boolean",
+                            "description": "是否有物理 PDF 文件"
+                          },
+                          "download_url": {
+                            "type": "string",
+                            "description": "PDF 文件直接下载链接（点击即可下载该文件）"
+                          }
+                        }
+                      }
+                    },
+                    "candidate_companies": {
+                      "type": "array",
+                      "description": "命中的其他同名/关联候选企业（若有）",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer"
+                          },
+                          "name": {
+                            "type": "string",
+                            "description": "候选企业全称"
+                          },
+                          "standards_count": {
+                            "type": "integer",
+                            "description": "该候选企业持有的标准数量"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "缺少必要查询参数"
+          },
+          "401": {
+            "description": "API Key 认证失败"
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "APIKey",
+        "description": "请在豆包连接器鉴权设置中填入 DOUBAO_API_KEY"
+      }
+    }
+  }
+}

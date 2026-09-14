@@ -282,3 +282,9 @@ else:
     default_shared_disk = "/mnt/std_bk/磁盘阵列/标准文件下载/企标下载"
 
 SHARED_DISK_ROOT = config('SHARED_DISK_ROOT', default=default_shared_disk)
+
+# ============================================================
+# 豆包大模型连接器配置 (Doubao Connector Configuration)
+# ============================================================
+DOUBAO_API_KEY = config('DOUBAO_API_KEY', default='emis_doubao_secret_key_2026')
+PUBLIC_BASE_URL = config('PUBLIC_BASE_URL', default='http://127.0.0.1:8000')

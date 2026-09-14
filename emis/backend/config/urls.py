@@ -37,6 +37,9 @@ urlpatterns = [
 
     # ── 后台使用情况与审计统计 ────────────────────────────
     path('api/admin/statistics/', include('statistics.urls')),
+
+    # ── 豆包大模型连接器开放接口 ──────────────────────────
+    path('api/open/doubao/', include('standards.urls.open_urls')),
 ]
 
 # 媒体文件静态代理 (Django static() 内部在非 DEBUG 模式下会自动清空，无需额外包裹)
