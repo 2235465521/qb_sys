@@ -485,13 +485,15 @@ def normalize_string(s: str) -> str:
     return re.sub(r'[^a-zA-Z0-9]', '', s).lower()
 
 
-def scan_and_align_pdf_assets() -> dict:
-    """
+def scan_and_align_pdf_assets(target_standard_ids=None) -> dict:
+    r"""
     自动遍历 Y:\磁盘阵列\标准文件下载\企标下载\整合\ 目录下的平铺 PDF 文件，
-    对库内缺失 pdf_file 相对路径的企标进行多维子串模糊匹配对齐。
+    对缺失 pdf_file 相对路径的企标进行多维子串模糊匹配对齐。
+    若指定 target_standard_ids，则仅对这批标准执行快速对齐（用于导入任务后置处理，毫秒级响应）。
     """
     import os
     from django.conf import settings
+    from django.db.models import Q
     
     shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
     target_dir = os.path.join(shared_root, "整合")
@@ -507,35 +509,35 @@ def scan_and_align_pdf_assets() -> dict:
         
     normalized_file_map = {normalize_string(f): f for f in disk_files}
     
-    # 2. 查询缺失文件或物理路径失效的企标进行对齐
-    all_standards = Standard.objects.filter(type='enterprise')
-    unlinked_standards = []
+    # 2. 查询待对齐的企标集合
+    if target_standard_ids is not None:
+        if not target_standard_ids:
+            return {"success": True, "matched_count": 0}
+        # 仅针对指定 ID 中缺失或需要匹配的企标进行对齐
+        standards_qs = Standard.objects.filter(
+            id__in=target_standard_ids,
+            type='enterprise'
+        ).only('id', 'standard_no', 'clean_id', 'pdf_file')
+    else:
+        # 全量扫盘：仅针对缺失 pdf_file 的企标进行对齐，避免全量读库导致 OOM
+        standards_qs = Standard.objects.filter(
+            type='enterprise'
+        ).filter(
+            Q(pdf_file='') | Q(pdf_file__isnull=True)
+        ).only('id', 'standard_no', 'clean_id', 'pdf_file')
+
+    matched_count = 0
+    updates = []
     
-    for std in all_standards:
-        if not std.pdf_file or not std.pdf_file.name:
-            unlinked_standards.append(std)
+    for std in standards_qs:
+        # 若已有 pdf_file 且非空，跳过
+        if std.pdf_file and std.pdf_file.name:
             continue
             
-        # 检查物理文件是否真实存在于本地或共享盘中
-        rel_path = std.pdf_file.name
-        
-        # 本地 media 路径
-        local_exists = os.path.exists(os.path.join(settings.MEDIA_ROOT, rel_path))
-        # 共享磁盘路径
-        shared_exists = os.path.exists(os.path.join(shared_root, rel_path))
-        
-        # 兜底清理 media/ 前缀检查
-        if not shared_exists and rel_path.startswith('media/'):
-            clean_path = rel_path.replace('media/', '', 1)
-            local_exists = local_exists or os.path.exists(os.path.join(settings.MEDIA_ROOT, clean_path))
+        std_norm = normalize_string(std.clean_id or std.standard_no)
+        if not std_norm:
+            continue
             
-        if not local_exists and not shared_exists:
-            # 物理文件缺失，需要扫盘重新匹配对齐
-            unlinked_standards.append(std)
-    
-    matched_count = 0
-    for std in unlinked_standards:
-        std_norm = normalize_string(std.standard_no)
         matched_filename = None
         
         # 2a. 精确匹配
@@ -549,9 +551,16 @@ def scan_and_align_pdf_assets() -> dict:
                     break
                     
         if matched_filename:
-            std.pdf_file = f"整合/{matched_filename}"
-            std.save(update_fields=['pdf_file'])
+            std.pdf_file.name = f"整合/{matched_filename}"
+            updates.append(std)
             matched_count += 1
+            
+        if len(updates) >= 500:
+            Standard.objects.bulk_update(updates, ['pdf_file'])
+            updates = []
+            
+    if updates:
+        Standard.objects.bulk_update(updates, ['pdf_file'])
             
     return {"success": True, "matched_count": matched_count}
 

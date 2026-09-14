@@ -252,6 +252,7 @@ class StandardMixedImportStatusView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
+        import time
         from django.core.cache import cache
         task_id = request.query_params.get('task_id')
         if not task_id:
@@ -260,6 +261,14 @@ class StandardMixedImportStatusView(APIView):
         task_info = cache.get(f'import_task_{task_id}')
         if not task_info:
             return Response({'status': 'pending', 'message': '任务在队列中排队等待'}, status=status.HTTP_200_OK)
+
+        # 心跳超时防御：若任务显示 running 但超过 3 分钟（180秒）未更新心跳，判定为 Worker 异常终止或挂起
+        if task_info.get('status') == 'running':
+            updated_at = task_info.get('updated_at')
+            if updated_at and (time.time() - updated_at > 180):
+                task_info['status'] = 'failed'
+                task_info['error'] = '后台异步处理进程超时无响应（可能因服务重载或异常挂起中断），请重试'
+                cache.set(f'import_task_{task_id}', task_info, timeout=86400)
 
         return Response(task_info, status=status.HTTP_200_OK)
 

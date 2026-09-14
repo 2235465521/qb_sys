@@ -21,6 +21,7 @@ interface ValidationError {
 interface ImportTaskResult {
   status: 'pending' | 'running' | 'done' | 'failed';
   progress?: number;
+  message?: string;
   success_count?: number;
   failed_count?: number;
   errors?: ValidationError[];
@@ -107,6 +108,9 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
   useEffect(() => {
     if (!taskId) return;
 
+    let unchangedPollCount = 0;
+    let lastProgress = -1;
+
     const pollStatus = async () => {
       try {
         const { data } = await apiClient.get<ImportTaskResult>('/admin/standards/import-mixed/status/', {
@@ -114,6 +118,15 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
         });
         
         setTaskStatus(data);
+
+        if (data.progress !== undefined) {
+          if (data.progress === lastProgress) {
+            unchangedPollCount++;
+          } else {
+            lastProgress = data.progress;
+            unchangedPollCount = 0;
+          }
+        }
 
         if (data.status === 'done') {
           stopPolling();
@@ -124,6 +137,11 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
           stopPolling();
           setUploading(false);
           message.error(`导入任务失败: ${data.error || '未知错误'}`);
+        } else if (unchangedPollCount >= 120) {
+          // 连续 120 次轮询（约 3 分钟）进度未变化，停止前端高频轮询并提示
+          stopPolling();
+          setUploading(false);
+          message.warning('导入耗时较长，任务仍在后台继续执行。您可以稍后刷新列表查看。');
         }
       } catch (err) {
         console.error('轮询状态出错:', err);
@@ -149,6 +167,13 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
     setSyncResult(null);
     setUploading(false);
     onCancel();
+  };
+
+  const handleClose = () => {
+    if (uploading && taskStatus?.status === 'running') {
+      message.info('导入任务仍在后台持续执行，窗口已关闭。您可以稍后刷新列表查看。');
+    }
+    reset();
   };
 
   const columns = [
@@ -187,12 +212,12 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
     <Modal
       title={<span style={{ fontSize: 18, fontWeight: 'bold' }}>智能导入数据 (自动识别表头)</span>}
       open={open}
-      onCancel={reset}
+      onCancel={handleClose}
       footer={null}
       width={700}
       destroyOnClose
       maskClosable={!uploading}
-      closable={!uploading}
+      closable={true}
     >
       {!taskId && !syncResult ? (
         <>
@@ -241,18 +266,20 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
                 ) : null}
                 <span style={{ fontWeight: 'bold' }}>
                   {taskStatus?.status === 'pending' && '等待任务启动排队中...'}
-                  {taskStatus?.status === 'running' && '后台异步拆分与事务入库执行中...'}
+                  {taskStatus?.status === 'running' && (taskStatus?.message || '后台异步拆分与事务入库执行中...')}
                   {taskStatus?.status === 'done' && '异步混合导入任务完成'}
-                  {taskStatus?.status === 'failed' && '任务执行失败'}
+                  {taskStatus?.status === 'failed' && '任务执行未完成或异常'}
                 </span>
               </Space>
             }
             description={
-              taskStatus?.status === 'running'
-                ? `系统正在解析并混合导入数据行，当前进度 ${taskStatus.progress || 0}%。`
+              taskStatus?.status === 'failed'
+                ? (taskStatus?.error || '导入失败，请检查数据格式或网络连接')
+                : taskStatus?.status === 'running'
+                ? (taskStatus?.message || `系统正在解析并混合导入数据行，当前进度 ${taskStatus.progress || 0}%。`)
                 : taskStatus?.status === 'done'
                 ? `本次任务已圆满结束，成功导入主子表条数见下方报告。`
-                : `任务执行遇到了异常，请检查 Excel 结构。`
+                : `任务排队等待后台进程调度中...`
             }
             type={taskStatus?.status === 'done' ? 'success' : taskStatus?.status === 'failed' ? 'error' : 'info'}
             showIcon={taskStatus?.status === 'done' || taskStatus?.status === 'failed'}
@@ -294,11 +321,36 @@ const SmartImportModal: React.FC<SmartImportModalProps> = ({ open, onCancel, onS
             </div>
           )}
 
-          {taskStatus?.status === 'done' && (
-            <div style={{ textAlign: 'right', marginTop: 24 }}>
-              <Button type="primary" onClick={reset} style={{ borderRadius: 6 }}>确 定</Button>
-            </div>
-          )}
+          <div style={{ textAlign: 'right', marginTop: 24 }}>
+            {taskStatus?.status === 'done' ? (
+              <Button type="primary" onClick={reset} style={{ borderRadius: 6 }}>
+                确 定
+              </Button>
+            ) : taskStatus?.status === 'failed' ? (
+              <Space>
+                <Button onClick={reset} style={{ borderRadius: 6 }}>
+                  关 闭
+                </Button>
+                <Button
+                  type="primary"
+                  onClick={() => {
+                    setTaskId(null);
+                    setTaskStatus(null);
+                    setUploading(false);
+                  }}
+                  style={{ borderRadius: 6 }}
+                >
+                  重新上传
+                </Button>
+              </Space>
+            ) : (
+              <Space>
+                <Button onClick={handleClose} style={{ borderRadius: 6 }}>
+                  后台静默运行并关闭
+                </Button>
+              </Space>
+            )}
+          </div>
         </div>
       ) : (
         <div style={{ padding: '8px 0' }}>

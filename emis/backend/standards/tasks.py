@@ -330,16 +330,20 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
     from standards.services import generate_clean_id, scan_and_align_pdf_assets
 
     # 1. 初始化任务状态缓存
+    import time
     cache.set(f'import_task_{task_token}', {
         'status': 'running',
         'progress': 0,
+        'message': '正在读取并校验 Excel 文件...',
         'success_count': 0,
         'failed_count': 0,
-        'errors': []
+        'errors': [],
+        'updated_at': time.time()
     }, timeout=86400)
 
     errors = []
     success_count = 0
+    batch_standard_ids = set()
 
     try:
         if not os.path.exists(file_path):
@@ -413,14 +417,16 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             row_idx = idx + 2  # Excel 行号以 2 开始
 
             # 每处理 5% 更新一次进度以避免过频的缓存操作
-            current_progress = int((idx + 1) / total_rows * 95)  # 留 5% 给后置处理
+            current_progress = int((idx + 1) / total_rows * 94)  # 留 6% 给后置处理
             if idx % max(1, int(total_rows / 20)) == 0:
                 cache.set(f'import_task_{task_token}', {
                     'status': 'running',
                     'progress': current_progress,
+                    'message': f'正在解析并入库数据行 ({idx + 1}/{total_rows})...',
                     'success_count': success_count,
                     'failed_count': len(errors),
-                    'errors': errors
+                    'errors': errors,
+                    'updated_at': time.time()
                 }, timeout=86400)
 
             # 获取当前行字段
@@ -612,16 +618,42 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
                                 ref.latest_standard_no = latest_no
                                 ref.save(update_fields=['latest_standard_no'])
 
+                    if standard and standard.id:
+                        batch_standard_ids.add(standard.id)
+
                 success_count += 1
 
             except Exception as row_err:
                 errors.append({'row': row_idx, 'reason': f"数据库写入失败: {str(row_err)}"})
 
-        # 3. 后置扫盘 PDF 对齐
+        # 行数据处理完毕，推进到 95%
+        cache.set(f'import_task_{task_token}', {
+            'status': 'running',
+            'progress': 95,
+            'message': '行数据入库完成，正在关联匹配本批次 PDF 资产...',
+            'success_count': success_count,
+            'failed_count': len(errors),
+            'errors': errors,
+            'updated_at': time.time()
+        }, timeout=86400)
+
+        # 3. 后置仅针对本批次新导入/更新的企标扫盘 PDF 对齐（毫秒级完成，防止全库扫盘超时挂起）
         try:
-            scan_and_align_pdf_assets()
+            if batch_standard_ids:
+                scan_and_align_pdf_assets(target_standard_ids=list(batch_standard_ids))
         except Exception:
             pass
+
+        # 推进到 98%
+        cache.set(f'import_task_{task_token}', {
+            'status': 'running',
+            'progress': 98,
+            'message': '正在刷新系统检索缓存...',
+            'success_count': success_count,
+            'failed_count': len(errors),
+            'errors': errors,
+            'updated_at': time.time()
+        }, timeout=86400)
 
         # 4. 成功完结，精准失效搜索缓存（保留任务进度 key 不受影响）
         try:
@@ -633,9 +665,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
         cache.set(f'import_task_{task_token}', {
             'status': 'done',
             'progress': 100,
+            'message': '数据导入与关联解析全部完成',
             'success_count': success_count,
             'failed_count': len(errors),
-            'errors': errors
+            'errors': errors,
+            'updated_at': time.time()
         }, timeout=86400)
 
         # 5. 清理临时上传的 Excel
@@ -650,9 +684,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             'status': 'failed',
             'progress': 100,
             'error': str(e),
+            'message': f'导入任务异常: {str(e)}',
             'success_count': success_count,
             'failed_count': len(errors),
-            'errors': errors
+            'errors': errors,
+            'updated_at': time.time()
         }, timeout=86400)
         
         if os.path.exists(file_path):
