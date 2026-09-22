@@ -88,15 +88,40 @@ class AssociationBatchService:
         return extracted_names
 
     @classmethod
+    def _build_candidate_name_variants(cls, name: str) -> list:
+        """
+        为输入的社团/协会名称生成智能别名候选集：
+          - 规范化标点（去除末尾句号、顿号、空格）
+          - 全半角括号互换
+          - 泛化词互转（“行业协会” <-> “协会”）
+        """
+        raw = str(name or '').strip().rstrip('。，,. ；;')
+        variants = {raw}
+        raw_half = raw.replace('（', '(').replace('）', ')')
+        raw_full = raw.replace('(', '（').replace(')', '）')
+        variants.add(raw_half)
+        variants.add(raw_full)
+
+        for v in list(variants):
+            if '行业协会' in v:
+                variants.add(v.replace('行业协会', '协会'))
+            elif '协会' in v:
+                variants.add(v.replace('协会', '行业协会'))
+
+        return [v for v in variants if v]
+
+    @classmethod
     def batch_query_associations(cls, names: list) -> dict:
         """
-        批量穿透检索所有输入的社会团体/行业协会的标准资产。
+        深度批量穿透检索输入的社会团体/行业协会的标准资产。
         
-        执行流程（3 次批处理 SQL）：
-          1. 批量检索 compare_conp.ent_std_maker 与 EMIS Company 表获取信用代码与法人工商信息；
-          2. 批量检索 mydate.unit_dict 获取 stsc 关联的 unit_id；
-          3. 批量联查 mydate.view_std_full 获取全部去重标准清单，并合并本地企标库；
-          4. 内存聚合分组，生成各协会标准分类统计（团标/国标/地标/行标/企标）。
+        多源深度聚合策略：
+          1. 智能别名衍生：自动处理全半角括号、“协会”与“行业协会”互转、末尾标点清洗；
+          2. 权威工商对齐：批量从 compare_conp.ent_std_maker 与 EMIS Company 表获取官方信用代码与法人；
+          3. 团标发布全景关联 (std_tb_detail)：批量从 std_tb_detail 的 tb_asso / Issu_auth / unit_name 捕获协会自主发布的团体标准；
+          4. 标准起草人关联 (unit_dict -> std_unit_relation)：通过名称别名和统一社会信用代码反查 unit_dict，批量提取起草的国标、行标、地标与团标；
+          5. 本地企标库合并：关联 EMIS 本地 Standard 表；
+          6. 全局去重与结构化分类统计。
         """
         clean_names = []
         seen = set()
@@ -114,139 +139,248 @@ class AssociationBatchService:
                 'items': []
             }
 
+        # ── 步骤 0：生成所有名称的智能别名候选字典 ──────────────
+        name_to_variants = {}
+        all_variants_set = set()
+        for name in clean_names:
+            vars_list = cls._build_candidate_name_variants(name)
+            name_to_variants[name] = vars_list
+            all_variants_set.update(vars_list)
+        all_variants = list(all_variants_set)
+
         # ── 步骤 1：批量工商与主体对齐 ────────────────────────────
         ent_map = {}
+        chunk_size = 300
         try:
             with connections['compare_conp'].cursor() as cur:
-                placeholders = ', '.join(['%s'] * len(clean_names))
-                cur.execute(f"""
-                    SELECT 
-                        company_name, 
-                        unified_social_credit_code, 
-                        legal_representative, 
-                        province, 
-                        city, 
-                        district, 
-                        enterprise_type
-                    FROM ent_std_maker
-                    WHERE company_name IN ({placeholders})
-                """, clean_names)
-                for r in cur.fetchall():
-                    ent_map[r[0]] = {
-                        'credit_code': r[1] or '',
-                        'legal_person': r[2] or '-',
-                        'province': r[3] or '',
-                        'city': r[4] or '',
-                        'district': r[5] or '',
-                        'enterprise_type': r[6] or '社会团体'
-                    }
-        except Exception as e:
+                for i in range(0, len(all_variants), chunk_size):
+                    chunk = all_variants[i:i + chunk_size]
+                    placeholders = ', '.join(['%s'] * len(chunk))
+                    cur.execute(f"""
+                        SELECT 
+                            company_name, 
+                            unified_social_credit_code, 
+                            legal_representative, 
+                            province, 
+                            city, 
+                            district, 
+                            enterprise_type
+                        FROM ent_std_maker
+                        WHERE company_name IN ({placeholders})
+                    """, chunk)
+                    for r in cur.fetchall():
+                        ent_map[r[0]] = {
+                            'matched_name': r[0],
+                            'credit_code': r[1] or '',
+                            'legal_person': r[2] or '-',
+                            'province': r[3] or '',
+                            'city': r[4] or '',
+                            'district': r[5] or '',
+                            'enterprise_type': r[6] or '社会团体'
+                        }
+        except Exception:
             pass
 
         # 结合本地 Company 表
-        local_companies = Company.objects.filter(name__in=clean_names)
-        local_company_map = {c.name: c for c in local_companies}
-        for c_name, comp in local_company_map.items():
-            if c_name not in ent_map:
-                ent_map[c_name] = {
-                    'credit_code': comp.credit_code or '',
-                    'legal_person': comp.legal_person or '-',
-                    'province': comp.province.name if comp.province else '',
-                    'city': comp.city.name if comp.city else '',
-                    'district': comp.district.name if comp.district else '',
-                    'enterprise_type': '社会团体'
-                }
+        try:
+            local_companies = Company.objects.filter(name__in=all_variants)
+            for comp in local_companies:
+                c_name = comp.name
+                if c_name not in ent_map or not ent_map[c_name].get('credit_code'):
+                    ent_map[c_name] = {
+                        'matched_name': c_name,
+                        'credit_code': comp.credit_code or '',
+                        'legal_person': comp.legal_person or '-',
+                        'province': comp.province.name if comp.province else '',
+                        'city': comp.city.name if comp.city else '',
+                        'district': comp.district.name if comp.district else '',
+                        'enterprise_type': '社会团体'
+                    }
+        except Exception:
+            pass
 
-        # ── 步骤 2：批量检索 stsc_db 的 unit_dict ──────────────
-        unit_map = {}  # { unit_name: [unit_ids...] }
-        uid_to_name = {}  # { unit_id: unit_name }
+        # 收集所有已匹配的信用代码用于反向穿透
+        all_matched_credits = list({ent_map[k]['credit_code'] for k in ent_map if ent_map[k].get('credit_code')})
+
+        # ── 步骤 2：多维度批量检索 unit_dict 获取 unit_id ─────────
+        unit_map = {}  # { variant_name: [unit_ids...] }
+        credit_to_uids = {}  # { credit_code: [unit_ids...] }
+        all_uids_set = set()
 
         try:
             with connections['stsc_db'].cursor() as cur:
-                placeholders = ', '.join(['%s'] * len(clean_names))
-                cur.execute(f"""
-                    SELECT unit_id, unit_name, credit_code
-                    FROM unit_dict
-                    WHERE unit_name IN ({placeholders})
-                """, clean_names)
-                for uid, uname, ccode in cur.fetchall():
-                    unit_map.setdefault(uname, []).append(uid)
-                    uid_to_name[uid] = uname
-                    if ccode and uname in ent_map and not ent_map[uname].get('credit_code'):
-                        ent_map[uname]['credit_code'] = ccode
-                    elif ccode and uname not in ent_map:
-                        ent_map[uname] = {
-                            'credit_code': ccode,
-                            'legal_person': '-',
-                            'province': '-',
-                            'city': '-',
-                            'district': '-',
-                            'enterprise_type': '社会团体'
-                        }
-        except Exception as e:
+                # 2.1 按机构名称别名查 unit_dict
+                for i in range(0, len(all_variants), chunk_size):
+                    chunk = all_variants[i:i + chunk_size]
+                    placeholders = ', '.join(['%s'] * len(chunk))
+                    cur.execute(f"""
+                        SELECT unit_id, unit_name, credit_code
+                        FROM unit_dict
+                        WHERE unit_name IN ({placeholders})
+                    """, chunk)
+                    for uid, uname, ccode in cur.fetchall():
+                        unit_map.setdefault(uname, []).append(uid)
+                        all_uids_set.add(uid)
+                        if ccode and uname not in ent_map:
+                            ent_map[uname] = {
+                                'matched_name': uname,
+                                'credit_code': ccode,
+                                'legal_person': '-',
+                                'province': '',
+                                'city': '',
+                                'district': '',
+                                'enterprise_type': '社会团体'
+                            }
+        except Exception:
             pass
 
-        all_uids = list(uid_to_name.keys())
+        # 2.2 按统一社会信用代码反查 unit_dict（穿透分会与别名）
+        if all_matched_credits:
+            for db_alias in ['stsc_db', 'stsc_standard_database']:
+                try:
+                    with connections[db_alias].cursor() as cur:
+                        for i in range(0, len(all_matched_credits), chunk_size):
+                            chunk = all_matched_credits[i:i + chunk_size]
+                            placeholders = ', '.join(['%s'] * len(chunk))
+                            cur.execute(f"""
+                                SELECT unit_id, unit_name, credit_code
+                                FROM unit_dict
+                                WHERE credit_code IN ({placeholders})
+                            """, chunk)
+                            for uid, uname, ccode in cur.fetchall():
+                                if ccode:
+                                    credit_to_uids.setdefault(ccode, []).append(uid)
+                                    all_uids_set.add(uid)
+                except Exception:
+                    pass
 
-        # ── 步骤 3：批量检索联邦标准 ──────────────────────────────
-        fed_standards_by_unit = {}  # { unit_name: [std_dicts...] }
+        # ── 步骤 3：核心增强 — 批量检索 std_tb_detail (团体标准发布协会) ──
+        tb_published_stds = {}  # { variant_name: [std_dicts...] }
+
+        try:
+            with connections['stsc_db'].cursor() as cur:
+                tb_chunk_size = 100
+                for i in range(0, len(all_variants), tb_chunk_size):
+                    chunk = all_variants[i:i + tb_chunk_size]
+                    placeholders = ', '.join(['%s'] * len(chunk))
+                    cur.execute(f"""
+                        SELECT 
+                            t.tb_asso, t.Issu_auth, t.unit_name,
+                            v.std_id, v.std_chinesename, v.std_type, v.release_date, v.implement_date, v.ex_state,
+                            t.drafter
+                        FROM std_tb_detail t
+                        JOIN view_std_full v ON t.base_id = v.id
+                        WHERE t.tb_asso IN ({placeholders}) 
+                           OR t.Issu_auth IN ({placeholders}) 
+                           OR t.unit_name IN ({placeholders})
+                    """, chunk * 3)
+                    for r in cur.fetchall():
+                        asso, issu, uname, sid, stitle, stype, rdate, idate, status_val, drafter = r
+                        matched_key = asso if asso in chunk else (issu if issu in chunk else uname)
+                        tb_published_stds.setdefault(matched_key, []).append({
+                            'standard_no': sid or '',
+                            'title': stitle or '无标题',
+                            'type_display': '团体标准',
+                            'release_date': str(rdate) if rdate else '-',
+                            'implement_date': str(idate) if idate else '-',
+                            'status_raw': status_val,
+                            'drafter_display': '主要发布协会',
+                            'rank': 1,
+                            'is_local': False,
+                            'source': 'tb_published'
+                        })
+        except Exception:
+            pass
+
+        # ── 步骤 4：批量检索 std_unit_relation (起草人关联) ──────────
+        all_uids = list(all_uids_set)
+        unit_rel_stds = {}  # { unit_id: [std_dicts...] }
 
         if all_uids:
             try:
                 with connections['stsc_db'].cursor() as cur:
-                    uid_placeholders = ', '.join(['%s'] * len(all_uids))
-                    cur.execute(f"""
-                        SELECT 
-                            u.unit_name,
-                            v.std_id, 
-                            v.std_chinesename, 
-                            v.std_type, 
-                            v.release_date, 
-                            v.implement_date, 
-                            v.ex_state as status, 
-                            h.draft_unit as drafter,
-                            r.rank_order
-                        FROM unit_dict u
-                        JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                        JOIN view_std_full v ON r.base_id = v.id
-                        LEFT JOIN std_extend_h h ON v.id = h.base_id
-                        WHERE u.unit_id IN ({uid_placeholders})
-                        ORDER BY v.release_date DESC
-                    """, all_uids)
-                    for row in cur.fetchall():
-                        uname, sid, stitle, stype, rdate, idate, status_val, drafter, rank = row
-                        fed_standards_by_unit.setdefault(uname, []).append({
-                            'standard_no': sid or '',
-                            'title': stitle or '无标题',
-                            'type_raw': stype or '',
-                            'release_date': str(rdate) if rdate else '-',
-                            'implement_date': str(idate) if idate else '-',
-                            'status_raw': status_val,
-                            'drafter': drafter or '',
-                            'rank': rank
-                        })
-            except Exception as e:
+                    for i in range(0, len(all_uids), chunk_size):
+                        chunk = all_uids[i:i + chunk_size]
+                        placeholders = ', '.join(['%s'] * len(chunk))
+                        cur.execute(f"""
+                            SELECT 
+                                r.unit_id,
+                                v.std_id, 
+                                v.std_chinesename, 
+                                v.std_type, 
+                                v.release_date, 
+                                v.implement_date, 
+                                v.ex_state, 
+                                h.draft_unit, 
+                                r.rank_order
+                            FROM std_unit_relation r
+                            JOIN view_std_full v ON r.base_id = v.id
+                            LEFT JOIN std_extend_h h ON v.id = h.base_id
+                            WHERE r.unit_id IN ({placeholders})
+                            ORDER BY v.release_date DESC
+                        """, chunk)
+                        for row in cur.fetchall():
+                            uid, sid, stitle, stype, rdate, idate, status_val, drafter, rank = row
+                            
+                            # 推导标准类别
+                            s_no = (sid or '').strip().upper()
+                            t_raw = (stype or '').upper()
+                            if s_no.startswith('GB') or 'GB' in t_raw or '国标' in t_raw:
+                                t_disp = '国家标准'
+                            elif (s_no.startswith('TB') or s_no.startswith('T/') or s_no.startswith('T ') or
+                                  '团标' in t_raw or '团体' in t_raw):
+                                t_disp = '团体标准'
+                            elif s_no.startswith('DB') or '地标' in t_raw or '地方' in t_raw:
+                                t_disp = '地方标准'
+                            else:
+                                t_disp = '行业标准'
+
+                            # 推导起草身份
+                            if rank:
+                                rank_disp = f"第{rank}名"
+                            elif drafter:
+                                parts = drafter.replace(';', ',').replace('，', ',').split(',')
+                                rank_disp = " / ".join([p.strip() for p in parts[:2] if p.strip()])
+                            else:
+                                rank_disp = '-'
+
+                            unit_rel_stds.setdefault(uid, []).append({
+                                'standard_no': sid or '',
+                                'title': stitle or '无标题',
+                                'type_display': t_disp,
+                                'release_date': str(rdate) if rdate else '-',
+                                'implement_date': str(idate) if idate else '-',
+                                'status_raw': status_val,
+                                'drafter_display': rank_disp,
+                                'rank': rank or 99,
+                                'is_local': False,
+                                'source': 'unit_drafted'
+                            })
+            except Exception:
                 pass
 
-        # ── 步骤 4：本地企标检索 ──────────────────────────────────
-        local_stds_by_company = {}
-        if local_companies:
-            local_stds = Standard.objects.filter(company__in=local_companies)
+        # ── 步骤 5：本地企标检索 ──────────────────────────────────
+        local_stds_by_name = {}
+        try:
+            local_stds = Standard.objects.filter(company__name__in=all_variants).select_related('company')
             for ls in local_stds:
                 c_name = ls.company.name
-                local_stds_by_company.setdefault(c_name, []).append({
+                local_stds_by_name.setdefault(c_name, []).append({
                     'standard_no': ls.standard_no or '',
                     'title': ls.title or '无标题',
-                    'type_raw': 'enterprise',
+                    'type_display': '企业标准',
                     'release_date': ls.publish_date.strftime('%Y-%m-%d') if ls.publish_date else '-',
                     'implement_date': ls.implement_date.strftime('%Y-%m-%d') if ls.implement_date else '-',
                     'status_raw': 1 if ls.status == 'active' else 0,
-                    'drafter': '主起草单位',
+                    'drafter_display': '主起草单位',
                     'rank': 1,
-                    'is_local': True
+                    'is_local': True,
+                    'source': 'local'
                 })
+        except Exception:
+            pass
 
-        # ── 步骤 5：汇总聚合每个协会的标准资产 ────────────────────
+        # ── 步骤 6：多源汇总聚合与全局去重 ────────────────────────
         status_map = {0: '废止', 1: '现行', 2: '即将实施'}
 
         result_items = []
@@ -254,84 +388,81 @@ class AssociationBatchService:
         matched_associations = 0
 
         for idx, name in enumerate(clean_names, 1):
-            ent = ent_map.get(name, {})
-            uids = unit_map.get(name, [])
-            fed_list = fed_standards_by_unit.get(name, [])
-            loc_list = local_stds_by_company.get(name, [])
+            vars_list = name_to_variants.get(name, [name])
 
-            is_matched = bool(ent.get('credit_code') or uids or loc_list)
-            if is_matched:
-                matched_associations += 1
+            # 6.1 查找最佳工商档案（优先原名，再别名）
+            ent = {}
+            for v in vars_list:
+                if v in ent_map and ent_map[v].get('credit_code'):
+                    ent = ent_map[v]
+                    break
+            if not ent:
+                for v in vars_list:
+                    if v in ent_map:
+                        ent = ent_map[v]
+                        break
 
-            # 去重标准列表（按标准号大写去重）
+            credit_code = ent.get('credit_code', '')
+            matched_official_name = ent.get('matched_name') or name
+
+            # 6.2 汇集该协会关联的所有 unit_id（来自名称别名及统一代码）
+            associated_uids = set()
+            for v in vars_list:
+                for uid in unit_map.get(v, []):
+                    associated_uids.add(uid)
+            if credit_code:
+                for uid in credit_to_uids.get(credit_code, []):
+                    associated_uids.add(uid)
+
+            # 6.3 汇集所有来源标准并去重
             seen_std_nos = set()
             unified_standards = []
 
-            # 优先加入本地企标
-            for ls in loc_list:
-                s_no = (ls['standard_no'] or '').strip().upper()
-                if s_no and s_no not in seen_std_nos:
-                    seen_std_nos.add(s_no)
-                    unified_standards.append({
-                        'standard_no': ls['standard_no'],
-                        'title': ls['title'],
-                        'type_display': '企业标准',
-                        'drafter_display': ls['drafter'],
-                        'status': '现行' if ls['status_raw'] == 1 else '废止',
-                        'release_date': ls['release_date'],
-                        'implement_date': ls['implement_date'],
-                        'is_local': True
-                    })
+            # 优先 1：本地企标
+            for v in vars_list:
+                for s in local_stds_by_name.get(v, []):
+                    s_no = (s['standard_no'] or '').strip().upper()
+                    if s_no and s_no not in seen_std_nos:
+                        seen_std_nos.add(s_no)
+                        unified_standards.append({
+                            **s,
+                            'status': '现行' if s['status_raw'] == 1 else '废止'
+                        })
 
-            # 加入联邦库标准
-            for fs in fed_list:
-                s_no = (fs['standard_no'] or '').strip().upper()
-                if not s_no or s_no in seen_std_nos:
-                    continue
-                seen_std_nos.add(s_no)
+            # 优先 2：自主发布的团体标准 (std_tb_detail)
+            for v in vars_list:
+                for s in tb_published_stds.get(v, []):
+                    s_no = (s['standard_no'] or '').strip().upper()
+                    if s_no and s_no not in seen_std_nos:
+                        seen_std_nos.add(s_no)
+                        unified_standards.append({
+                            **s,
+                            'status': status_map.get(s['status_raw'], '现行')
+                        })
 
-                # 推导标准类别
-                t_raw = (fs['type_raw'] or '').upper()
-                if s_no.startswith('GB') or 'GB' in t_raw or '国标' in t_raw:
-                    t_disp = '国家标准'
-                elif (s_no.startswith('TB') or s_no.startswith('T/') or s_no.startswith('T ') or
-                      '团标' in t_raw or '团体' in t_raw):
-                    t_disp = '团体标准'
-                elif s_no.startswith('DB') or '地标' in t_raw or '地方' in t_raw:
-                    t_disp = '地方标准'
-                else:
-                    t_disp = '行业标准'
+            # 优先 3：起草的标准 (std_unit_relation)
+            for uid in associated_uids:
+                for s in unit_rel_stds.get(uid, []):
+                    s_no = (s['standard_no'] or '').strip().upper()
+                    if s_no and s_no not in seen_std_nos:
+                        seen_std_nos.add(s_no)
+                        unified_standards.append({
+                            **s,
+                            'status': status_map.get(s['status_raw'], '现行')
+                        })
 
-                # 推导起草身份
-                rank = fs.get('rank')
-                drafter_text = fs.get('drafter')
-                if rank:
-                    rank_disp = f"第{rank}名"
-                elif drafter_text:
-                    parts = drafter_text.replace(';', ',').replace('，', ',').split(',')
-                    rank_disp = " / ".join([p.strip() for p in parts[:2] if p.strip()])
-                else:
-                    rank_disp = '-'
+            std_total = len(unified_standards)
+            is_matched = bool(credit_code or associated_uids or std_total > 0)
+            if is_matched:
+                matched_associations += 1
+            grand_total_standards += std_total
 
-                unified_standards.append({
-                    'standard_no': fs['standard_no'],
-                    'title': fs['title'],
-                    'type_display': t_disp,
-                    'drafter_display': rank_disp,
-                    'status': status_map.get(fs['status_raw'], '现行'),
-                    'release_date': fs['release_date'],
-                    'implement_date': fs['implement_date'],
-                    'is_local': False
-                })
-
-            # 各分类统计
+            # 分类统计
             group_count = sum(1 for s in unified_standards if s['type_display'] == '团体标准')
             national_count = sum(1 for s in unified_standards if s['type_display'] == '国家标准')
             local_count = sum(1 for s in unified_standards if s['type_display'] == '地方标准')
             industry_count = sum(1 for s in unified_standards if s['type_display'] == '行业标准')
             enterprise_count = sum(1 for s in unified_standards if s['type_display'] == '企业标准')
-            std_total = len(unified_standards)
-            grand_total_standards += std_total
 
             addr_parts = [ent.get('province', ''), ent.get('city', ''), ent.get('district', '')]
             addr_str = "".join([p for p in addr_parts if p and p != '-'])
@@ -339,8 +470,8 @@ class AssociationBatchService:
             result_items.append({
                 'index': idx,
                 'input_name': name,
-                'matched_name': name,
-                'credit_code': ent.get('credit_code') or '-',
+                'matched_name': matched_official_name,
+                'credit_code': credit_code or '-',
                 'legal_person': ent.get('legal_person') or '-',
                 'area': addr_str or '-',
                 'agency_type': ent.get('enterprise_type') or '社会团体',
