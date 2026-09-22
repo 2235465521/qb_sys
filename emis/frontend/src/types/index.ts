@@ -183,3 +183,41 @@ export interface SmsTask {
   failed_count: number
   created_at: string
 }
+
+// ── 社团与协会批量查标与合并导出 ──────────────────────────
+
+export interface AssociationStandardDetail {
+  standard_no: string
+  title: string
+  type_display: string
+  drafter_display: string
+  status: string
+  release_date: string
+  implement_date: string
+  is_local?: boolean
+}
+
+export interface AssociationBatchItem {
+  index: number
+  input_name: string
+  matched_name: string
+  credit_code: string
+  legal_person: string
+  area: string
+  agency_type: string
+  status: 'matched' | 'not_found'
+  standard_total: number
+  group_count: number
+  national_count: number
+  industry_count: number
+  local_count: number
+  enterprise_count: number
+  standards: AssociationStandardDetail[]
+}
+
+export interface AssociationBatchResult {
+  total_input: number
+  matched_count: number
+  total_standards_count: number
+  items: AssociationBatchItem[]
+}

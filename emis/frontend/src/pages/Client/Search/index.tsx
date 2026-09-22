@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { List, Card, Typography, Tag, Space, Button, Empty, Pagination, message, Checkbox, Modal, Badge, Radio } from 'antd';
-import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined, ExportOutlined } from '@ant-design/icons';
+import { EnvironmentOutlined, BankOutlined, FileTextOutlined, CloudDownloadOutlined, ShoppingCartOutlined, DeleteOutlined, ExportOutlined, FileExcelOutlined } from '@ant-design/icons';
 import LbsSearchBar from './components/LbsSearchBar';
 import StandardDrawer from './components/StandardDrawer';
 import { AdvancedExportModal } from './components/AdvancedExportModal';
+import { AssociationBatchModal } from './components/AssociationBatchModal';
 import { useSearchData } from '@/hooks/useSearchData';
 import type { Company, CompanySearchParams } from '@/types';
 import apiClient from '@/api/client';
@@ -24,6 +25,7 @@ const CompanySearchPage: React.FC = () => {
   // 导出模式配置弹窗
   const [exportModalVisible, setExportModalVisible] = useState(false);
   const [advancedExportModalVisible, setAdvancedExportModalVisible] = useState(false);
+  const [associationBatchModalVisible, setAssociationBatchModalVisible] = useState(false);
   const [exportMode, setExportMode] = useState<'selected' | 'filtered'>('filtered');
 
 
@@ -149,6 +151,20 @@ const CompanySearchPage: React.FC = () => {
             )}
           </Space>
           <Space>
+            <Button
+              icon={<FileExcelOutlined style={{ color: '#0d9488' }} />}
+              onClick={() => setAssociationBatchModalVisible(true)}
+              style={{
+                borderRadius: 16,
+                borderColor: '#0d9488',
+                color: '#0d9488',
+                background: '#f0fdfa',
+                fontWeight: 600,
+              }}
+            >
+              社团批量查标导出
+            </Button>
+
             <Button
               icon={<ExportOutlined />}
               onClick={() => setAdvancedExportModalVisible(true)}
@@ -448,6 +464,11 @@ const CompanySearchPage: React.FC = () => {
         searchParams={params}
         totalFilteredCount={result?.count || 0}
         onDispatchTask={dispatchTask}
+      />
+
+      <AssociationBatchModal
+        open={associationBatchModalVisible}
+        onCancel={() => setAssociationBatchModalVisible(false)}
       />
 
     </div>
