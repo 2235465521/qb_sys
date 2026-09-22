@@ -798,7 +798,7 @@ class FederatedStandardService:
             return [], search_names
 
     @classmethod
-    def get_company_standards_summary(cls, company: Company, scope: str = 'expanded') -> dict:
+    def get_company_standards_summary(cls, company: Company, scope: str = 'expanded', force_refresh: bool = False) -> dict:
         """
         获取企业的全量联邦标准统计及去重后的标准明细列表。
         """
@@ -806,16 +806,28 @@ class FederatedStandardService:
             return cls._empty_response(company, scope)
 
         from django.core.cache import cache
-        cache_key = f"company_federated_standards_summary:{company.id}:{scope}"
-        try:
-            cached_data = cache.get(cache_key)
-            if cached_data is not None:
-                return cached_data
-        except Exception as e:
-            logger.warning(f"Cache get error for {cache_key}: {e}")
+        cache_key = f"company_federated_standards_summary_v3:{company.id}:{scope}"
+        if not force_refresh:
+            try:
+                cached_data = cache.get(cache_key)
+                if cached_data is not None:
+                    return cached_data
+            except Exception as e:
+                logger.warning(f"Cache get error for {cache_key}: {e}")
 
         unit_ids, matched_names = cls.get_unit_ids_by_company(company, scope=scope)
-        if not unit_ids:
+
+        # 构建候选名称变体用于团标发布检索 (std_tb_detail)
+        tb_names = set(matched_names or [])
+        if company and company.name:
+            tb_names.add(company.name.strip())
+        for n in list(tb_names):
+            if '行业协会' in n:
+                tb_names.add(n.replace('行业协会', '协会'))
+            elif '协会' in n:
+                tb_names.add(n.replace('协会', '行业协会'))
+
+        if not unit_ids and not tb_names:
             res = cls._empty_response(company, scope, matched_names=matched_names)
             try:
                 cache.set(cache_key, res, timeout=3600)
@@ -823,33 +835,64 @@ class FederatedStandardService:
                 pass
             return res
 
+        raw_results = []
         try:
             from django.db import connections
             with connections['stsc_db'].cursor() as cursor:
                 cursor.execute("SET NAMES utf8mb4;")
-                placeholders = ', '.join(['%s'] * len(unit_ids))
-                query = f"""
-                    SELECT 
-                        v.std_id, 
-                        v.std_chinesename, 
-                        v.std_type, 
-                        v.release_date, 
-                        v.implement_date, 
-                        v.ex_state as status, 
-                        h.draft_unit as drafter,
-                        f.file_path,
-                        r.rank_order
-                    FROM unit_dict u
-                    JOIN std_unit_relation r ON u.unit_id = r.unit_id
-                    JOIN view_std_full v ON r.base_id = v.id
-                    LEFT JOIN std_extend_h h ON v.id = h.base_id
-                    LEFT JOIN std_filepath f ON v.id = f.base_id
-                    WHERE u.unit_id IN ({placeholders})
-                    ORDER BY v.release_date DESC
-                """
-                cursor.execute(query, unit_ids)
-                columns = [col[0] for col in cursor.description]
-                raw_results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+                # 1. 优先扫描该机构自主发布的团体标准 (std_tb_detail)
+                tb_names_list = [n for n in tb_names if n]
+                if tb_names_list:
+                    tb_ph = ', '.join(['%s'] * len(tb_names_list))
+                    tb_query = f"""
+                        SELECT 
+                            v.std_id, 
+                            v.std_chinesename, 
+                            v.std_type, 
+                            v.release_date, 
+                            v.implement_date, 
+                            v.ex_state as status, 
+                            t.drafter,
+                            f.file_path,
+                            1 as rank_order
+                        FROM std_tb_detail t
+                        JOIN view_std_full v ON t.base_id = v.id
+                        LEFT JOIN std_filepath f ON v.id = f.base_id
+                        WHERE t.tb_asso IN ({tb_ph})
+                           OR t.Issu_auth IN ({tb_ph})
+                           OR t.unit_name IN ({tb_ph})
+                        ORDER BY v.release_date DESC
+                    """
+                    cursor.execute(tb_query, tb_names_list * 3)
+                    cols = [col[0] for col in cursor.description]
+                    raw_results.extend([dict(zip(cols, row)) for row in cursor.fetchall()])
+
+                # 2. 扫描作为起草单位/参与单位的标准 (std_unit_relation)
+                if unit_ids:
+                    placeholders = ', '.join(['%s'] * len(unit_ids))
+                    query = f"""
+                        SELECT 
+                            v.std_id, 
+                            v.std_chinesename, 
+                            v.std_type, 
+                            v.release_date, 
+                            v.implement_date, 
+                            v.ex_state as status, 
+                            h.draft_unit as drafter,
+                            f.file_path,
+                            r.rank_order
+                        FROM unit_dict u
+                        JOIN std_unit_relation r ON u.unit_id = r.unit_id
+                        JOIN view_std_full v ON r.base_id = v.id
+                        LEFT JOIN std_extend_h h ON v.id = h.base_id
+                        LEFT JOIN std_filepath f ON v.id = f.base_id
+                        WHERE u.unit_id IN ({placeholders})
+                        ORDER BY v.release_date DESC
+                    """
+                    cursor.execute(query, unit_ids)
+                    columns = [col[0] for col in cursor.description]
+                    raw_results.extend([dict(zip(columns, row)) for row in cursor.fetchall()])
         except Exception as e:
             logger.error(f"Failed to query view_std_full from stsc_db for company {company.id}: {e}")
             return cls._empty_response(company, scope, matched_names=matched_names, error=str(e))

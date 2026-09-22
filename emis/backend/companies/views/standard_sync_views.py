@@ -47,11 +47,12 @@ class CompanyFederatedStandardsAPIView(APIView):
             return Response({'error': '未找到该企业'}, status=404)
         
         scope = request.query_params.get('scope', 'expanded')
+        refresh = request.query_params.get('refresh', 'false').lower() in ('true', '1')
         if scope not in ['core', 'expanded']:
             scope = 'expanded'
 
         from companies.services import FederatedStandardService
-        response_data = FederatedStandardService.get_company_standards_summary(company, scope=scope)
+        response_data = FederatedStandardService.get_company_standards_summary(company, scope=scope, force_refresh=refresh)
         return Response(response_data)
 
     def _map_status(self, status_code, implement_date=None):
