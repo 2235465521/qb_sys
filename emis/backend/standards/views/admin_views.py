@@ -437,6 +437,8 @@ class StandardExportView(APIView):
                 chunk_size=100000
             )
         except Exception as e:
+            import logging
+            logging.getLogger('django.request').error(f"Standard export error: {e}", exc_info=True)
             return Response({'error': f'生成导出文件失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         response = HttpResponse(file_bytes, content_type=content_type)
