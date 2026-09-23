@@ -294,6 +294,7 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
               { label: '企业目录', value: 'enterprise' },
               { label: '企标目录（自动去重）', value: 'enterprise_standard' },
               { label: '国/行/地/团标目录（自动去重）', value: 'other_standard' },
+              { label: '已发布团体标准的协会及团标（基于团标 tb_asso）', value: 'tb_association' },
             ]}
             style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
           />

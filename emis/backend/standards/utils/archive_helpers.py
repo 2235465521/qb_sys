@@ -10,8 +10,9 @@ from django.db import connections
 from django.db.models import Q
 from standards.models import Standard
 from standards.services import generate_clean_id
-from companies.models import Company
+from companies.models import Company, Province, City
 from companies.services import search_companies, FederatedStandardService
+from companies.services_association import AssociationBatchService
 
 
 logger = logging.getLogger('standards.archive_helpers')
@@ -737,24 +738,26 @@ def generate_advanced_export_file(
                     filtered_list.append(co)
         company_list = filtered_list
 
-    if not company_list:
-        raise ValueError("按当前过滤条件未检索到任何匹配的企业记录")
-
-    # 解析 export_content 参数（支持列表 ['enterprise', 'enterprise_standard', 'other_standard'] 或字符串 'both'/'all' 等）
+    # 解析 export_content 参数（支持列表 ['enterprise', 'enterprise_standard', 'other_standard', 'tb_association'] 或字符串 'both'/'all' 等）
     if isinstance(export_content, list):
         content_set = set(export_content)
     elif export_content == 'both':
         content_set = {'enterprise', 'enterprise_standard'}
     elif export_content == 'all':
-        content_set = {'enterprise', 'enterprise_standard', 'other_standard'}
+        content_set = {'enterprise', 'enterprise_standard', 'other_standard', 'tb_association'}
     elif export_content == 'enterprise_only':
         content_set = {'enterprise'}
     elif export_content == 'standard_only':
         content_set = {'enterprise_standard'}
     elif export_content == 'other_standard_only':
         content_set = {'other_standard'}
+    elif export_content == 'tb_association_only':
+        content_set = {'tb_association'}
     else:
         content_set = {'enterprise', 'enterprise_standard', 'other_standard'}
+
+    if not company_list and 'tb_association' not in content_set:
+        raise ValueError("按当前过滤条件未检索到任何匹配的企业记录")
 
     # 3. 准备企业目录数据
     company_rows = []
@@ -957,7 +960,270 @@ def generate_advanced_export_file(
                 '国民经济分类': item['industry_category'],
             })
 
-    # 6. 文件写出
+    # 6. 准备已发布团标协会目录与团标明细 (tb_association)
+    tb_asso_rows = []
+    tb_detail_rows = []
+    if 'tb_association' in content_set:
+        prov_id = base_filters.get('province_id') or advanced_filters.get('province_id')
+        city_id = base_filters.get('city_id') or advanced_filters.get('city_id')
+        kw = (base_filters.get('q') or base_filters.get('keyword') or '').strip()
+
+        prov_name = ''
+        city_name = ''
+        if prov_id:
+            try:
+                p_obj = Province.objects.filter(id=prov_id).first()
+                if p_obj:
+                    prov_name = p_obj.name.strip()
+            except Exception:
+                pass
+        if city_id:
+            try:
+                c_obj = City.objects.filter(id=city_id).first()
+                if c_obj:
+                    city_name = c_obj.name.strip()
+            except Exception:
+                pass
+
+        p_kw = prov_name.replace('省', '').replace('市', '').replace('自治区', '').replace('壮族', '').replace('回族', '').replace('维吾尔', '') if prov_name else ''
+        c_kw = city_name.replace('市', '').replace('地区', '').replace('州', '') if city_name else ''
+
+        tb_records = []
+        try:
+            with connections['stsc_db'].cursor() as cur:
+                if export_scope == 'selected' and company_list:
+                    # 勾选模式：仅提取勾选企业/协会中在 std_tb_detail 中确实发布过团标的协会
+                    candidate_names = set()
+                    candidate_credits = set()
+                    for co in company_list:
+                        if co.name:
+                            candidate_names.add(co.name.strip())
+                            candidate_names.update(AssociationBatchService._build_candidate_name_variants(co.name))
+                        if co.credit_code:
+                            candidate_credits.add(co.credit_code.strip())
+
+                    names_list = list(candidate_names)
+                    credits_list = list(candidate_credits)
+
+                    batch_size = 200
+                    for i in range(0, len(names_list), batch_size):
+                        n_chunk = names_list[i:i + batch_size]
+                        n_holders = ', '.join(['%s'] * len(n_chunk))
+                        sql = f"""
+                            SELECT 
+                                t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
+                                t.drafter, t.scope, t.ics, t.ccs,
+                                v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
+                                v.ics, v.ccs
+                            FROM std_tb_detail t
+                            JOIN view_std_full v ON t.base_id = v.id
+                            WHERE t.tb_asso IN ({n_holders}) OR t.Issu_auth IN ({n_holders}) OR t.unit_name IN ({n_holders})
+                            ORDER BY t.tb_asso, v.release_date DESC
+                        """
+                        cur.execute(sql, n_chunk * 3)
+                        tb_records.extend(cur.fetchall())
+
+                    if credits_list:
+                        for i in range(0, len(credits_list), batch_size):
+                            c_chunk = credits_list[i:i + batch_size]
+                            c_holders = ', '.join(['%s'] * len(c_chunk))
+                            sql = f"""
+                                SELECT 
+                                    t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
+                                    t.drafter, t.scope, t.ics, t.ccs,
+                                    v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
+                                    v.ics, v.ccs
+                                FROM std_tb_detail t
+                                JOIN view_std_full v ON t.base_id = v.id
+                                WHERE t.regi_no IN ({c_holders})
+                                ORDER BY t.tb_asso, v.release_date DESC
+                            """
+                            cur.execute(sql, c_chunk)
+                            tb_records.extend(cur.fetchall())
+                else:
+                    # 检索/条件模式：根据省/市/关键词直接从 std_tb_detail 提取
+                    where_clauses = []
+                    params = []
+
+                    if p_kw:
+                        where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s OR t.Issu_auth LIKE %s)")
+                        params.extend([f"%{p_kw}%", f"%{p_kw}%", f"%{p_kw}%"])
+                    if c_kw:
+                        where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s)")
+                        params.extend([f"%{c_kw}%", f"%{c_kw}%"])
+                    if kw:
+                        where_clauses.append("(t.tb_asso LIKE %s OR t.regi_no LIKE %s OR v.std_id LIKE %s OR v.std_chinesename LIKE %s)")
+                        params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%", f"%{kw}%"])
+
+                    where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+                    limit_sql = "" if (p_kw or c_kw or kw) else "LIMIT 50000"
+
+                    sql = f"""
+                        SELECT 
+                            t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
+                            t.drafter, t.scope, t.ics, t.ccs,
+                            v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
+                            v.ics, v.ccs
+                        FROM std_tb_detail t
+                        JOIN view_std_full v ON t.base_id = v.id
+                        {where_sql}
+                        ORDER BY t.tb_asso, v.release_date DESC
+                        {limit_sql}
+                    """
+                    cur.execute(sql, params)
+                    tb_records = cur.fetchall()
+        except Exception as e:
+            logger.error(f"Failed to query std_tb_detail for tb_association: {e}")
+
+        # 聚合处理
+        asso_groups = {}
+        seen_detail_keys = set()
+        status_map = {1: '现行', 0: '废止', 2: '即将实施'}
+
+        for row in tb_records:
+            (asso, regi_no, issu, charge_p, addr,
+             drafter, scope, t_ics, t_ccs,
+             sid, stitle, rdate, idate, ex_st, v_ics, v_ccs) = row
+
+            asso_name = (asso or '').strip()
+            if not asso_name:
+                continue
+
+            sid = (sid or '').strip()
+            detail_key = (asso_name, sid)
+            if detail_key in seen_detail_keys:
+                continue
+            seen_detail_keys.add(detail_key)
+
+            if asso_name not in asso_groups:
+                asso_groups[asso_name] = {
+                    'name': asso_name,
+                    'regi_no': (regi_no or '').strip(),
+                    'issu_auth': (issu or '').strip(),
+                    'charge_person': (charge_p or '').strip(),
+                    'address': (addr or '').strip(),
+                    'standards': []
+                }
+            else:
+                g = asso_groups[asso_name]
+                if not g['regi_no'] and regi_no:
+                    g['regi_no'] = regi_no.strip()
+                if not g['charge_person'] and charge_p:
+                    g['charge_person'] = charge_p.strip()
+                if not g['address'] and addr:
+                    g['address'] = addr.strip()
+                if not g['issu_auth'] and issu:
+                    g['issu_auth'] = issu.strip()
+
+            ics_val = t_ics or v_ics or ''
+            ccs_val = t_ccs or v_ccs or ''
+            status_disp = status_map.get(ex_st, '现行')
+            r_str = str(rdate) if rdate else '-'
+            i_str = str(idate) if idate else '-'
+
+            asso_groups[asso_name]['standards'].append({
+                'std_id': sid,
+                'title': stitle or '无标题',
+                'status': status_disp,
+                'release_date': r_str,
+                'implement_date': i_str,
+                'drafter': drafter or '-',
+                'ics': ics_val,
+                'ccs': ccs_val,
+                'scope': scope or '-'
+            })
+
+        # 批量从 ent_std_maker 补齐缺失的统一代码与法定代表人
+        missing_credit_assos = [k for k, v in asso_groups.items() if not v['regi_no']]
+        if missing_credit_assos:
+            try:
+                with connections['compare_conp'].cursor() as cur:
+                    c_batch = 300
+                    for i in range(0, len(missing_credit_assos), c_batch):
+                        chunk = missing_credit_assos[i:i + c_batch]
+                        ph = ', '.join(['%s'] * len(chunk))
+                        cur.execute(f"""
+                            SELECT company_name, unified_social_credit_code, legal_representative, province, city
+                            FROM ent_std_maker
+                            WHERE company_name IN ({ph})
+                        """, chunk)
+                        for cname, ccode, lrep, pr, ci in cur.fetchall():
+                            if cname in asso_groups:
+                                g = asso_groups[cname]
+                                if not g['regi_no'] and ccode:
+                                    g['regi_no'] = ccode.strip()
+                                if not g['charge_person'] and lrep:
+                                    g['charge_person'] = lrep.strip()
+                                if pr:
+                                    g['province'] = pr.strip()
+                                if ci:
+                                    g['city'] = ci.strip()
+            except Exception:
+                pass
+
+        # 补全所属省市
+        for name, g in asso_groups.items():
+            if 'province' not in g or not g['province']:
+                full_text = f"{name} {g.get('address', '')} {g.get('issu_auth', '')}"
+                found_p = prov_name
+                found_c = city_name
+                if not found_p:
+                    for p_kw_cand in ['福建', '北京', '广东', '浙江', '江苏', '山东', '上海', '四川', '湖北', '湖南', '河北', '河南', '安徽', '江西', '陕西', '辽宁', '吉林', '黑龙江', '广西', '贵州', '云南', '重庆', '天津', '山西', '内蒙古', '新疆', '甘肃', '海南', '宁夏', '青海', '西藏']:
+                        if p_kw_cand in full_text:
+                            found_p = f"{p_kw_cand}省" if p_kw_cand not in ['北京', '上海', '天津', '重庆'] else f"{p_kw_cand}市"
+                            break
+                g['province'] = found_p or '-'
+                g['city'] = found_c or '-'
+
+        # 生成 Sheet 1【发布团标协会名录】
+        sorted_assos = sorted(asso_groups.values(), key=lambda x: len(x['standards']), reverse=True)
+        for idx, g in enumerate(sorted_assos, 1):
+            stds = g['standards']
+            total_stds = len(stds)
+            active_stds = sum(1 for s in stds if s['status'] == '现行')
+            valid_dates = [s['release_date'] for s in stds if s['release_date'] and s['release_date'] != '-']
+            earliest_date = min(valid_dates) if valid_dates else '-'
+            latest_date = max(valid_dates) if valid_dates else '-'
+
+            tb_asso_rows.append({
+                '序号': idx,
+                '协会名称': g['name'],
+                '统一社会信用代码': g['regi_no'] or '-',
+                '所属省份': g.get('province') or '-',
+                '所属城市': g.get('city') or '-',
+                '法定代表人/负责人': g['charge_person'] or '-',
+                '登记/主管机关': g['issu_auth'] or '-',
+                '办公/注册详细地址': g['address'] or '-',
+                '累计发布团标总数': total_stds,
+                '现行标准数': active_stds,
+                '首次发布日期': earliest_date,
+                '最近发布日期': latest_date,
+            })
+
+        # 生成 Sheet 2【协会团标明细清单】
+        detail_idx = 1
+        for g in sorted_assos:
+            for s in g['standards']:
+                tb_detail_rows.append({
+                    '序号': detail_idx,
+                    '发布协会名称': g['name'],
+                    '统一社会信用代码': g['regi_no'] or '-',
+                    '团体标准编号': s['std_id'],
+                    '标准中文名称': s['title'],
+                    '标准状态': s['status'],
+                    '发布日期': s['release_date'],
+                    '实施日期': s['implement_date'],
+                    '主要起草单位/起草人': s['drafter'],
+                    'ICS分类号': s['ics'],
+                    'CCS分类号': s['ccs'],
+                    '适用范围': s['scope'],
+                })
+                detail_idx += 1
+
+    if not company_list and not tb_asso_rows:
+        raise ValueError("按当前过滤条件未检索到任何匹配的企业或团标协会记录")
+
+    # 7. 文件写出
     exports_dir = os.path.join(settings.MEDIA_ROOT, 'exports')
     os.makedirs(exports_dir, exist_ok=True)
 
@@ -966,45 +1232,83 @@ def generate_advanced_export_file(
     co_cols = ['企业名称', '统一信用代码', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
     std_cols = ['标准号', '标准名称', '企业名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'CCS', '国民经济分类']
     other_std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'ICS中文名称', 'CCS', 'CCS中文名称', '起草单位', '起草单位排名名次', '国民经济分类']
+    asso_cols = ['序号', '协会名称', '统一社会信用代码', '所属省份', '所属城市', '法定代表人/负责人', '登记/主管机关', '办公/注册详细地址', '累计发布团标总数', '现行标准数', '首次发布日期', '最近发布日期']
+    detail_cols = ['序号', '发布协会名称', '统一社会信用代码', '团体标准编号', '标准中文名称', '标准状态', '发布日期', '实施日期', '主要起草单位/起草人', 'ICS分类号', 'CCS分类号', '适用范围']
 
     if file_format == 'separate_zip':
         zip_filename = f"{file_prefix}.zip"
         zip_filepath = os.path.join(exports_dir, zip_filename)
 
+        written_any = False
         with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zf:
-            if 'enterprise' in content_set:
+            if 'enterprise' in content_set and company_rows:
                 df_co = pd.DataFrame(company_rows, columns=co_cols)
                 co_buf = io.BytesIO()
                 df_co.to_excel(co_buf, index=False, sheet_name='企业目录', engine='openpyxl')
                 zf.writestr('1_企业目录.xlsx', co_buf.getvalue())
+                written_any = True
 
-            if 'enterprise_standard' in content_set:
+            if 'enterprise_standard' in content_set and standard_rows:
                 df_std = pd.DataFrame(standard_rows, columns=std_cols)
                 std_buf = io.BytesIO()
                 df_std.to_excel(std_buf, index=False, sheet_name='企标目录', engine='openpyxl')
                 zf.writestr('2_企标目录.xlsx', std_buf.getvalue())
+                written_any = True
 
-            if 'other_standard' in content_set:
+            if 'other_standard' in content_set and other_standard_rows:
                 df_other = pd.DataFrame(other_standard_rows, columns=other_std_cols)
                 other_buf = io.BytesIO()
                 df_other.to_excel(other_buf, index=False, sheet_name='国行地团标目录', engine='openpyxl')
                 zf.writestr('3_国行地团标目录.xlsx', other_buf.getvalue())
+                written_any = True
+
+            if 'tb_association' in content_set and tb_asso_rows:
+                df_asso = pd.DataFrame(tb_asso_rows, columns=asso_cols)
+                asso_buf = io.BytesIO()
+                df_asso.to_excel(asso_buf, index=False, sheet_name='发布团标协会名录', engine='openpyxl')
+                zf.writestr('4_发布团标协会名录.xlsx', asso_buf.getvalue())
+
+                df_detail = pd.DataFrame(tb_detail_rows, columns=detail_cols)
+                detail_buf = io.BytesIO()
+                df_detail.to_excel(detail_buf, index=False, sheet_name='协会团标明细清单', engine='openpyxl')
+                zf.writestr('5_协会团标明细清单.xlsx', detail_buf.getvalue())
+                written_any = True
+
+            if not written_any:
+                empty_df = pd.DataFrame([{'提示': '当前筛选条件下未检索到任何符合条件的记录'}])
+                buf = io.BytesIO()
+                empty_df.to_excel(buf, index=False, sheet_name='无匹配数据', engine='openpyxl')
+                zf.writestr('无匹配数据.xlsx', buf.getvalue())
 
         return f"exports/{zip_filename}"
     else:
         excel_filename = f"{file_prefix}.xlsx"
         excel_filepath = os.path.join(exports_dir, excel_filename)
 
+        written_any = False
         with pd.ExcelWriter(excel_filepath, engine='openpyxl') as writer:
-            if 'enterprise' in content_set:
+            if 'enterprise' in content_set and company_rows:
                 df_co = pd.DataFrame(company_rows, columns=co_cols)
                 df_co.to_excel(writer, sheet_name='企业目录', index=False)
-            if 'enterprise_standard' in content_set:
+                written_any = True
+            if 'enterprise_standard' in content_set and standard_rows:
                 df_std = pd.DataFrame(standard_rows, columns=std_cols)
                 df_std.to_excel(writer, sheet_name='企标目录', index=False)
-            if 'other_standard' in content_set:
+                written_any = True
+            if 'other_standard' in content_set and other_standard_rows:
                 df_other = pd.DataFrame(other_standard_rows, columns=other_std_cols)
                 df_other.to_excel(writer, sheet_name='国行地团标目录', index=False)
+                written_any = True
+            if 'tb_association' in content_set and tb_asso_rows:
+                df_asso = pd.DataFrame(tb_asso_rows, columns=asso_cols)
+                df_asso.to_excel(writer, sheet_name='发布团标协会名录', index=False)
+                df_detail = pd.DataFrame(tb_detail_rows, columns=detail_cols)
+                df_detail.to_excel(writer, sheet_name='协会团标明细清单', index=False)
+                written_any = True
+
+            if not written_any:
+                empty_df = pd.DataFrame([{'提示': '当前筛选条件下未检索到任何符合条件的记录'}])
+                empty_df.to_excel(writer, sheet_name='无匹配数据', index=False)
 
         return f"exports/{excel_filename}"
 

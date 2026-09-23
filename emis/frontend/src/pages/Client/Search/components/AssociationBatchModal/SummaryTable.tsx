@@ -173,10 +173,36 @@ export const SummaryTable: React.FC<SummaryTableProps> = ({
 
   return (
     <div>
-      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Text type="secondary" style={{ fontSize: 13 }}>
-          已选择 <Text strong style={{ color: '#0d9488' }}>{selectedNames.length}</Text> / {items.length} 家社会团体
-        </Text>
+      <div style={{ marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <Space size={8} wrap>
+          <Text type="secondary" style={{ fontSize: 13 }}>
+            已选择 <Text strong style={{ color: '#0d9488' }}>{selectedNames.length}</Text> / {items.length} 家社会团体
+          </Text>
+          <Button
+            size="small"
+            onClick={() => {
+              const tbNames = items.filter((it) => it.group_count > 0).map((it) => it.input_name);
+              onSelectionChange(tbNames);
+            }}
+            style={{ borderRadius: 12, borderColor: '#0d9488', color: '#0d9488', fontSize: 12 }}
+          >
+            一键勾选已发团标协会 ({items.filter((it) => it.group_count > 0).length})
+          </Button>
+          <Button
+            size="small"
+            onClick={() => onSelectionChange(items.map((it) => it.input_name))}
+            style={{ borderRadius: 12, fontSize: 12 }}
+          >
+            全选
+          </Button>
+          <Button
+            size="small"
+            onClick={() => onSelectionChange([])}
+            style={{ borderRadius: 12, fontSize: 12 }}
+          >
+            清空
+          </Button>
+        </Space>
 
         <Input
           prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
