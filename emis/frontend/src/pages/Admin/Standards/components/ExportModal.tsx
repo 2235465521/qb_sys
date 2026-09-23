@@ -140,7 +140,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
     try {
       setExporting(true);
       const loadingMsg = estimatedParts > 1
-        ? `正在分卷生成 ${currentScopeCount.toLocaleString()} 条企标资产并打包为 ZIP，请稍候...`
+        ? `正在生成 ${currentScopeCount.toLocaleString()} 条企标资产至单个 Excel（分切为 ${estimatedParts} 个工作表），请稍候...`
         : '正在生成并打包企业标准 Excel，请稍候...';
       message.loading({ content: loadingMsg, key: 'std_export', duration: 0 });
 
@@ -189,9 +189,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       }
       if (!downloadFilename) {
         const dateStr = dayjs().format('YYYYMMDD_HHmmss');
-        downloadFilename = estimatedParts > 1
-          ? `企业标准目录_分卷打包_${dateStr}.zip`
-          : `企业标准目录导出_${dateStr}.xlsx`;
+        downloadFilename = `企业标准目录导出_${dateStr}.xlsx`;
       }
 
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -204,7 +202,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       window.URL.revokeObjectURL(url);
 
       const successMsg = estimatedParts > 1
-        ? `成功生成 ${estimatedParts} 个 Excel 分卷并打包下载！`
+        ? `成功导出 Excel 目录（包含 ${estimatedParts} 个工作表分卷）！`
         : '企业标准目录导出成功！';
       message.success({ content: successMsg, key: 'std_export' });
       onCancel();
@@ -314,7 +312,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
             >
               <span>⚡</span>
               <span>
-                当前选定范围共 <strong>{currentScopeCount.toLocaleString()}</strong> 条数据（超过 10 万条），系统将自动切分为 <strong>{estimatedParts}</strong> 个 Excel 分卷（每卷 10 万条，序号连续递增）并打包为 <strong>ZIP</strong> 下载。
+                当前选定范围共 <strong>{currentScopeCount.toLocaleString()}</strong> 条数据（超过 10 万条），系统将自动在同一个 Excel 文件内切分为 <strong>{estimatedParts}</strong> 个工作表分卷（每卷 10 万条，序号连续递增）直接下载，免解压即可无缝浏览。
               </span>
             </div>
           )}

@@ -146,12 +146,11 @@ class StandardExportService:
         return qs.order_by('-created_at')
 
     @classmethod
-    def _create_styled_workbook(cls, valid_fields):
-        """创建带有统一样式表头和自适应列宽的 write_only 工作簿"""
+    def _add_styled_sheet(cls, wb, sheet_title, valid_fields):
+        """在 write_only 工作簿中创建带有统一样式表头和自适应列宽的工作表"""
         from openpyxl.cell import WriteOnlyCell
 
-        wb = openpyxl.Workbook(write_only=True)
-        ws = wb.create_sheet(title="企业标准目录")
+        ws = wb.create_sheet(title=sheet_title[:31])
 
         header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
         header_font = Font(name='微软雅黑', size=11, bold=True, color='FFFFFF')
@@ -173,17 +172,17 @@ class StandardExportService:
             default_w = cls.FIELD_DEFINITIONS[field_key][2]
             ws.column_dimensions[col_letter].width = default_w
 
-        return wb, ws
+        return ws
 
     @classmethod
     def export_standards(cls, queryset, selected_fields: list = None, chunk_size: int = 100000):
         """
         导出企业标准目录：
-        - 若总数 <= chunk_size (默认10万条)：返回单份 Excel 字节流；
-        - 若总数 > chunk_size (例如18万条)：按每 10 万条切分多个 Excel，并打包为 ZIP 压缩包返回。
+        - 若总数 <= chunk_size (默认10万条)：生成单 Sheet 的 Excel 字节流；
+        - 若总数 > chunk_size (例如18万条)：在同一个 Excel 内切分多个工作表 Sheet（每卷 10 万条，序号连续递增）；
+        始终输出标准 .xlsx 格式，彻底避开非 HTTPS 站点下载 .zip 时触发的 Chrome 安全拦截。
         返回元组: (file_bytes, filename, content_type)
         """
-        import zipfile
         from datetime import datetime
 
         if not selected_fields:
@@ -196,9 +195,11 @@ class StandardExportService:
         total_count = queryset.count()
         date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
 
-        # 情况 1: 数据量 <= chunk_size，直接生成单文件 Excel
+        wb = openpyxl.Workbook(write_only=True)
+
+        # 情况 1: 数据量 <= chunk_size (10万条)
         if total_count <= chunk_size:
-            wb, ws = cls._create_styled_workbook(valid_fields)
+            ws = cls._add_styled_sheet(wb, "企业标准目录", valid_fields)
             row_num = 1
             for standard in queryset.iterator(chunk_size=2000):
                 row_data = [row_num]
@@ -211,21 +212,15 @@ class StandardExportService:
                     row_data.append(val)
                 ws.append(row_data)
                 row_num += 1
-
-            output = io.BytesIO()
-            wb.save(output)
-            filename = f"企业标准目录导出_{date_str}.xlsx"
-            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            return output.getvalue(), filename, content_type
-
-        # 情况 2: 数据量 > chunk_size，自动切分为多个 Excel 并打包为 ZIP
-        zip_buf = io.BytesIO()
-        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        else:
+            # 情况 2: 数据量 > chunk_size (如 18 万条)，在同一工作簿内切分多个 Sheet
             cur_part = 1
-            wb, ws = cls._create_styled_workbook(valid_fields)
             start_seq = 1
-            global_seq = 1
+            end_seq = min(chunk_size, total_count)
+            sheet_title = f"企业标准目录_Part{cur_part}({start_seq}-{end_seq})"
+            ws = cls._add_styled_sheet(wb, sheet_title, valid_fields)
 
+            global_seq = 1
             for standard in queryset.iterator(chunk_size=2000):
                 row_data = [global_seq]
                 for field_key in valid_fields:
@@ -237,24 +232,21 @@ class StandardExportService:
                     row_data.append(val)
                 ws.append(row_data)
 
-                # 达到本卷上限或最后一条
-                if global_seq % chunk_size == 0 or global_seq == total_count:
-                    end_seq = global_seq
-                    part_buf = io.BytesIO()
-                    wb.save(part_buf)
-                    part_filename = f"企业标准目录_Part{cur_part}_{start_seq}-{end_seq}.xlsx"
-                    zf.writestr(part_filename, part_buf.getvalue())
-
+                # 达到本 Sheet 10 万条且后面还有数据，开启新 Sheet
+                if global_seq % chunk_size == 0 and global_seq < total_count:
                     cur_part += 1
                     start_seq = global_seq + 1
-                    if global_seq < total_count:
-                        wb, ws = cls._create_styled_workbook(valid_fields)
+                    end_seq = min(global_seq + chunk_size, total_count)
+                    sheet_title = f"企业标准目录_Part{cur_part}({start_seq}-{end_seq})"
+                    ws = cls._add_styled_sheet(wb, sheet_title, valid_fields)
 
                 global_seq += 1
 
-        filename = f"企业标准目录_分卷打包_{date_str}.zip"
-        content_type = "application/zip"
-        return zip_buf.getvalue(), filename, content_type
+        output = io.BytesIO()
+        wb.save(output)
+        filename = f"企业标准目录导出_{date_str}.xlsx"
+        content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        return output.getvalue(), filename, content_type
 
     # 兼容历史别名
     @classmethod
