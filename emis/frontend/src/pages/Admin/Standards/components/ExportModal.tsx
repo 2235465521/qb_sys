@@ -163,6 +163,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
         },
         {
           responseType: 'blob',
+          timeout: 300000, // 5 分钟超时，满足大数据量导出需求
         }
       );
 
@@ -179,8 +180,31 @@ const ExportModal: React.FC<ExportModalProps> = ({
       message.success({ content: '企业标准目录导出成功！', key: 'std_export' });
       onCancel();
     } catch (err: any) {
-      const errMsg = err?.response?.data?.error || '导出失败，请重试';
-      message.error({ content: errMsg, key: 'std_export' });
+      let errMsg = '导出失败，请重试';
+      if (err?.code === 'ECONNABORTED' || err?.message?.includes('timeout')) {
+        errMsg = '导出请求响应超时，当前数据量过大，请适当缩小筛选条件后重试';
+      } else if (err?.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const json = JSON.parse(text);
+          if (json?.error) {
+            errMsg = json.error;
+          } else if (json?.message) {
+            errMsg = json.message;
+          }
+        } catch (_) {
+          if (err.response?.status === 404) {
+            errMsg = '后端导出接口未就绪，请确保服务器端执行了 pm2 restart 重启后端服务';
+          } else if (err.response?.status === 504) {
+            errMsg = '服务器网关超时，数据量过大，请缩小筛选条件后重试';
+          } else if (err.response?.status === 500) {
+            errMsg = '服务器内部处理异常，请检查后端日志';
+          }
+        }
+      } else if (err?.response?.data?.error) {
+        errMsg = err.response.data.error;
+      }
+      message.error({ content: errMsg, key: 'std_export', duration: 4 });
     } finally {
       setExporting(false);
     }
@@ -228,6 +252,11 @@ const ExportModal: React.FC<ExportModalProps> = ({
             <Radio value="query">
               <span>导出当前检索条件下的标准 </span>
               <Tag color="green">当前筛选共 {totalFilteredCount} 条</Tag>
+              {totalFilteredCount > 100000 && (
+                <span style={{ fontSize: 12, color: '#faad14', marginLeft: 4 }}>
+                  (单次最多导出前 100,000 条，建议结合上方搜索或状态筛选收窄范围)
+                </span>
+              )}
               {currentFilters.keyword && (
                 <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 4 }}>
                   [关键词: "{currentFilters.keyword}"]

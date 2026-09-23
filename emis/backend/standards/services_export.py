@@ -146,10 +146,13 @@ class StandardExportService:
         return qs.order_by('-created_at')
 
     @classmethod
-    def export_to_excel(cls, queryset, selected_fields: list = None) -> bytes:
+    def export_to_excel(cls, queryset, selected_fields: list = None, max_limit: int = 100000) -> bytes:
         """
         将标准 QuerySet 导出为专业 Excel 工作簿二进制字节流
+        采用 write_only=True 流式引擎，即使 10 万条数据也能在数秒内极速流式生成且内存极低。
         """
+        from openpyxl.cell import WriteOnlyCell
+
         # 1. 确定导出字段清单
         if not selected_fields:
             selected_fields = cls.DEFAULT_RECOMMENDED_FIELDS
@@ -158,71 +161,41 @@ class StandardExportService:
         if not valid_fields:
             valid_fields = cls.DEFAULT_RECOMMENDED_FIELDS
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "企业标准目录"
-        ws.views.sheetView[0].showGridLines = True
+        wb = openpyxl.Workbook(write_only=True)
+        ws = wb.create_sheet(title="企业标准目录")
 
         # 2. 样式定义（标准专业企业蓝）
         header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
         header_font = Font(name='微软雅黑', size=11, bold=True, color='FFFFFF')
         header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-        regular_font = Font(name='微软雅黑', size=10)
-        center_align = Alignment(horizontal='center', vertical='center')
-        left_align = Alignment(horizontal='left', vertical='center')
-        
-        thin_border_side = Side(border_style='thin', color='D9D9D9')
-        cell_border = Border(
-            left=thin_border_side,
-            right=thin_border_side,
-            top=thin_border_side,
-            bottom=thin_border_side
-        )
-
-        stripe_fill = PatternFill(start_color='F9FAFB', end_color='F9FAFB', fill_type='solid')
-
-        # 3. 写入表头（首列加入“序号”）
+        # 3. 构造并写入精美企业蓝表头
         headers = ['序号'] + [cls.FIELD_DEFINITIONS[f][0] for f in valid_fields]
-        ws.row_dimensions[1].height = 28
-
-        for col_idx, h_text in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col_idx, value=h_text)
+        header_cells = []
+        for h_text in headers:
+            cell = WriteOnlyCell(ws, value=h_text)
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = header_align
-            cell.border = cell_border
+            header_cells.append(cell)
+        ws.append(header_cells)
 
-        # 4. 写入数据行
-        row_num = 2
-        center_fields = {'type', 'status', 'publish_date', 'implement_date', 'created_at', 'ics', 'ccs', 'has_pdf', 'province', 'city', 'district'}
+        # 4. 极速流式写入数据行
+        row_num = 1
+        # 单次最大支持 10 万条导出保护
+        qs_sliced = queryset[:max_limit] if max_limit else queryset
 
-        for standard in queryset.iterator(chunk_size=1000):
-            ws.row_dimensions[row_num].height = 22
-            is_stripe = (row_num % 2 == 1)
-
-            # 序号
-            seq_cell = ws.cell(row=row_num, column=1, value=row_num - 1)
-            seq_cell.font = regular_font
-            seq_cell.alignment = center_align
-            seq_cell.border = cell_border
-            if is_stripe:
-                seq_cell.fill = stripe_fill
-
-            for col_idx, field_key in enumerate(valid_fields, 2):
+        for standard in qs_sliced.iterator(chunk_size=2000):
+            row_data = [row_num]
+            for field_key in valid_fields:
                 extractor = cls.FIELD_DEFINITIONS[field_key][1]
                 try:
                     val = extractor(standard)
                 except Exception:
                     val = ''
+                row_data.append(val)
 
-                cell = ws.cell(row=row_num, column=col_idx, value=val)
-                cell.font = regular_font
-                cell.alignment = center_align if field_key in center_fields else left_align
-                cell.border = cell_border
-                if is_stripe:
-                    cell.fill = stripe_fill
-
+            ws.append(row_data)
             row_num += 1
 
         # 5. 列宽自适应设置
