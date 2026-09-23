@@ -10,7 +10,7 @@ from django.db import connections
 from django.db.models import Q
 from standards.models import Standard
 from standards.services import generate_clean_id
-from companies.models import Company, Province, City
+from companies.models import Company, Province, City, District
 from companies.services import search_companies, FederatedStandardService
 from companies.services_association import AssociationBatchService
 
@@ -966,10 +966,12 @@ def generate_advanced_export_file(
     if 'tb_association' in content_set:
         prov_id = base_filters.get('province_id') or advanced_filters.get('province_id')
         city_id = base_filters.get('city_id') or advanced_filters.get('city_id')
+        district_id = base_filters.get('district_id') or advanced_filters.get('district_id')
         kw = (base_filters.get('q') or base_filters.get('keyword') or '').strip()
 
         prov_name = ''
         city_name = ''
+        district_name = ''
         if prov_id:
             try:
                 p_obj = Province.objects.filter(id=prov_id).first()
@@ -984,9 +986,17 @@ def generate_advanced_export_file(
                     city_name = c_obj.name.strip()
             except Exception:
                 pass
+        if district_id:
+            try:
+                d_obj = District.objects.filter(id=district_id).first()
+                if d_obj:
+                    district_name = d_obj.name.strip()
+            except Exception:
+                pass
 
         p_kw = prov_name.replace('省', '').replace('市', '').replace('自治区', '').replace('壮族', '').replace('回族', '').replace('维吾尔', '') if prov_name else ''
         c_kw = city_name.replace('市', '').replace('地区', '').replace('州', '') if city_name else ''
+        d_kw = district_name.replace('市', '').replace('区', '').replace('县', '').replace('旗', '') if district_name else ''
 
         tb_records = []
         try:
@@ -1051,12 +1061,15 @@ def generate_advanced_export_file(
                     if c_kw:
                         where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s)")
                         params.extend([f"%{c_kw}%", f"%{c_kw}%"])
+                    if d_kw:
+                        where_clauses.append("(t.address LIKE %s)")
+                        params.extend([f"%{d_kw}%"])
                     if kw:
                         where_clauses.append("(t.tb_asso LIKE %s OR t.regi_no LIKE %s OR v.std_id LIKE %s OR v.std_chinesename LIKE %s)")
                         params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%", f"%{kw}%"])
 
                     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-                    limit_sql = "" if (p_kw or c_kw or kw) else "LIMIT 50000"
+                    limit_sql = "" if (p_kw or c_kw or d_kw or kw) else "LIMIT 50000"
 
                     sql = f"""
                         SELECT 
@@ -1161,7 +1174,7 @@ def generate_advanced_export_file(
             except Exception:
                 pass
 
-        # 补全所属省市
+        # 补全所属省市区县
         for name, g in asso_groups.items():
             if 'province' not in g or not g['province']:
                 full_text = f"{name} {g.get('address', '')} {g.get('issu_auth', '')}"
@@ -1174,6 +1187,18 @@ def generate_advanced_export_file(
                             break
                 g['province'] = found_p or '-'
                 g['city'] = found_c or '-'
+
+            # 从 address 字段智能提取所属区县
+            if 'district' not in g or not g['district']:
+                addr_text = g.get('address', '')
+                found_d = district_name  # 若用户指定了区县，优先使用
+                if not found_d and addr_text:
+                    # 从详细地址中抽取区/县/旗等行政级别名称
+                    import re as _re
+                    m = _re.search(r'[\u5e02\u53bf\u53bf\u7ea7\u5e02]?([\u4e00-\u9fa5]{2,6}(?:区|县|旗|市辖区|新区|开发区))', addr_text)
+                    if m:
+                        found_d = m.group(1)
+                g['district'] = found_d or '-'
 
         # 生成 Sheet 1【发布团标协会名录】
         sorted_assos = sorted(asso_groups.values(), key=lambda x: len(x['standards']), reverse=True)
@@ -1191,6 +1216,7 @@ def generate_advanced_export_file(
                 '统一社会信用代码': g['regi_no'] or '-',
                 '所属省份': g.get('province') or '-',
                 '所属城市': g.get('city') or '-',
+                '所属区县': g.get('district') or '-',
                 '法定代表人/负责人': g['charge_person'] or '-',
                 '登记/主管机关': g['issu_auth'] or '-',
                 '办公/注册详细地址': g['address'] or '-',
@@ -1232,7 +1258,7 @@ def generate_advanced_export_file(
     co_cols = ['企业名称', '统一信用代码', '省份', '城市', '区县', '曾用名', '企业(机构)类型', '企业规模', '登记状态']
     std_cols = ['标准号', '标准名称', '企业名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'CCS', '国民经济分类']
     other_std_cols = ['标准号', '标准名称', '标准状态', '标准类型', '制修订', '发布日期', '实施日期', 'ICS', 'ICS中文名称', 'CCS', 'CCS中文名称', '起草单位', '起草单位排名名次', '国民经济分类']
-    asso_cols = ['序号', '协会名称', '统一社会信用代码', '所属省份', '所属城市', '法定代表人/负责人', '登记/主管机关', '办公/注册详细地址', '累计发布团标总数', '现行标准数', '首次发布日期', '最近发布日期']
+    asso_cols = ['序号', '协会名称', '统一社会信用代码', '所属省份', '所属城市', '所属区县', '法定代表人/负责人', '登记/主管机关', '办公/注册详细地址', '累计发布团标总数', '现行标准数', '首次发布日期', '最近发布日期']
     detail_cols = ['序号', '发布协会名称', '统一社会信用代码', '团体标准编号', '标准中文名称', '标准状态', '发布日期', '实施日期', '主要起草单位/起草人', 'ICS分类号', 'CCS分类号', '适用范围']
 
     if file_format == 'separate_zip':
