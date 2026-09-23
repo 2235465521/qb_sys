@@ -1024,9 +1024,11 @@ def generate_advanced_export_file(
                                 t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
                                 t.drafter, t.scope, t.ics, t.ccs,
                                 v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
-                                v.ics, v.ccs
+                                v.ics, v.ccs,
+                                u.area_code
                             FROM std_tb_detail t
                             JOIN view_std_full v ON t.base_id = v.id
+                            LEFT JOIN unit_dict u ON u.unit_name = t.tb_asso COLLATE utf8mb4_0900_ai_ci
                             WHERE t.tb_asso IN ({n_holders}) OR t.Issu_auth IN ({n_holders}) OR t.unit_name IN ({n_holders})
                             ORDER BY t.tb_asso, v.release_date DESC
                         """
@@ -1042,16 +1044,18 @@ def generate_advanced_export_file(
                                     t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
                                     t.drafter, t.scope, t.ics, t.ccs,
                                     v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
-                                    v.ics, v.ccs
+                                    v.ics, v.ccs,
+                                    u.area_code
                                 FROM std_tb_detail t
                                 JOIN view_std_full v ON t.base_id = v.id
+                                LEFT JOIN unit_dict u ON u.unit_name = t.tb_asso COLLATE utf8mb4_0900_ai_ci
                                 WHERE t.regi_no IN ({c_holders})
                                 ORDER BY t.tb_asso, v.release_date DESC
                             """
                             cur.execute(sql, c_chunk)
                             tb_records.extend(cur.fetchall())
                 else:
-                    # 检索/条件模式：根据省/市/关键词直接从 std_tb_detail 提取
+                    # 检索/条件模式：根据省/市/区县/关键词直接从 std_tb_detail 提取
                     where_clauses = []
                     params = []
 
@@ -1076,9 +1080,11 @@ def generate_advanced_export_file(
                             t.tb_asso, t.regi_no, t.Issu_auth, t.charge_person, t.address,
                             t.drafter, t.scope, t.ics, t.ccs,
                             v.std_id, v.std_chinesename, v.release_date, v.implement_date, v.ex_state,
-                            v.ics, v.ccs
+                            v.ics, v.ccs,
+                            u.area_code
                         FROM std_tb_detail t
                         JOIN view_std_full v ON t.base_id = v.id
+                        LEFT JOIN unit_dict u ON u.unit_name = t.tb_asso COLLATE utf8mb4_0900_ai_ci
                         {where_sql}
                         ORDER BY t.tb_asso, v.release_date DESC
                         {limit_sql}
@@ -1088,6 +1094,7 @@ def generate_advanced_export_file(
         except Exception as e:
             logger.error(f"Failed to query std_tb_detail for tb_association: {e}")
 
+
         # 聚合处理
         asso_groups = {}
         seen_detail_keys = set()
@@ -1096,7 +1103,8 @@ def generate_advanced_export_file(
         for row in tb_records:
             (asso, regi_no, issu, charge_p, addr,
              drafter, scope, t_ics, t_ccs,
-             sid, stitle, rdate, idate, ex_st, v_ics, v_ccs) = row
+             sid, stitle, rdate, idate, ex_st, v_ics, v_ccs,
+             area_code) = row
 
             asso_name = (asso or '').strip()
             if not asso_name:
@@ -1115,6 +1123,7 @@ def generate_advanced_export_file(
                     'issu_auth': (issu or '').strip(),
                     'charge_person': (charge_p or '').strip(),
                     'address': (addr or '').strip(),
+                    'area_code': (area_code or '').strip(),
                     'standards': []
                 }
             else:
@@ -1127,6 +1136,8 @@ def generate_advanced_export_file(
                     g['address'] = addr.strip()
                 if not g['issu_auth'] and issu:
                     g['issu_auth'] = issu.strip()
+                if not g['area_code'] and area_code:
+                    g['area_code'] = area_code.strip()
 
             ics_val = t_ics or v_ics or ''
             ccs_val = t_ccs or v_ccs or ''
@@ -1167,38 +1178,62 @@ def generate_advanced_export_file(
                                     g['regi_no'] = ccode.strip()
                                 if not g['charge_person'] and lrep:
                                     g['charge_person'] = lrep.strip()
-                                if pr:
-                                    g['province'] = pr.strip()
-                                if ci:
-                                    g['city'] = ci.strip()
             except Exception:
                 pass
 
+        # 批量用 Django District/City/Province 模型将 area_code 解码为省/市/区县名称
+        all_area_codes = {g['area_code'] for g in asso_groups.values() if len(g.get('area_code', '')) == 6}
+        code_to_district = {}
+        if all_area_codes:
+            dist_qs = District.objects.filter(code__in=all_area_codes).select_related('city__province')
+            for d in dist_qs:
+                code_to_district[d.code] = {
+                    'district': d.name,
+                    'city': d.city.name if d.city else '',
+                    'province': d.city.province.name if (d.city and d.city.province) else '',
+                }
+
+        # 同时预建市级 code（前4位）和省级 code（前2位）的映射，用于兜底
+        all_city_codes = {g['area_code'][:4] for g in asso_groups.values() if len(g.get('area_code', '')) >= 4}
+        code_to_city = {}
+        if all_city_codes:
+            city_qs = City.objects.filter(code__in=all_city_codes).select_related('province')
+            for c in city_qs:
+                code_to_city[c.code] = {
+                    'city': c.name,
+                    'province': c.province.name if c.province else '',
+                }
+
+        all_prov_codes = {g['area_code'][:2] for g in asso_groups.values() if len(g.get('area_code', '')) >= 2}
+        code_to_prov = {}
+        if all_prov_codes:
+            prov_qs = Province.objects.filter(code__in=all_prov_codes)
+            for p in prov_qs:
+                code_to_prov[p.code] = p.name
+
         # 补全所属省市区县
         for name, g in asso_groups.items():
-            if 'province' not in g or not g['province']:
-                full_text = f"{name} {g.get('address', '')} {g.get('issu_auth', '')}"
-                found_p = prov_name
-                found_c = city_name
-                if not found_p:
-                    for p_kw_cand in ['福建', '北京', '广东', '浙江', '江苏', '山东', '上海', '四川', '湖北', '湖南', '河北', '河南', '安徽', '江西', '陕西', '辽宁', '吉林', '黑龙江', '广西', '贵州', '云南', '重庆', '天津', '山西', '内蒙古', '新疆', '甘肃', '海南', '宁夏', '青海', '西藏']:
-                        if p_kw_cand in full_text:
-                            found_p = f"{p_kw_cand}省" if p_kw_cand not in ['北京', '上海', '天津', '重庆'] else f"{p_kw_cand}市"
-                            break
-                g['province'] = found_p or '-'
-                g['city'] = found_c or '-'
+            ac = g.get('area_code', '')
+            if len(ac) == 6 and ac in code_to_district:
+                info = code_to_district[ac]
+                g['province'] = info['province'] or prov_name or '-'
+                g['city'] = info['city'] or city_name or '-'
+                g['district'] = info['district'] or district_name or '-'
+            elif len(ac) >= 4 and ac[:4] in code_to_city:
+                info = code_to_city[ac[:4]]
+                g['province'] = info['province'] or prov_name or '-'
+                g['city'] = info['city'] or city_name or '-'
+                g['district'] = district_name or '-'
+            elif len(ac) >= 2 and ac[:2] in code_to_prov:
+                g['province'] = code_to_prov[ac[:2]] or prov_name or '-'
+                g['city'] = city_name or '-'
+                g['district'] = district_name or '-'
+            else:
+                # 无 area_code，回退到用户选择的过滤条件
+                g['province'] = prov_name or '-'
+                g['city'] = city_name or '-'
+                g['district'] = district_name or '-'
 
-            # 从 address 字段智能提取所属区县
-            if 'district' not in g or not g['district']:
-                addr_text = g.get('address', '')
-                found_d = district_name  # 若用户指定了区县，优先使用
-                if not found_d and addr_text:
-                    # 从详细地址中抽取区/县/旗等行政级别名称
-                    import re as _re
-                    m = _re.search(r'[\u5e02\u53bf\u53bf\u7ea7\u5e02]?([\u4e00-\u9fa5]{2,6}(?:区|县|旗|市辖区|新区|开发区))', addr_text)
-                    if m:
-                        found_d = m.group(1)
-                g['district'] = found_d or '-'
 
         # 生成 Sheet 1【发布团标协会名录】
         sorted_assos = sorted(asso_groups.values(), key=lambda x: len(x['standards']), reverse=True)
