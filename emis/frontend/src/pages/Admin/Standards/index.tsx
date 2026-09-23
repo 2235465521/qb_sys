@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Button, Space, message } from 'antd';
-import { ImportOutlined, FileTextOutlined, ReloadOutlined } from '@ant-design/icons';
+import { ImportOutlined, FileTextOutlined, ReloadOutlined, ExportOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import DataTable from './components/DataTable';
 import SmartImportModal from './components/SmartImportModal';
 import EditModal from './components/EditModal';
+import ExportModal from './components/ExportModal';
 import { useStandardData } from '@/hooks/useStandardData';
 import type { StandardSearchParams } from '@/hooks/useStandardData';
 import type { Standard } from '@/types';
@@ -13,6 +14,8 @@ import apiClient from '@/api/client';
 const StandardsManagerPage: React.FC = () => {
   const [params, setParams] = useState<StandardSearchParams>({ page: 1 });
   const [smartImportVisible, setSmartImportVisible] = useState(false);
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [editVisible, setEditVisible] = useState(false);
   const [editingStandard, setEditingStandard] = useState<Standard | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -110,6 +113,13 @@ const StandardsManagerPage: React.FC = () => {
             一键扫盘匹配 PDF
           </Button>
           <Button 
+            icon={<ExportOutlined />} 
+            onClick={() => setExportModalVisible(true)}
+            style={{ borderRadius: 6, fontWeight: 500, borderColor: '#52c41a', color: '#52c41a' }}
+          >
+            导出标准目录 {selectedRowKeys.length > 0 && `(${selectedRowKeys.length})`}
+          </Button>
+          <Button 
             type="primary" 
             icon={<ImportOutlined />} 
             onClick={() => setSmartImportVisible(true)}
@@ -133,9 +143,19 @@ const StandardsManagerPage: React.FC = () => {
           pageSize: 20,
           total: standardQuery.data?.count || 0,
         }}
+        selectedRowKeys={selectedRowKeys}
+        onSelectChange={setSelectedRowKeys}
         onEdit={handleEdit}
         onDelete={(id) => deleteMutation.mutate(id)}
         onChange={handleTableChange}
+      />
+
+      <ExportModal
+        open={exportModalVisible}
+        onCancel={() => setExportModalVisible(false)}
+        selectedIds={selectedRowKeys}
+        currentFilters={params}
+        totalFilteredCount={standardQuery.data?.count || 0}
       />
 
       <SmartImportModal

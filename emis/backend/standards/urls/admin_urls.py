@@ -15,11 +15,13 @@ from standards.views.admin_views import (
     StandardMixedImportStatusView,
     StandardMixedImportTemplateView,
     StandardSmartImportView,
-    StandardForceReparseDatesView
+    StandardForceReparseDatesView,
+    StandardExportView
 )
 
 urlpatterns = [
     path('', StandardAdminListCreateView.as_view(), name='admin-standard-list'),
+    path('export/', StandardExportView.as_view(), name='admin-standard-export'),
     path('<int:pk>/', StandardAdminDetailView.as_view(), name='admin-standard-detail'),
     path('import/', StandardImportView.as_view(), name='admin-standard-import'),
     path('import/template/', StandardImportTemplateView.as_view(), name='admin-standard-import-template'),

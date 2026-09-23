@@ -391,3 +391,59 @@ class StandardForceReparseDatesView(APIView):
             'success': True,
             'message': '已触发全量重新扫描修复企标发布和实施日期的后台异步任务，请稍后查看结果。'
         }, status=status.HTTP_200_OK)
+
+
+class StandardExportView(APIView):
+    """
+    POST /api/admin/standards/export/ — 企业标准目录高级定制导出
+    支持：
+      - export_scope: 'selected' | 'query' | 'all'
+      - ids: 选中的标准 ID 列表
+      - filters: 检索过滤条件 (keyword, status, type, has_pdf, is_parsed, date_type, start_date, end_date, 等)
+      - selected_fields: 自定义列名数组
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        from django.http import HttpResponse
+        from urllib.parse import quote
+        from datetime import datetime
+        from standards.services_export import StandardExportService
+
+        data = request.data or {}
+        export_scope = data.get('export_scope', 'query')
+        ids = data.get('ids', [])
+        filters = data.get('filters', {})
+        selected_fields = data.get('selected_fields', [])
+
+        if export_scope == 'selected' and not ids:
+            return Response({'error': '未提供选中的标准ID列表'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 构造查询集
+        qs = StandardExportService.build_queryset(
+            export_scope=export_scope,
+            ids=ids,
+            filters=filters
+        )
+
+        total_count = qs.count()
+        if total_count == 0:
+            return Response({'error': '当前导出的数据范围为空，没有找到任何符合条件的企业标准数据。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            excel_bytes = StandardExportService.export_to_excel(
+                queryset=qs,
+                selected_fields=selected_fields
+            )
+        except Exception as e:
+            return Response({'error': f'生成 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(
+            excel_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"企业标准目录导出_{date_str}.xlsx"
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        return response
+

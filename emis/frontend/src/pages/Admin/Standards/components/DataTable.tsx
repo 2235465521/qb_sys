@@ -11,6 +11,8 @@ interface DataTableProps {
   onEdit: (record: Standard) => void;
   onDelete: (id: number) => void;
   onChange: (pagination: any) => void;
+  selectedRowKeys?: React.Key[];
+  onSelectChange?: (selectedRowKeys: React.Key[]) => void;
 }
 
 const DataTable: React.FC<DataTableProps> = ({
@@ -20,6 +22,8 @@ const DataTable: React.FC<DataTableProps> = ({
   onEdit,
   onDelete,
   onChange,
+  selectedRowKeys = [],
+  onSelectChange,
 }) => {
   const columns = [
     {
@@ -148,6 +152,10 @@ const DataTable: React.FC<DataTableProps> = ({
 
   return (
     <Table
+      rowSelection={onSelectChange ? {
+        selectedRowKeys,
+        onChange: onSelectChange,
+      } : undefined}
       columns={columns}
       dataSource={data}
       rowKey="id"
