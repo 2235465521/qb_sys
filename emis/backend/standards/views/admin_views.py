@@ -431,19 +431,16 @@ class StandardExportView(APIView):
             return Response({'error': '当前导出的数据范围为空，没有找到任何符合条件的企业标准数据。'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            excel_bytes = StandardExportService.export_to_excel(
+            file_bytes, filename, content_type = StandardExportService.export_standards(
                 queryset=qs,
-                selected_fields=selected_fields
+                selected_fields=selected_fields,
+                chunk_size=100000
             )
         except Exception as e:
-            return Response({'error': f'生成 Excel 失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({'error': f'生成导出文件失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        response = HttpResponse(
-            excel_bytes,
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"企业标准目录导出_{date_str}.xlsx"
+        response = HttpResponse(file_bytes, content_type=content_type)
         response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
 

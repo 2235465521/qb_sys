@@ -127,6 +127,9 @@ const ExportModal: React.FC<ExportModalProps> = ({
     setSelectedFields(prev => ALL_FIELD_KEYS.filter(k => !prev.includes(k)));
   };
 
+  const currentScopeCount = exportScope === 'selected' ? selectedIds.length : totalFilteredCount;
+  const estimatedParts = Math.max(1, Math.ceil(currentScopeCount / 100000));
+
   // 执行导出
   const handleExecuteExport = async () => {
     if (selectedFields.length === 0) {
@@ -136,7 +139,10 @@ const ExportModal: React.FC<ExportModalProps> = ({
 
     try {
       setExporting(true);
-      message.loading({ content: '正在生成并打包企业标准 Excel，请稍候...', key: 'std_export', duration: 0 });
+      const loadingMsg = estimatedParts > 1
+        ? `正在分卷生成 ${currentScopeCount.toLocaleString()} 条企标资产并打包为 ZIP，请稍候...`
+        : '正在生成并打包企业标准 Excel，请稍候...';
+      message.loading({ content: loadingMsg, key: 'std_export', duration: 0 });
 
       // 合并页面当前条件与弹窗微调条件
       const mergedFilters: any = {
@@ -167,17 +173,40 @@ const ExportModal: React.FC<ExportModalProps> = ({
         }
       );
 
+      // 从响应头解析真实文件名
+      let downloadFilename = '';
+      const disposition = response.headers['content-disposition'] || response.headers['Content-Disposition'];
+      if (disposition) {
+        const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+        if (utf8Match && utf8Match[1]) {
+          downloadFilename = decodeURIComponent(utf8Match[1]);
+        } else {
+          const normalMatch = disposition.match(/filename="?([^";]+)"?/i);
+          if (normalMatch && normalMatch[1]) {
+            downloadFilename = decodeURIComponent(normalMatch[1]);
+          }
+        }
+      }
+      if (!downloadFilename) {
+        const dateStr = dayjs().format('YYYYMMDD_HHmmss');
+        downloadFilename = estimatedParts > 1
+          ? `企业标准目录_分卷打包_${dateStr}.zip`
+          : `企业标准目录导出_${dateStr}.xlsx`;
+      }
+
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
-      const dateStr = dayjs().format('YYYYMMDD_HHmmss');
-      link.setAttribute('download', `企业标准目录导出_${dateStr}.xlsx`);
+      link.setAttribute('download', downloadFilename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
-      message.success({ content: '企业标准目录导出成功！', key: 'std_export' });
+      const successMsg = estimatedParts > 1
+        ? `成功生成 ${estimatedParts} 个 Excel 分卷并打包下载！`
+        : '企业标准目录导出成功！';
+      message.success({ content: successMsg, key: 'std_export' });
       onCancel();
     } catch (err: any) {
       let errMsg = '导出失败，请重试';
@@ -252,11 +281,6 @@ const ExportModal: React.FC<ExportModalProps> = ({
             <Radio value="query">
               <span>导出当前检索条件下的标准 </span>
               <Tag color="green">当前筛选共 {totalFilteredCount} 条</Tag>
-              {totalFilteredCount > 100000 && (
-                <span style={{ fontSize: 12, color: '#faad14', marginLeft: 4 }}>
-                  (单次最多导出前 100,000 条，建议结合上方搜索或状态筛选收窄范围)
-                </span>
-              )}
               {currentFilters.keyword && (
                 <span style={{ fontSize: 12, color: '#8c8c8c', marginLeft: 4 }}>
                   [关键词: "{currentFilters.keyword}"]
@@ -271,6 +295,29 @@ const ExportModal: React.FC<ExportModalProps> = ({
               </span>
             </Radio>
           </Radio.Group>
+
+          {/* 超过 10 万条时的分卷预估提示 */}
+          {estimatedParts > 1 && (
+            <div
+              style={{
+                marginTop: 12,
+                padding: '8px 12px',
+                background: '#e6f4ff',
+                border: '1px solid #91caff',
+                borderRadius: 6,
+                fontSize: 12,
+                color: '#0958d9',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+              }}
+            >
+              <span>⚡</span>
+              <span>
+                当前选定范围共 <strong>{currentScopeCount.toLocaleString()}</strong> 条数据（超过 10 万条），系统将自动切分为 <strong>{estimatedParts}</strong> 个 Excel 分卷（每卷 10 万条，序号连续递增）并打包为 <strong>ZIP</strong> 下载。
+              </span>
+            </div>
+          )}
         </div>
 
         <Divider style={{ margin: '14px 0' }} />

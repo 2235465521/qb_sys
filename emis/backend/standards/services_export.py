@@ -146,30 +146,17 @@ class StandardExportService:
         return qs.order_by('-created_at')
 
     @classmethod
-    def export_to_excel(cls, queryset, selected_fields: list = None, max_limit: int = 100000) -> bytes:
-        """
-        将标准 QuerySet 导出为专业 Excel 工作簿二进制字节流
-        采用 write_only=True 流式引擎，即使 10 万条数据也能在数秒内极速流式生成且内存极低。
-        """
+    def _create_styled_workbook(cls, valid_fields):
+        """创建带有统一样式表头和自适应列宽的 write_only 工作簿"""
         from openpyxl.cell import WriteOnlyCell
-
-        # 1. 确定导出字段清单
-        if not selected_fields:
-            selected_fields = cls.DEFAULT_RECOMMENDED_FIELDS
-
-        valid_fields = [f for f in selected_fields if f in cls.FIELD_DEFINITIONS]
-        if not valid_fields:
-            valid_fields = cls.DEFAULT_RECOMMENDED_FIELDS
 
         wb = openpyxl.Workbook(write_only=True)
         ws = wb.create_sheet(title="企业标准目录")
 
-        # 2. 样式定义（标准专业企业蓝）
         header_fill = PatternFill(start_color='1F4E79', end_color='1F4E79', fill_type='solid')
         header_font = Font(name='微软雅黑', size=11, bold=True, color='FFFFFF')
         header_align = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
-        # 3. 构造并写入精美企业蓝表头
         headers = ['序号'] + [cls.FIELD_DEFINITIONS[f][0] for f in valid_fields]
         header_cells = []
         for h_text in headers:
@@ -180,32 +167,97 @@ class StandardExportService:
             header_cells.append(cell)
         ws.append(header_cells)
 
-        # 4. 极速流式写入数据行
-        row_num = 1
-        # 单次最大支持 10 万条导出保护
-        qs_sliced = queryset[:max_limit] if max_limit else queryset
-
-        for standard in qs_sliced.iterator(chunk_size=2000):
-            row_data = [row_num]
-            for field_key in valid_fields:
-                extractor = cls.FIELD_DEFINITIONS[field_key][1]
-                try:
-                    val = extractor(standard)
-                except Exception:
-                    val = ''
-                row_data.append(val)
-
-            ws.append(row_data)
-            row_num += 1
-
-        # 5. 列宽自适应设置
-        ws.column_dimensions['A'].width = 8  # 序号列
+        ws.column_dimensions['A'].width = 8
         for col_idx, field_key in enumerate(valid_fields, 2):
             col_letter = get_column_letter(col_idx)
             default_w = cls.FIELD_DEFINITIONS[field_key][2]
             ws.column_dimensions[col_letter].width = default_w
 
-        # 6. 保存为字节流
-        output = io.BytesIO()
-        wb.save(output)
-        return output.getvalue()
+        return wb, ws
+
+    @classmethod
+    def export_standards(cls, queryset, selected_fields: list = None, chunk_size: int = 100000):
+        """
+        导出企业标准目录：
+        - 若总数 <= chunk_size (默认10万条)：返回单份 Excel 字节流；
+        - 若总数 > chunk_size (例如18万条)：按每 10 万条切分多个 Excel，并打包为 ZIP 压缩包返回。
+        返回元组: (file_bytes, filename, content_type)
+        """
+        import zipfile
+        from datetime import datetime
+
+        if not selected_fields:
+            selected_fields = cls.DEFAULT_RECOMMENDED_FIELDS
+
+        valid_fields = [f for f in selected_fields if f in cls.FIELD_DEFINITIONS]
+        if not valid_fields:
+            valid_fields = cls.DEFAULT_RECOMMENDED_FIELDS
+
+        total_count = queryset.count()
+        date_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # 情况 1: 数据量 <= chunk_size，直接生成单文件 Excel
+        if total_count <= chunk_size:
+            wb, ws = cls._create_styled_workbook(valid_fields)
+            row_num = 1
+            for standard in queryset.iterator(chunk_size=2000):
+                row_data = [row_num]
+                for field_key in valid_fields:
+                    extractor = cls.FIELD_DEFINITIONS[field_key][1]
+                    try:
+                        val = extractor(standard)
+                    except Exception:
+                        val = ''
+                    row_data.append(val)
+                ws.append(row_data)
+                row_num += 1
+
+            output = io.BytesIO()
+            wb.save(output)
+            filename = f"企业标准目录导出_{date_str}.xlsx"
+            content_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            return output.getvalue(), filename, content_type
+
+        # 情况 2: 数据量 > chunk_size，自动切分为多个 Excel 并打包为 ZIP
+        zip_buf = io.BytesIO()
+        with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            cur_part = 1
+            wb, ws = cls._create_styled_workbook(valid_fields)
+            start_seq = 1
+            global_seq = 1
+
+            for standard in queryset.iterator(chunk_size=2000):
+                row_data = [global_seq]
+                for field_key in valid_fields:
+                    extractor = cls.FIELD_DEFINITIONS[field_key][1]
+                    try:
+                        val = extractor(standard)
+                    except Exception:
+                        val = ''
+                    row_data.append(val)
+                ws.append(row_data)
+
+                # 达到本卷上限或最后一条
+                if global_seq % chunk_size == 0 or global_seq == total_count:
+                    end_seq = global_seq
+                    part_buf = io.BytesIO()
+                    wb.save(part_buf)
+                    part_filename = f"企业标准目录_Part{cur_part}_{start_seq}-{end_seq}.xlsx"
+                    zf.writestr(part_filename, part_buf.getvalue())
+
+                    cur_part += 1
+                    start_seq = global_seq + 1
+                    if global_seq < total_count:
+                        wb, ws = cls._create_styled_workbook(valid_fields)
+
+                global_seq += 1
+
+        filename = f"企业标准目录_分卷打包_{date_str}.zip"
+        content_type = "application/zip"
+        return zip_buf.getvalue(), filename, content_type
+
+    # 兼容历史别名
+    @classmethod
+    def export_to_excel(cls, queryset, selected_fields: list = None, max_limit: int = 100000) -> bytes:
+        data_bytes, _, _ = cls.export_standards(queryset, selected_fields=selected_fields, chunk_size=max_limit)
+        return data_bytes
