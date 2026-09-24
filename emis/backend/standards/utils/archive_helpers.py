@@ -1059,21 +1059,44 @@ def generate_advanced_export_file(
                     where_clauses = []
                     params = []
 
+                    reg_level = advanced_filters.get('reg_level') or base_filters.get('reg_level')
+                    reg_authority = (advanced_filters.get('reg_authority') or base_filters.get('reg_authority') or '').strip()
+
                     if p_kw:
                         where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s OR t.Issu_auth LIKE %s)")
                         params.extend([f"%{p_kw}%", f"%{p_kw}%", f"%{p_kw}%"])
                     if c_kw:
-                        where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s)")
-                        params.extend([f"%{c_kw}%", f"%{c_kw}%"])
+                        where_clauses.append("(t.tb_asso LIKE %s OR t.address LIKE %s OR t.Issu_auth LIKE %s)")
+                        params.extend([f"%{c_kw}%", f"%{c_kw}%", f"%{c_kw}%"])
                     if d_kw:
-                        where_clauses.append("(t.address LIKE %s)")
-                        params.extend([f"%{d_kw}%"])
+                        # 核心增强：区县筛选同时精确匹配登记主管机关(如闽清县民政局)、地址和名称
+                        where_clauses.append("(t.Issu_auth LIKE %s OR t.address LIKE %s OR t.tb_asso LIKE %s)")
+                        params.extend([f"%{d_kw}%", f"%{d_kw}%", f"%{d_kw}%"])
                     if kw:
                         where_clauses.append("(t.tb_asso LIKE %s OR t.regi_no LIKE %s OR v.std_id LIKE %s OR v.std_chinesename LIKE %s)")
                         params.extend([f"%{kw}%", f"%{kw}%", f"%{kw}%", f"%{kw}%"])
 
+                    # 登记机关层级筛选
+                    if reg_level == 'ministry':
+                        where_clauses.append("(t.Issu_auth LIKE %s)")
+                        params.append('%民政部%')
+                    elif reg_level == 'province':
+                        where_clauses.append("(t.Issu_auth LIKE %s)")
+                        params.append('%民政厅%')
+                    elif reg_level == 'city':
+                        where_clauses.append("(t.Issu_auth LIKE %s AND t.Issu_auth NOT LIKE %s AND t.Issu_auth NOT LIKE %s)")
+                        params.extend(['%市民政局%', '%区%', '%县%'])
+                    elif reg_level == 'district':
+                        where_clauses.append("(t.Issu_auth LIKE %s OR t.Issu_auth LIKE %s OR t.Issu_auth LIKE %s OR t.Issu_auth LIKE %s)")
+                        params.extend(['%区%民政局%', '%县%民政局%', '%区民政局%', '%县民政局%'])
+
+                    # 指定具体登记机关名称/关键词
+                    if reg_authority:
+                        where_clauses.append("(t.Issu_auth LIKE %s)")
+                        params.append(f"%{reg_authority}%")
+
                     where_sql = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-                    limit_sql = "" if (p_kw or c_kw or d_kw or kw) else "LIMIT 50000"
+                    limit_sql = "" if (p_kw or c_kw or d_kw or kw or reg_level or reg_authority) else "LIMIT 50000"
 
                     sql = f"""
                         SELECT 
