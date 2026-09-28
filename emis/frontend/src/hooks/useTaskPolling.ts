@@ -28,6 +28,14 @@ export const useTaskPolling = () => {
     setTasks(prev => prev.filter(t => t.id !== token));
   };
 
+  const cancelAllTasks = () => {
+    Object.values(intervalsRef.current).forEach(item => clearInterval(item.intervalId));
+    intervalsRef.current = {};
+    setTasks(prev => prev.map(t =>
+      t.status === 'running' ? { ...t, status: 'failed', error: '任务轮询已终止' } : t
+    ));
+  };
+
   const clearDoneTasks = () => {
     // Clear only completed or failed tasks, leaving running tasks intact
     setTasks(prev => prev.filter(t => t.status === 'running'));
@@ -40,6 +48,12 @@ export const useTaskPolling = () => {
     apiPath?: string,
     payload?: any
   ) => {
+    const hasToken = !!localStorage.getItem('access_token');
+    if (!hasToken) {
+      message.warning('请先登录后再执行导出或打包任务');
+      return;
+    }
+
     const newTask: BackgroundTask = {
       id: token,
       name,
@@ -58,6 +72,17 @@ export const useTaskPolling = () => {
     const startTime = Date.now();
 
     const intervalId = setInterval(async () => {
+      // 0. 校验登录凭证，未登录或已登出时立即停止轮询，杜绝 401 死循环
+      const currentToken = localStorage.getItem('access_token');
+      if (!currentToken) {
+        clearInterval(intervalId);
+        delete intervalsRef.current[token];
+        setTasks(prev => prev.map(t => 
+          t.id === token ? { ...t, status: 'failed', error: '登录会话已失效，已停止轮询' } : t
+        ));
+        return;
+      }
+
       // 1. Timeout Check
       if (Date.now() - startTime > TIMEOUT_MS) {
         clearInterval(intervalId);
@@ -148,6 +173,29 @@ export const useTaskPolling = () => {
           }));
         }
       } catch (err: any) {
+        const statusCode = err.response?.status;
+        // 401/403 认证或授权失败：立即停止该任务轮询，防止控制台与网络死循环刷屏
+        if (statusCode === 401 || statusCode === 403) {
+          clearInterval(intervalId);
+          delete intervalsRef.current[token];
+          setTasks(prev => prev.map(t => 
+            t.id === token ? { ...t, status: 'failed', error: '登录会话已过期，已停止轮询' } : t
+          ));
+          console.warn(`[TaskPolling] 检测到登录凭证失效 (HTTP ${statusCode})，已自动终止任务 ${token} 轮询。`);
+          return;
+        }
+
+        // 404 任务不存在或执行结果已过期
+        if (statusCode === 404) {
+          clearInterval(intervalId);
+          delete intervalsRef.current[token];
+          setTasks(prev => prev.map(t => 
+            t.id === token ? { ...t, status: 'failed', error: '任务不存在或执行结果已过期' } : t
+          ));
+          console.warn(`[TaskPolling] 任务记录未找到 (HTTP 404)，已终止任务 ${token} 轮询。`);
+          return;
+        }
+
         console.error('Polling error:', err);
       }
     }, 2000);
@@ -182,7 +230,13 @@ export const useTaskPolling = () => {
   };
 
   useEffect(() => {
+    const onAuthLogout = () => {
+      cancelAllTasks();
+    };
+    window.addEventListener('auth:logout', onAuthLogout);
+
     return () => {
+      window.removeEventListener('auth:logout', onAuthLogout);
       Object.values(intervalsRef.current).forEach(item => clearInterval(item.intervalId));
     };
   }, []);
@@ -192,6 +246,7 @@ export const useTaskPolling = () => {
     dispatchTask,
     clearDoneTasks,
     cancelTask,
+    cancelAllTasks,
     retryTask,
   };
 };

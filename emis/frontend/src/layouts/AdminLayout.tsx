@@ -9,6 +9,7 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTaskContext } from '@/store/TaskContext';
 import { adminMenuItems } from './AdminMenuConfig';
 import BrandLogo from '@/components/BrandLogo';
 
@@ -20,12 +21,15 @@ const AdminLayout: React.FC = () => {
   const location = useLocation();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { cancelAllTasks } = useTaskContext();
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
 
   const handleLogout = () => {
-    localStorage.clear();
+    cancelAllTasks();
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     queryClient.clear();
     navigate('/login');
   };

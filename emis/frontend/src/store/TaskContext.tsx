@@ -9,6 +9,7 @@ interface TaskContextType {
   dispatchTask: (token: string, name: string, isCelery?: boolean, apiPath?: string, payload?: any) => void;
   clearDoneTasks: () => void;
   cancelTask: (token: string) => void;
+  cancelAllTasks: () => void;
   retryTask: (token: string) => void;
 }
 

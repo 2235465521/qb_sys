@@ -4,6 +4,7 @@ import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import axios, { AxiosError } from 'axios';
 import { useQueryClient } from '@tanstack/react-query';
+import { useTaskContext } from '@/store/TaskContext';
 import BrandLogo from '@/components/BrandLogo';
 import { RegisterModal } from './components/RegisterModal';
 
@@ -14,6 +15,12 @@ const LoginPage: React.FC = () => {
   const [loading, setLoading] = React.useState(false);
   const [registerOpen, setRegisterOpen] = React.useState(false);
   const queryClient = useQueryClient();
+  const { cancelAllTasks } = useTaskContext();
+
+  React.useEffect(() => {
+    // 确保进入登录页时没有任何残留的后台轮询计时器
+    cancelAllTasks();
+  }, []);
 
   const onFinish = async (values: { username?: string; password?: string }) => {
     setLoading(true);

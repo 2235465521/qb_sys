@@ -12,7 +12,11 @@ const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
-    config.headers['Authorization'] = `Bearer ${token}`
+    if (config.headers?.set) {
+      config.headers.set('Authorization', `Bearer ${token}`)
+    } else {
+      config.headers['Authorization'] = `Bearer ${token}`
+    }
   }
   return config
 })
@@ -34,6 +38,16 @@ const processQueue = (error: any, token: string | null = null) => {
   failedQueue = []
 }
 
+export const clearAuthAndRedirect = (reason?: string) => {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('refresh_token')
+  // 通知全局监听者（例如停止所有后台任务轮询）
+  window.dispatchEvent(new CustomEvent('auth:logout', { detail: { reason } }))
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
+}
+
 // 响应拦截：统一错误处理与并发安全的 JWT 无感刷新
 apiClient.interceptors.response.use(
   (response) => response,
@@ -42,14 +56,17 @@ apiClient.interceptors.response.use(
     const status = error.response?.status
 
     if (status === 401 && originalRequest) {
-      // 防止死循环：登录页或登录接口不重定向
-      if (window.location.pathname === '/login' || originalRequest.url?.includes('/auth/login')) {
+      // 防止死循环：登录页或登录/刷新接口不重定向
+      if (
+        window.location.pathname === '/login' ||
+        originalRequest.url?.includes('/auth/login') ||
+        originalRequest.url?.includes('/auth/refresh')
+      ) {
         return Promise.reject(error)
       }
 
       if (originalRequest._retry) {
-        localStorage.clear()
-        window.location.href = '/login'
+        clearAuthAndRedirect('登录凭证已失效，请重新登录')
         return Promise.reject(error)
       }
 
@@ -58,7 +75,8 @@ apiClient.interceptors.response.use(
           failedQueue.push({ resolve, reject })
         })
           .then((token) => {
-            if (originalRequest.headers.set) {
+            originalRequest._retry = true
+            if (originalRequest.headers?.set) {
               originalRequest.headers.set('Authorization', `Bearer ${token}`)
             } else {
               originalRequest.headers['Authorization'] = `Bearer ${token}`
@@ -76,9 +94,13 @@ apiClient.interceptors.response.use(
         try {
           const res = await axios.post('/api/auth/refresh/', { refresh })
           const newAccess = res.data.access
+          const newRefresh = res.data.refresh
           localStorage.setItem('access_token', newAccess)
+          if (newRefresh) {
+            localStorage.setItem('refresh_token', newRefresh)
+          }
 
-          if (originalRequest.headers.set) {
+          if (originalRequest.headers?.set) {
             originalRequest.headers.set('Authorization', `Bearer ${newAccess}`)
           } else {
             originalRequest.headers['Authorization'] = `Bearer ${newAccess}`
@@ -88,15 +110,13 @@ apiClient.interceptors.response.use(
           return apiClient.request(originalRequest)
         } catch (refreshErr) {
           processQueue(refreshErr, null)
-          localStorage.clear()
-          window.location.href = '/login'
+          clearAuthAndRedirect('登录状态已失效，请重新登录')
           return Promise.reject(refreshErr)
         } finally {
           isRefreshing = false
         }
       } else {
-        localStorage.clear()
-        window.location.href = '/login'
+        clearAuthAndRedirect('未检测到登录信息，请登录')
         return Promise.reject(error)
       }
     } else if (status === 403) {

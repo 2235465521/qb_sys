@@ -65,13 +65,15 @@ const ClientLayout: React.FC = () => {
     },
   ];
 
+  const { tasks, clearDoneTasks, cancelTask, cancelAllTasks, retryTask } = useTaskContext();
+
   const handleLogout = () => {
-    localStorage.clear();
+    cancelAllTasks();
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
     queryClient.clear();
     navigate('/login');
   };
-
-  const { tasks, clearDoneTasks, cancelTask, retryTask } = useTaskContext();
   
   const runningTasks = tasks.filter(t => t.status === 'running');
   
