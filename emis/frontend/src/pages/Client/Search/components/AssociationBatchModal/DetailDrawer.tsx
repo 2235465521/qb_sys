@@ -1,6 +1,6 @@
 import React from 'react';
-import { Drawer, List, Tag, Space, Typography, Empty } from 'antd';
-import { FileTextOutlined, BankOutlined } from '@ant-design/icons';
+import { Drawer, List, Tag, Space, Typography, Empty, Button } from 'antd';
+import { FileTextOutlined, BankOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { AssociationBatchItem } from '@/types';
 
 const { Text } = Typography;
@@ -9,9 +9,10 @@ interface DetailDrawerProps {
   item: AssociationBatchItem | null;
   open: boolean;
   onClose: () => void;
+  onExportSingle?: (item: AssociationBatchItem) => void;
 }
 
-export const DetailDrawer: React.FC<DetailDrawerProps> = ({ item, open, onClose }) => {
+export const DetailDrawer: React.FC<DetailDrawerProps> = ({ item, open, onClose, onExportSingle }) => {
   if (!item) return null;
 
   const standards = item.standards || [];
@@ -28,6 +29,24 @@ export const DetailDrawer: React.FC<DetailDrawerProps> = ({ item, open, onClose 
             </Text>
           </div>
         </div>
+      }
+      extra={
+        item.standard_total > 0 && onExportSingle ? (
+          <Button
+            type="primary"
+            size="small"
+            icon={<DownloadOutlined />}
+            onClick={() => onExportSingle(item)}
+            style={{
+              background: '#0d9488',
+              borderColor: '#0d9488',
+              borderRadius: 14,
+              fontSize: 12,
+            }}
+          >
+            导出全景清单 ({item.standard_total}项)
+          </Button>
+        ) : null
       }
       placement="right"
       width={600}

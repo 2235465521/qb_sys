@@ -61,5 +61,18 @@
 - **连接器凭证 (Connector Credential / API Key)**：面向智能体连接器的持久化安全访问凭证，采用 Bearer Token 机制保障公网接口免遭恶意爬取。
 - **主体消歧 (Entity Disambiguation)**：当输入简称或模糊关键词命中多家企业时，基于全称契合度与标准资产保有量综合加权择优主匹配实体，并附带候选企业列表供智能体引导用户细化交互。
 
+---
+
+### 社会组织与标准参与角色建模 (Social Organization & Standard Involvement Roles)
+
+用于准确界定社会团体/行业协会与各类标准资产的关联深度与角色：
+
+- **主发布单位 (Publisher / Issuing Authority)**：协会作为独立的标准申报主体在全国团体标准信息平台进行立项与发布（主要源自 `std_tb_detail.tb_asso`）。
+- **参编单位 (Drafter / Participant)**：协会未作为主发布方，但作为起草单位、参编单位或起草工作组成员参与编制的团体标准（通过 `std_unit_relation` 穿透关联）。
+- **起草国家标准 (National Standard Drafter)**：协会作为起草单位参与制定的国家标准（`GB` / `GB/T`）。
+- **起草行业与地方标准 (Industry & Local Standard Drafter)**：协会作为起草单位参与制定的行业标准（如 `FZ`、`HG` 等）与地方标准（`DB`）。
+- **全景标准资产 (Full-Spectrum Standard Portfolio)**：聚合上述“主发布 + 参编团标 + 参编国标/行标/地标”的全量标准集合（即前端画像卡片展示的完整标准资产总集）。
+
+
 
 

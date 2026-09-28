@@ -153,6 +153,7 @@ export const AssociationBatchModal: React.FC<AssociationBatchModalProps> = ({ op
             item={activeDetailItem}
             open={!!activeDetailItem}
             onClose={() => setActiveDetailItem(null)}
+            onExportSingle={(item) => exportMergedExcel([item.input_name])}
           />
         </div>
       )}

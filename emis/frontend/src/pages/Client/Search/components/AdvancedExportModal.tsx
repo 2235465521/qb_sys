@@ -73,6 +73,8 @@ interface AdvancedExportPreferences {
   file_format?: 'single_excel' | 'separate_zip';
   reg_level?: string;
   reg_authority?: string;
+  association_roles?: string[];
+  include_zero_standard_associations?: boolean;
 }
 
 const loadExportPreferences = (): AdvancedExportPreferences => {
@@ -121,6 +123,8 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
   const { data: cities } = useCityQuery(selectedProvince);
   const { data: districts } = useDistrictQuery(selectedCity);
   const selectedDistrict = Form.useWatch('district_id', form);
+  const exportContent = Form.useWatch('export_content', form);
+  const isTbAssociationSelected = exportContent?.includes('tb_association');
 
   const currentProvinceObj = provinceQuery.data?.find(p => p.id === selectedProvince);
   const currentCityObj = cities?.find(c => c.id === selectedCity);
@@ -147,6 +151,13 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
         reg_level: savedPrefs.reg_level || undefined,
         reg_authority: savedPrefs.reg_authority || undefined,
         export_content: savedPrefs.export_content || ['enterprise', 'enterprise_standard', 'other_standard', 'tb_association'],
+        association_roles: savedPrefs.association_roles || [
+          'publisher_group',
+          'drafter_group',
+          'drafter_national',
+          'drafter_industry_local',
+        ],
+        include_zero_standard_associations: savedPrefs.include_zero_standard_associations ?? false,
         file_format: savedPrefs.file_format || 'single_excel',
       });
     }
@@ -160,6 +171,13 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
         return;
       }
 
+      if (values.export_content.includes('tb_association')) {
+        if (!values.association_roles || values.association_roles.length === 0) {
+          message.warning('您勾选了社会团体及标准资产目录，请至少选择一种协会标准参与角色');
+          return;
+        }
+      }
+
       setLoading(true);
 
       saveExportPreferences({
@@ -169,6 +187,8 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
         file_format: values.file_format,
         reg_level: values.reg_level,
         reg_authority: values.reg_authority,
+        association_roles: values.association_roles,
+        include_zero_standard_associations: values.include_zero_standard_associations,
       });
 
       const payload: any = {
@@ -180,6 +200,8 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
           agency_types: values.agency_types || [],
           reg_level: values.reg_level,
           reg_authority: values.reg_authority,
+          association_roles: values.association_roles,
+          include_zero_standard_associations: values.include_zero_standard_associations,
         },
       };
 
@@ -421,11 +443,64 @@ export const AdvancedExportModal: React.FC<AdvancedExportModalProps> = ({
               { label: '企业目录', value: 'enterprise' },
               { label: '企标目录（自动去重）', value: 'enterprise_standard' },
               { label: '国/行/地/团标目录（自动去重）', value: 'other_standard' },
-              { label: '已发布团体标准的协会及团标（基于团标 tb_asso）', value: 'tb_association' },
+              { label: '社会团体及标准资产目录（全景穿透）', value: 'tb_association' },
             ]}
             style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
           />
         </Form.Item>
+
+        {isTbAssociationSelected && (
+          <div
+            style={{
+              marginTop: -4,
+              marginBottom: 16,
+              marginLeft: 24,
+              padding: '12px 16px',
+              backgroundColor: '#f8fafc',
+              border: '1px solid #cbd5e1',
+              borderRadius: 8,
+            }}
+          >
+            <Space direction="vertical" style={{ width: '100%' }} size={10}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text strong style={{ fontSize: 13, color: '#0f172a' }}>
+                  🎯 协会标准资产穿透范围（可单选或多选）：
+                </Text>
+                <Tooltip title="全景穿透提取所选社会组织名下不同角色的标准资产，自动归类与核算">
+                  <InfoCircleOutlined style={{ color: '#1890ff', cursor: 'pointer' }} />
+                </Tooltip>
+              </div>
+
+              <Form.Item
+                name="association_roles"
+                noStyle
+                rules={[{ required: true, message: '请至少选择一种协会标准参与角色' }]}
+              >
+                <Checkbox.Group
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px 16px' }}
+                  options={[
+                    { label: '主发布单位（自主申报发布的团体标准）', value: 'publisher_group' },
+                    { label: '参编单位（参与起草编制的团体标准）', value: 'drafter_group' },
+                    { label: '参与起草编制的国家标准', value: 'drafter_national' },
+                    { label: '参与起草编制的行业/地方标准', value: 'drafter_industry_local' },
+                  ]}
+                />
+              </Form.Item>
+
+              <Divider style={{ margin: '6px 0' }} />
+
+              <Form.Item name="include_zero_standard_associations" valuePropName="checked" noStyle>
+                <Checkbox style={{ fontSize: 13, color: '#334155' }}>
+                  包含无标准资产的协会（输出全省/市协会底册，用于全量摸底排查）
+                </Checkbox>
+              </Form.Item>
+
+              <Text type="secondary" style={{ fontSize: 12, lineHeight: 1.4 }}>
+                💡 导出报表包含【社会组织及标准资产概览】（含民政官方统一法定代表人、各类型标准数量）与【社会组织标准明细全清单】双 Sheet，支持单家机构与全省/市机构全景穿透。
+              </Text>
+            </Space>
+          </div>
+        )}
 
         <Form.Item name="file_format" label={<Text strong>6. 文件输出方式</Text>}>
           <Radio.Group style={{ width: '100%' }}>
