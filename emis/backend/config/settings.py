@@ -88,21 +88,21 @@ DATABASES = {
     'compare_conp': {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': config('COMPARE_CONP_NAME', default='compare_conp'),
-        'USER': config('COMPARE_CONP_USER', default=config('DB_USER', default='root')),
-        'PASSWORD': config('COMPARE_CONP_PASSWORD', default=config('DB_PASSWORD', default='')),
-        'HOST': config('COMPARE_CONP_HOST', default=config('DB_HOST', default='127.0.0.1')),
-        'PORT': config('COMPARE_CONP_PORT', default=config('DB_PORT', default='3306')),
+        'USER': config('COMPARE_CONP_USER', default='root'),
+        'PASSWORD': config('COMPARE_CONP_PASSWORD', default='zkbz2025'),
+        'HOST': config('COMPARE_CONP_HOST', default='192.168.10.225'),
+        'PORT': config('COMPARE_CONP_PORT', default='3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',
         },
     },
     'stsc_db': {
         'ENGINE': 'django.db.backends.mysql',
-        # 本地开发测试环境默认为 mydate，线上为 STSC_standard_database
-        'NAME': config('STSC_DB_NAME', default='mydate'),
+        # 统一指向远程权威标准库 STSC_standard_database (192.168.10.225)
+        'NAME': config('STSC_DB_NAME', default='STSC_standard_database'),
         'USER': config('STSC_DB_USER', default='root'),
-        'PASSWORD': config('STSC_DB_PASSWORD', default=''),
-        'HOST': config('STSC_DB_HOST', default='127.0.0.1'),
+        'PASSWORD': config('STSC_DB_PASSWORD', default='zkbz2025'),
+        'HOST': config('STSC_DB_HOST', default='192.168.10.225'),
         'PORT': config('STSC_DB_PORT', default='3306'),
         'OPTIONS': {
             'charset': 'utf8mb4',

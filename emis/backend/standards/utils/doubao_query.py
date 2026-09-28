@@ -15,16 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_stsc_db_name() -> str:
-    """动态探测可用的联邦库名称（优先 stsc_standard_database，其次 settings.DATABASES['stsc_db']['NAME'] / mydate）"""
-    try:
-        with connection.cursor() as c:
-            c.execute("SHOW DATABASES LIKE 'stsc_standard_database';")
-            if c.fetchone():
-                return 'stsc_standard_database'
-    except Exception as e:
-        logger.warning(f"Failed to detect stsc_standard_database: {e}")
+    """获取权威标准数据库名称（统一为 STSC_standard_database）"""
     stsc_conf = getattr(settings, 'DATABASES', {}).get('stsc_db', {})
-    return stsc_conf.get('NAME', 'mydate')
+    return stsc_conf.get('NAME', 'STSC_standard_database')
 
 
 def resolve_area_code(db_name: str, area_code: str) -> str:

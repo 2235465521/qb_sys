@@ -1180,29 +1180,65 @@ def generate_advanced_export_file(
                 'scope': scope or '-'
             })
 
-        # 批量从 ent_std_maker 补齐缺失的统一代码与法定代表人
-        missing_credit_assos = [k for k, v in asso_groups.items() if not v['regi_no']]
-        if missing_credit_assos:
+        # 批量从 compare_conp.ent_std_maker 权威大库对齐统一社会信用代码、法定代表人及注册属地
+        all_asso_names = list(asso_groups.keys())
+        if all_asso_names:
             try:
                 with connections['compare_conp'].cursor() as cur:
                     c_batch = 300
-                    for i in range(0, len(missing_credit_assos), c_batch):
-                        chunk = missing_credit_assos[i:i + c_batch]
+                    for i in range(0, len(all_asso_names), c_batch):
+                        chunk = all_asso_names[i:i + c_batch]
                         ph = ', '.join(['%s'] * len(chunk))
                         cur.execute(f"""
-                            SELECT company_name, unified_social_credit_code, legal_representative, province, city
+                            SELECT company_name, unified_social_credit_code, legal_representative, province, city, district
                             FROM ent_std_maker
                             WHERE company_name IN ({ph})
                         """, chunk)
-                        for cname, ccode, lrep, pr, ci in cur.fetchall():
+                        for cname, ccode, lrep, pr, ci, dist in cur.fetchall():
                             if cname in asso_groups:
                                 g = asso_groups[cname]
-                                if not g['regi_no'] and ccode:
+                                if not g.get('regi_no') and ccode:
                                     g['regi_no'] = ccode.strip()
-                                if not g['charge_person'] and lrep:
-                                    g['charge_person'] = lrep.strip()
-            except Exception:
-                pass
+                                lrep_clean = (lrep or '').strip()
+                                if lrep_clean and lrep_clean != '-':
+                                    g['legal_rep'] = lrep_clean
+                                if pr:
+                                    g['ent_province'] = pr.strip()
+                                if ci:
+                                    g['ent_city'] = ci.strip()
+                                if dist:
+                                    g['ent_district'] = dist.strip()
+
+                    # 若部分协会按名称未命中但已有统一社会信用代码，按信用代码再查一次
+                    unmatched_credits = {
+                        v['regi_no']: k for k, v in asso_groups.items()
+                        if not v.get('legal_rep') and v.get('regi_no')
+                    }
+                    if unmatched_credits:
+                        c_list = list(unmatched_credits.keys())
+                        for i in range(0, len(c_list), c_batch):
+                            chunk = c_list[i:i + c_batch]
+                            ph = ', '.join(['%s'] * len(chunk))
+                            cur.execute(f"""
+                                SELECT unified_social_credit_code, legal_representative, province, city, district
+                                FROM ent_std_maker
+                                WHERE unified_social_credit_code IN ({ph})
+                            """, chunk)
+                            for ccode, lrep, pr, ci, dist in cur.fetchall():
+                                if ccode in unmatched_credits:
+                                    cname = unmatched_credits[ccode]
+                                    g = asso_groups[cname]
+                                    lrep_clean = (lrep or '').strip()
+                                    if lrep_clean and lrep_clean != '-':
+                                        g['legal_rep'] = lrep_clean
+                                    if pr:
+                                        g['ent_province'] = pr.strip()
+                                    if ci:
+                                        g['ent_city'] = ci.strip()
+                                    if dist:
+                                        g['ent_district'] = dist.strip()
+            except Exception as e:
+                logger.warning(f"Failed to align associations with ent_std_maker: {e}")
 
         # 批量用 Django District/City/Province 模型将 area_code 解码为省/市/区县名称
         all_area_codes = {g['area_code'] for g in asso_groups.values() if len(g.get('area_code', '')) == 6}
@@ -1239,24 +1275,23 @@ def generate_advanced_export_file(
             ac = g.get('area_code', '')
             if len(ac) == 6 and ac in code_to_district:
                 info = code_to_district[ac]
-                g['province'] = info['province'] or prov_name or '-'
-                g['city'] = info['city'] or city_name or '-'
-                g['district'] = info['district'] or district_name or '-'
+                g['province'] = info['province'] or g.get('ent_province') or prov_name or '-'
+                g['city'] = info['city'] or g.get('ent_city') or city_name or '-'
+                g['district'] = info['district'] or g.get('ent_district') or district_name or '-'
             elif len(ac) >= 4 and ac[:4] in code_to_city:
                 info = code_to_city[ac[:4]]
-                g['province'] = info['province'] or prov_name or '-'
-                g['city'] = info['city'] or city_name or '-'
-                g['district'] = district_name or '-'
+                g['province'] = info['province'] or g.get('ent_province') or prov_name or '-'
+                g['city'] = info['city'] or g.get('ent_city') or city_name or '-'
+                g['district'] = g.get('ent_district') or district_name or '-'
             elif len(ac) >= 2 and ac[:2] in code_to_prov:
-                g['province'] = code_to_prov[ac[:2]] or prov_name or '-'
-                g['city'] = city_name or '-'
-                g['district'] = district_name or '-'
+                g['province'] = code_to_prov[ac[:2]] or g.get('ent_province') or prov_name or '-'
+                g['city'] = g.get('ent_city') or city_name or '-'
+                g['district'] = g.get('ent_district') or district_name or '-'
             else:
-                # 无 area_code，回退到用户选择的过滤条件
-                g['province'] = prov_name or '-'
-                g['city'] = city_name or '-'
-                g['district'] = district_name or '-'
-
+                # 无 area_code，回退到工商登记大库或用户选择的过滤条件
+                g['province'] = g.get('ent_province') or prov_name or '-'
+                g['city'] = g.get('ent_city') or city_name or '-'
+                g['district'] = g.get('ent_district') or district_name or '-'
 
         # 生成 Sheet 1【发布团标协会名录】
         sorted_assos = sorted(asso_groups.values(), key=lambda x: len(x['standards']), reverse=True)
@@ -1268,6 +1303,18 @@ def generate_advanced_export_file(
             earliest_date = min(valid_dates) if valid_dates else '-'
             latest_date = max(valid_dates) if valid_dates else '-'
 
+            # 格式化 法定代表人/负责人 展示
+            legal_rep = g.get('legal_rep') or ''
+            charge_p = g.get('charge_person') or ''
+            if legal_rep and charge_p and legal_rep != charge_p:
+                person_display = f"{legal_rep} (申报负责人: {charge_p})"
+            elif legal_rep:
+                person_display = legal_rep
+            elif charge_p:
+                person_display = charge_p
+            else:
+                person_display = '-'
+
             tb_asso_rows.append({
                 '序号': idx,
                 '协会名称': g['name'],
@@ -1275,7 +1322,7 @@ def generate_advanced_export_file(
                 '所属省份': g.get('province') or '-',
                 '所属城市': g.get('city') or '-',
                 '所属区县': g.get('district') or '-',
-                '法定代表人/负责人': g['charge_person'] or '-',
+                '法定代表人/负责人': person_display,
                 '登记/主管机关': g['issu_auth'] or '-',
                 '办公/注册详细地址': g['address'] or '-',
                 '累计发布团标总数': total_stds,
