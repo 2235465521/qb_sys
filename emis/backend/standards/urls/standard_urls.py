@@ -4,7 +4,11 @@ standards.urls.standard_urls — 标准路由（模块一）
 
 from django.urls import path
 from standards.views.standard_views import StandardListView, StandardDetailView, ScanPdfSyncView, StandardDownloadView, ExportStandardReferencesView, StandardGraphView, StandardDownloadEstimateView, ExportStandardListView
-from standards.views.pack_views import PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView, EnterprisePackRequestView, PackTaskStatusView, SampledPackRequestView, AdvancedExportRequestView
+from standards.views.pack_views import (
+    PackRequestView, PackStatusView, RandomPackRequestView, ZipDownloadView,
+    EnterprisePackRequestView, PackTaskStatusView, SampledPackRequestView, AdvancedExportRequestView,
+    SniffExcelHeaderView, ListMatchPreviewView, ExportMatchManifestView, ListMatchPackRequestView
+)
 
 urlpatterns = [
     path('', StandardListView.as_view(), name='client-standard-list'),
@@ -27,5 +31,12 @@ urlpatterns = [
     path('pack-tasks/<str:task_id>/', PackTaskStatusView.as_view(), name='client-pack-task-status'),
     # 新增：内联操作栏「抽样打包」接口（替代旧的随机下载 + 自定义选择下载）
     path('sampled-pack/', SampledPackRequestView.as_view(), name='client-standard-sampled-pack'),
+
+    # 新增：外部清单匹配与打包下载
+    path('sniff-excel/', SniffExcelHeaderView.as_view(), name='client-standard-sniff-excel'),
+    path('list-match-preview/', ListMatchPreviewView.as_view(), name='client-standard-list-match-preview'),
+    path('export-match-manifest/', ExportMatchManifestView.as_view(), name='client-standard-export-match-manifest'),
+    path('list-match-pack/', ListMatchPackRequestView.as_view(), name='client-standard-list-match-pack'),
 ]
+
 

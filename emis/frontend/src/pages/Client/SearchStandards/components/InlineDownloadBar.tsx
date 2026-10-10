@@ -1,8 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Select, InputNumber, Button, Space, message, Tooltip } from 'antd';
-import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined, InfoCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
+import ListMatchDownloadModal from './ListMatchDownloadModal';
 
 // Removed unused Text declaration
 
@@ -14,7 +15,9 @@ interface InlineDownloadBarProps {
 }
 
 const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filters }) => {
+  const [listMatchModalOpen, setListMatchModalOpen] = useState(false);
   const [strategy, setStrategy] = useState<'random' | 'latest'>('random');
+
   const [count, setCount] = useState<number>(100);
   const [loading, setLoading] = useState(false);
   const isRequesting = useRef(false);       // 防并发锁
@@ -90,68 +93,94 @@ const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filte
   const disabled = totalCount === 0;
 
   return (
-    <Space
-      size={8}
-      align="center"
-      style={{ flexWrap: 'nowrap' }}
-    >
-      {/* 抽样策略 */}
-      <Select
-        value={strategy}
-        onChange={(v) => setStrategy(v)}
-        disabled={disabled || loading}
-        style={{ width: 148 }}
-        options={[
-          { value: 'random', label: '随机抽样' },
-          { value: 'latest', label: '按最新发布时期' },
-        ]}
-        size="middle"
-      />
-
-      {/* 抽样数量 */}
-      <InputNumber
-        min={1}
-        max={Math.max(totalCount, 1)}
-        value={count}
-        onChange={(v) => setCount(v ?? 100)}
-        disabled={disabled || loading}
-        style={{ width: 90 }}
-        size="middle"
-        placeholder="数量"
-      />
-
-      {/* 提示说明 */}
-      <Tooltip
-        title={
-          totalCount > 0
-            ? `将从当前 ${totalCount} 条结果中按所选策略抽取，超过 1 GB 自动拆分多包`
-            : '请先执行检索后再使用抽样下载'
-        }
+    <>
+      <Space
+        size={8}
+        align="center"
+        style={{ flexWrap: 'nowrap' }}
       >
-        <InfoCircleOutlined style={{ color: '#8c8c8c', cursor: 'help', fontSize: 14 }} />
-      </Tooltip>
+        {/* 新增：按清单批量下载入口 */}
+        <Button
+          icon={<UnorderedListOutlined style={{ color: '#00838f' }} />}
+          onClick={() => setListMatchModalOpen(true)}
+          style={{
+            borderRadius: 8,
+            borderColor: '#00acc1',
+            color: '#006064',
+            background: 'rgba(224, 247, 250, 0.4)',
+            fontWeight: 500,
+            boxShadow: '0 2px 6px rgba(0, 172, 193, 0.1)',
+          }}
+        >
+          按清单批量下载
+        </Button>
 
-      {/* 打包下载按钮 */}
-      <Button
-        type="primary"
-        icon={<DownloadOutlined />}
-        loading={loading}
-        disabled={disabled}
-        onClick={handleDownload}
-        style={{
-          borderRadius: 8,
-          background: disabled
-            ? undefined
-            : 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
-          borderColor: disabled ? undefined : '#00acc1',
-          fontWeight: 'bold',
-          boxShadow: disabled ? undefined : '0 4px 12px rgba(0, 131, 143, 0.25)',
-          transition: 'all 0.25s ease',
-        }}
-      >
-        打包下载
-      </Button>
-    </Space>
+        <div style={{ width: 1, height: 20, background: '#cbd5e1', margin: '0 4px' }} />
+
+        {/* 抽样策略 */}
+        <Select
+          value={strategy}
+          onChange={(v) => setStrategy(v)}
+          disabled={disabled || loading}
+          style={{ width: 148 }}
+          options={[
+            { value: 'random', label: '随机抽样' },
+            { value: 'latest', label: '按最新发布时期' },
+          ]}
+          size="middle"
+        />
+
+        {/* 抽样数量 */}
+        <InputNumber
+          min={1}
+          max={Math.max(totalCount, 1)}
+          value={count}
+          onChange={(v) => setCount(v ?? 100)}
+          disabled={disabled || loading}
+          style={{ width: 90 }}
+          size="middle"
+          placeholder="数量"
+        />
+
+        {/* 提示说明 */}
+        <Tooltip
+          title={
+            totalCount > 0
+              ? `将从当前 ${totalCount} 条结果中按所选策略抽取，超过 1 GB 自动拆分多包`
+              : '请先执行检索后再使用抽样下载'
+          }
+        >
+          <InfoCircleOutlined style={{ color: '#8c8c8c', cursor: 'help', fontSize: 14 }} />
+        </Tooltip>
+
+        {/* 打包下载按钮 */}
+        <Button
+          type="primary"
+          icon={<DownloadOutlined />}
+          loading={loading}
+          disabled={disabled}
+          onClick={handleDownload}
+          style={{
+            borderRadius: 8,
+            background: disabled
+              ? undefined
+              : 'linear-gradient(135deg, #00acc1 0%, #00838f 100%)',
+            borderColor: disabled ? undefined : '#00acc1',
+            fontWeight: 'bold',
+            boxShadow: disabled ? undefined : '0 4px 12px rgba(0, 131, 143, 0.25)',
+            transition: 'all 0.25s ease',
+          }}
+        >
+          打包下载
+        </Button>
+      </Space>
+
+      {/* 外部清单批量匹配与打包下载向导弹窗 */}
+      <ListMatchDownloadModal
+        open={listMatchModalOpen}
+        onClose={() => setListMatchModalOpen(false)}
+      />
+    </>
   );
 };
 

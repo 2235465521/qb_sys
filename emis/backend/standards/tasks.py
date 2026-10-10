@@ -1178,3 +1178,56 @@ def force_reparse_all_dates_task():
     )
     logger.info(summary)
     return summary
+
+
+@shared_task(bind=True, name='standards.pack_list_matched_zip')
+def pack_list_matched_standards_zip(self, standard_ids: list, download_token: str, manifest_data: list = None):
+    """
+    异步打包清单匹配的标准文件为 ZIP，并内置对账清单 Excel。
+    """
+    from django.core.cache import cache
+    from standards.services_list_match import create_zip_from_list_matched
+
+    def _update_progress(progress: int, message: str = ''):
+        cache.set(f'zip_task_{download_token}', {
+            'status': 'running',
+            'progress': progress,
+            'message': message,
+        }, timeout=3600)
+
+    try:
+        _update_progress(10, '正在初始化清单打包任务...')
+        _update_progress(40, f'正在读取并规整化打包 {len(standard_ids)} 个企标文件...')
+
+        zip_bytes = create_zip_from_list_matched(standard_ids, manifest_data=manifest_data)
+
+        _update_progress(80, '正在写入 ZIP 文件到磁盘...')
+        from django.conf import settings
+        temp_dir = settings.MEDIA_ROOT / 'temp_zips'
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        zip_path = temp_dir / f'{download_token}.zip'
+
+        with open(zip_path, 'wb') as f:
+            f.write(zip_bytes)
+
+        cache.set(f'zip_task_{download_token}', {
+            'status': 'done',
+            'progress': 100,
+            'download_url': f'/api/client/standards/pack/download/?token={download_token}',
+            'file_size': len(zip_bytes),
+        }, timeout=3600)
+
+    except Exception as exc:
+        cache.set(f'zip_task_{download_token}', {
+            'status': 'failed',
+            'progress': 0,
+            'error': str(exc),
+        }, timeout=3600)
+        self.update_state(
+            state='FAILURE',
+            meta={
+                'exc_type': type(exc).__name__,
+                'exc_message': str(exc)
+            }
+        )
+        raise exc

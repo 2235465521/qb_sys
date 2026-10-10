@@ -623,3 +623,153 @@ class SampledPackRequestView(APIView):
             'total_sampled': len(id_list),
             'split_count': len(result_parts),
         }, status=status.HTTP_202_ACCEPTED)
+
+
+# ============================================================
+# 新增：外部清单（文本粘贴 & Excel上传）智能降级匹配与打包视图
+# ============================================================
+
+import json
+import urllib.parse
+from django.http import HttpResponse
+from standards.services_list_match import (
+    sniff_excel_structure,
+    extract_items_from_excel,
+    match_items_batch,
+    generate_manifest_excel_bytes,
+    MAX_LIST_MATCH_LIMIT
+)
+
+
+class SniffExcelHeaderView(APIView):
+    """
+    POST /api/client/standards/sniff-excel/
+    上传 Excel 并智能嗅探表头和列映射
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': '请上传 Excel 文件'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            file_bytes = uploaded_file.read()
+            result = sniff_excel_structure(file_bytes)
+            return Response(result, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': f'解析 Excel 失败: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class ListMatchPreviewView(APIView):
+    """
+    POST /api/client/standards/list-match-preview/
+    预匹配校验接口：支持直接传 items 或上传 Excel 文件及列映射
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        items = []
+        uploaded_file = request.FILES.get('file')
+
+        if uploaded_file:
+            try:
+                sheet_name = request.data.get('sheet_name')
+                std_no_col_idx = request.data.get('std_no_col_idx')
+                title_col_idx = request.data.get('title_col_idx')
+                header_row_idx = int(request.data.get('header_row_idx', 0))
+
+                std_no_col_idx = int(std_no_col_idx) if std_no_col_idx not in [None, '', 'null'] else None
+                title_col_idx = int(title_col_idx) if title_col_idx not in [None, '', 'null'] else None
+
+                file_bytes = uploaded_file.read()
+                items = extract_items_from_excel(
+                    file_bytes=file_bytes,
+                    sheet_name=sheet_name,
+                    std_no_col_idx=std_no_col_idx,
+                    title_col_idx=title_col_idx,
+                    header_row_idx=header_row_idx
+                )
+            except Exception as e:
+                return Response({'error': f'从 Excel 提取行数据失败: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            raw_items = request.data.get('items', [])
+            if isinstance(raw_items, str):
+                try:
+                    raw_items = json.loads(raw_items)
+                except Exception:
+                    raw_items = []
+            items = raw_items
+
+        if not items or not isinstance(items, list):
+            return Response({'error': '待匹配的标准数据项不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        match_result = match_items_batch(items)
+        return Response(match_result, status=status.HTTP_200_OK)
+
+
+class ExportMatchManifestView(APIView):
+    """
+    POST /api/client/standards/export-match-manifest/
+    导出匹配明细与审计对账 Excel
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        details = request.data.get('details', [])
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except Exception:
+                details = []
+
+        if not details:
+            return Response({'error': '明细数据不能为空'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            excel_bytes = generate_manifest_excel_bytes(details)
+            filename = "企标匹配与下载对账清单.xlsx"
+            encoded_fn = urllib.parse.quote(filename)
+
+            response = HttpResponse(
+                excel_bytes,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{encoded_fn}"
+            return response
+        except Exception as e:
+            return Response({'error': f'生成对账表格失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class ListMatchPackRequestView(APIView):
+    """
+    POST /api/client/standards/list-match-pack/
+    提交清单匹配打包任务
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        standard_ids = request.data.get('standard_ids', [])
+        manifest_data = request.data.get('manifest_data', [])
+
+        if not standard_ids or not isinstance(standard_ids, list):
+            return Response({'error': '没有可供打包的有效标准 ID'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(standard_ids) > MAX_LIST_MATCH_LIMIT:
+            return Response({'error': f'单次最多打包 {MAX_LIST_MATCH_LIMIT} 个标准'}, status=status.HTTP_400_BAD_REQUEST)
+
+        token = str(uuid.uuid4()).replace('-', '')
+
+        from standards.tasks import pack_list_matched_standards_zip
+        pack_list_matched_standards_zip.delay(
+            standard_ids=standard_ids,
+            download_token=token,
+            manifest_data=manifest_data
+        )
+
+        return Response({
+            'token': token,
+            'status': 'pending',
+            'count': len(standard_ids)
+        }, status=status.HTTP_202_ACCEPTED)
+
