@@ -707,8 +707,12 @@ class ListMatchPreviewView(APIView):
         if not items or not isinstance(items, list):
             return Response({'error': '待匹配的标准数据项不能为空'}, status=status.HTTP_400_BAD_REQUEST)
 
-        match_result = match_items_batch(items)
-        return Response(match_result, status=status.HTTP_200_OK)
+        try:
+            match_result = match_items_batch(items)
+            return Response(match_result, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.exception("批量匹配处理异常")
+            return Response({'error': f'匹配分析处理失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class ExportMatchManifestView(APIView):

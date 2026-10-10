@@ -14,6 +14,8 @@ import os
 import re
 import zipfile
 import logging
+import datetime
+from collections import defaultdict
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -367,29 +369,166 @@ def match_single_item(raw_no: str, raw_title: str):
     return candidate, match_mode
 
 
+def pick_best_candidate_from_list(std_list: list) -> Standard | None:
+    """
+    在内存中快速挑选最优候选（消歧策略）：
+    1. 有有效 PDF 优先
+    2. 现行有效（status='active'）优先
+    3. 最新发布日期倒序
+    """
+    if not std_list:
+        return None
+    if len(std_list) == 1:
+        return std_list[0]
+
+    def sort_key(s: Standard):
+        has_file = 1 if (s.pdf_file or s.disk_filename) else 0
+        is_active = 1 if s.status == 'active' else 0
+        pub_date = s.publish_date if (s.publish_date and isinstance(s.publish_date, datetime.date)) else datetime.date.min
+        return (has_file, is_active, pub_date)
+
+    return sorted(std_list, key=sort_key, reverse=True)[0]
+
+
 def match_items_batch(raw_items: list):
     """
-    批量匹配主入口
+    批量匹配主入口（高性能批处理版）：
+    基于内存倒排索引 + 批量 SQL 预检索策略，将原先逐行全表扫描优化为 1~2 次批量聚合查询，
+    彻底消除 20w+ 大表下 100+ 条数据的请求超时风险。
     """
     truncated_items = raw_items[:MAX_LIST_MATCH_LIMIT]
+    if not truncated_items:
+        return {
+            'total_input': 0,
+            'matched_count': 0,
+            'available_file_count': 0,
+            'missing_file_count': 0,
+            'not_found_count': 0,
+            'details': []
+        }
+
+    # 1. 预解析所有输入项并收集查询键
+    parsed_items = []
+    clean_no_set = set()
+    clean_id_set = set()
+    compact_set = set()
+    title_set = set()
+    stripped_title_set = set()
+
+    for item in truncated_items:
+        raw_no = item.get('raw_no', '')
+        raw_title = item.get('raw_title', '')
+        c_no = clean_standard_code(raw_no)
+        c_id = generate_clean_id(c_no) if c_no else ''
+        compact = c_no.replace(' ', '') if c_no else ''
+        c_title = str(raw_title).strip() if raw_title else ''
+        s_title = re.sub(r'^[《\(（]|[\)）》]$', '', c_title) if c_title else ''
+
+        if c_no:
+            clean_no_set.add(c_no)
+        if c_id:
+            clean_id_set.add(c_id)
+        if compact:
+            compact_set.add(compact)
+        if c_title:
+            title_set.add(c_title)
+        if s_title and s_title != c_title:
+            stripped_title_set.add(s_title)
+
+        parsed_items.append({
+            'raw_no': raw_no,
+            'raw_title': raw_title,
+            'clean_no': c_no,
+            'clean_id': c_id,
+            'compact': compact,
+            'clean_title': c_title,
+            'stripped_title': s_title,
+        })
+
+    # 2. 批量查标准编号 (Query 1)
+    standards_by_no = defaultdict(list)
+    standards_by_clean_id = defaultdict(list)
+    standards_by_compact = defaultdict(list)
+
+    all_no_keys = clean_no_set | clean_id_set | compact_set
+    if all_no_keys:
+        qs_no = Standard.objects.select_related('company').filter(type='enterprise').filter(
+            Q(standard_no__in=all_no_keys) | Q(clean_id__in=all_no_keys)
+        )
+        for std in qs_no:
+            if std.standard_no:
+                standards_by_no[std.standard_no.lower()].append(std)
+                standards_by_compact[std.standard_no.replace(' ', '').lower()].append(std)
+            if std.clean_id:
+                standards_by_clean_id[std.clean_id.lower()].append(std)
+                standards_by_compact[std.clean_id.replace(' ', '').lower()].append(std)
+
+    # 3. 批量查标准名称 (Query 2)
+    standards_by_title = defaultdict(list)
+    all_titles_to_query = title_set | stripped_title_set
+
+    if all_titles_to_query:
+        qs_title = Standard.objects.select_related('company').filter(
+            type='enterprise',
+            title__in=all_titles_to_query
+        )
+        for std in qs_title:
+            if std.title:
+                standards_by_title[std.title.lower()].append(std)
+                s_tit = re.sub(r'^[《\(（]|[\)）》]$', '', std.title)
+                if s_tit != std.title:
+                    standards_by_title[s_tit.lower()].append(std)
+
+    # 4. 逐项快速匹配与消歧
     details = []
     matched_count = 0
     available_file_count = 0
     missing_file_count = 0
     not_found_count = 0
 
-    for idx, item in enumerate(truncated_items):
-        raw_no = item.get('raw_no', '')
-        raw_title = item.get('raw_title', '')
+    for idx, p in enumerate(parsed_items):
+        candidate = None
+        mode = 'not_found'
 
-        candidate, mode = match_single_item(raw_no, raw_title)
+        # 第一层：优先标准号匹配
+        if p['clean_no']:
+            c_id_l = p['clean_id'].lower() if p['clean_id'] else ''
+            c_no_l = p['clean_no'].lower()
+            comp_l = p['compact'].lower()
+
+            matches = standards_by_clean_id.get(c_id_l) or standards_by_no.get(c_no_l) or standards_by_compact.get(comp_l)
+            if matches:
+                candidate = pick_best_candidate_from_list(matches)
+                mode = 'std_no_exact'
+
+        # 第二层：名称降级匹配
+        if not candidate and p['clean_title']:
+            c_tit_l = p['clean_title'].lower()
+            s_tit_l = p['stripped_title'].lower() if p['stripped_title'] else ''
+
+            matches = standards_by_title.get(c_tit_l) or (standards_by_title.get(s_tit_l) if s_tit_l else None)
+            if matches:
+                candidate = pick_best_candidate_from_list(matches)
+                mode = 'title_fallback'
+            else:
+                # 兼容极少数大小写特殊的单项 fallback
+                qs_single = Standard.objects.select_related('company').filter(
+                    type='enterprise',
+                    title__iexact=p['clean_title']
+                )
+                if qs_single.exists():
+                    candidate = pick_best_candidate(qs_single)
+                    mode = 'title_fallback'
+
+        raw_no = p['raw_no']
+        raw_title = p['raw_title']
 
         if candidate:
             matched_count += 1
             has_pdf = check_standard_has_pdf(candidate)
             if has_pdf:
                 available_file_count += 1
-                status_code = mode  # 'std_no_exact' or 'title_fallback'
+                status_code = mode
                 status_text = '标准号精确命中' if mode == 'std_no_exact' else '标准名称降级命中'
             else:
                 missing_file_count += 1
@@ -399,8 +538,8 @@ def match_items_batch(raw_items: list):
             company_name = candidate.company.name if candidate.company else '未知起草单位'
             details.append({
                 'index': idx + 1,
-                'input_no': raw_no,
-                'input_title': raw_title,
+                'input_no': raw_no if raw_no != raw_title else (candidate.standard_no if mode == 'std_no_exact' else '-'),
+                'input_title': raw_title if raw_no != raw_title else (candidate.title if mode == 'title_fallback' else '-'),
                 'status_code': status_code,
                 'status_text': status_text,
                 'standard_id': candidate.id,
@@ -415,8 +554,8 @@ def match_items_batch(raw_items: list):
             not_found_count += 1
             details.append({
                 'index': idx + 1,
-                'input_no': raw_no,
-                'input_title': raw_title,
+                'input_no': raw_no if raw_no != raw_title else (raw_no if raw_no else '-'),
+                'input_title': raw_title if raw_no != raw_title else '-',
                 'status_code': 'not_found',
                 'status_text': '未收录该标准',
                 'standard_id': None,

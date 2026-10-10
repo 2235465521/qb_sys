@@ -196,9 +196,11 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
           return;
         }
 
-        const { data } = await apiClient.post<MatchResultData>('/client/standards/list-match-preview/', {
-          items: parsedPasteItems
-        });
+        const { data } = await apiClient.post<MatchResultData>(
+          '/client/standards/list-match-preview/',
+          { items: parsedPasteItems },
+          { timeout: 60000 }
+        );
         setMatchResult(data);
         setCurrentStep(1);
         message.success(`匹配完成！共命中 ${data.matched_count} 条，其中 ${data.available_file_count} 份已有归档 PDF`);
@@ -231,14 +233,22 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
         }
 
         const { data } = await apiClient.post<MatchResultData>('/client/standards/list-match-preview/', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 60000
         });
         setMatchResult(data);
         setCurrentStep(1);
         message.success(`匹配完成！共命中 ${data.matched_count} 条，其中 ${data.available_file_count} 份已有归档 PDF`);
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || err.response?.data?.detail || '匹配分析请求失败，请检查网络或数据格式';
+      let errorMsg = '匹配分析请求失败，请检查网络或数据格式';
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        errorMsg = '匹配分析请求超时（数据量较大或服务器响应超时），请稍后重试';
+      } else if (err.response?.data?.error) {
+        errorMsg = err.response.data.error;
+      } else if (err.response?.data?.detail) {
+        errorMsg = err.response.data.detail;
+      }
       message.error(errorMsg);
     } finally {
       setIsMatching(false);

@@ -4,7 +4,7 @@ import { message } from 'antd'
 
 const apiClient = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
 })
 
