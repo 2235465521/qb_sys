@@ -102,12 +102,8 @@ def sniff_excel_structure(file_bytes: bytes):
                 if idx >= 15:
                     break
                 rows.append([str(c).strip() if c is not None else '' for c in row])
+            total_raw_rows = sheet.max_row or 0
             wb.close()
-
-            wb2 = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-            sheet2 = wb2[sheet_names[0]]
-            total_raw_rows = sheet2.max_row or 0
-            wb2.close()
         except Exception as e:
             # 若 openpyxl 解析失败且可能为 xls，尝试 xlrd 兜底
             if xlrd:
@@ -279,31 +275,41 @@ def pick_best_candidate(qs):
     return annotated.first()
 
 
-def check_standard_has_pdf(std: Standard) -> bool:
-    """真实核验标准是否有物理 PDF 文件"""
+def get_standard_physical_pdf_path(std: Standard) -> str | None:
+    """
+    统一解析标准物理 PDF 文件的真实绝对路径。
+    按照磁盘阵列 (SHARED_DISK_ROOT) -> MEDIA_ROOT 多级顺序探测，
+    仅当文件真实存在于磁盘时返回路径，不存在时返回 None。
+    杜绝数据库有脏路径记录但物理文件丢失产生的假阳性。
+    """
     shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
 
     if std.disk_filename:
         norm_disk = std.disk_filename.replace('\\', '/')
-        if os.path.exists(os.path.join(shared_root, norm_disk)):
-            return True
+        disk_path = os.path.join(shared_root, norm_disk)
+        if os.path.exists(disk_path):
+            return disk_path
 
     if std.pdf_file and std.pdf_file.name:
         rel = std.pdf_file.name.replace('\\', '/')
-        if os.path.exists(os.path.join(shared_root, rel)):
-            return True
-        if os.path.exists(os.path.join(settings.MEDIA_ROOT, rel)):
-            return True
+        disk_path = os.path.join(shared_root, rel)
+        if os.path.exists(disk_path):
+            return disk_path
+        media_path = os.path.join(settings.MEDIA_ROOT, rel)
+        if os.path.exists(media_path):
+            return media_path
         if rel.startswith('media/'):
             clean_rel = rel.replace('media/', '', 1)
-            if os.path.exists(os.path.join(settings.MEDIA_ROOT, clean_rel)):
-                return True
+            alt_media = os.path.join(settings.MEDIA_ROOT, clean_rel)
+            if os.path.exists(alt_media):
+                return alt_media
 
-    # 兜底：数据库非空标记
-    if std.disk_filename or (std.pdf_file and std.pdf_file.name):
-        return True
+    return None
 
-    return False
+
+def check_standard_has_pdf(std: Standard) -> bool:
+    """真实核验标准是否有物理 PDF 文件（杜绝假阳性）"""
+    return get_standard_physical_pdf_path(std) is not None
 
 
 def match_single_item(raw_no: str, raw_title: str):
@@ -438,7 +444,7 @@ def generate_manifest_excel_bytes(details: list) -> bytes:
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "企标匹配与下载对账清单"
+    ws.title = "交付回执清单"
 
     # 表头样式
     header_fill = PatternFill(start_color="00838F", end_color="00838F", fill_type="solid")
@@ -521,34 +527,11 @@ def create_zip_from_list_matched(standard_ids: list, manifest_data: list = None)
     打包已匹配的标准 PDF 文件，并规整化命名，自动嵌入审计 Excel 清单
     """
     standards = Standard.objects.select_related('company').filter(id__in=standard_ids)
-    shared_root = getattr(settings, 'SHARED_DISK_ROOT', r"Y:\磁盘阵列\标准文件下载\企标下载")
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
         for std in standards:
-            file_path = None
-
-            # 优先从共享磁盘获取
-            if std.disk_filename:
-                norm_disk = std.disk_filename.replace('\\', '/')
-                disk_path = os.path.join(shared_root, norm_disk)
-                if os.path.exists(disk_path):
-                    file_path = disk_path
-
-            # 降级使用 pdf_file
-            if not file_path and std.pdf_file and std.pdf_file.name:
-                rel = std.pdf_file.name.replace('\\', '/')
-                disk_path = os.path.join(shared_root, rel)
-                media_path = os.path.join(settings.MEDIA_ROOT, rel)
-                if os.path.exists(disk_path):
-                    file_path = disk_path
-                elif os.path.exists(media_path):
-                    file_path = media_path
-                elif rel.startswith('media/'):
-                    clean_rel = rel.replace('media/', '', 1)
-                    alt_media = os.path.join(settings.MEDIA_ROOT, clean_rel)
-                    if os.path.exists(alt_media):
-                        file_path = alt_media
+            file_path = get_standard_physical_pdf_path(std)
 
             if file_path:
                 clean_no = sanitize_filename(std.standard_no)
@@ -559,11 +542,11 @@ def create_zip_from_list_matched(standard_ids: list, manifest_data: list = None)
                 except Exception as e:
                     logger.warning(f"清单打包写入单文件失败: std_id={std.id}, error={str(e)}")
 
-        # 注入清单 Excel
+        # 注入交付回执清单 Excel（规范对齐 ADR-0004 §4）
         if manifest_data:
             try:
                 manifest_bytes = generate_manifest_excel_bytes(manifest_data)
-                zf.writestr('企标打包清单与对账明细.xlsx', manifest_bytes)
+                zf.writestr('企标打包下载清单与未命中明细.xlsx', manifest_bytes)
             except Exception as e:
                 logger.error(f"注入清单 Excel 异常: {str(e)}")
 

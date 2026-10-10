@@ -731,7 +731,7 @@ class ExportMatchManifestView(APIView):
 
         try:
             excel_bytes = generate_manifest_excel_bytes(details)
-            filename = "企标匹配与下载对账清单.xlsx"
+            filename = "企标匹配交付回执清单.xlsx"
             encoded_fn = urllib.parse.quote(filename)
 
             response = HttpResponse(

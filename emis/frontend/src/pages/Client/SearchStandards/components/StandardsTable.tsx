@@ -4,6 +4,7 @@ import { DownloadOutlined, EyeOutlined, FileExcelOutlined, RightOutlined, DownOu
 import type { Standard } from '@/types';
 import dayjs from 'dayjs';
 import apiClient from '@/api/client';
+import { triggerBlobDownload } from '@/utils/download';
 
 interface StandardsTableProps {
   data: Standard[];
@@ -97,14 +98,7 @@ const StandardsTable: React.FC<StandardsTableProps> = ({
         responseType: 'blob'
       });
       const blob = new Blob([response.data], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `${record.standard_no}_规范性引用标准.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
+      triggerBlobDownload(blob, `${record.standard_no}_规范性引用标准.xlsx`);
       message.success(`导出引用目录成功: ${record.standard_no}`);
     } catch (err: any) {
       const responseData = err.response?.data;

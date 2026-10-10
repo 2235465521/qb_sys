@@ -112,7 +112,7 @@ const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filte
             boxShadow: '0 2px 6px rgba(0, 172, 193, 0.1)',
           }}
         >
-          按清单批量下载
+          清单匹配下载
         </Button>
 
         <div style={{ width: 1, height: 20, background: '#cbd5e1', margin: '0 4px' }} />

@@ -31,6 +31,7 @@ import {
 import type { UploadFile } from 'antd/es/upload/interface';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
+import { triggerBlobDownload } from '@/utils/download';
 
 const { Text } = Typography;
 
@@ -120,11 +121,8 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
         const parts = line.split('\t').map(p => p.trim());
         return { raw_no: parts[0] || '', raw_title: parts[1] || '' };
       }
-      // 单列输入：如果是标准号特征（包含斜杠或Q），同时填入 raw_no，否则填入 raw_title
-      if (line.includes('/') || /^[a-zA-Z]/.test(line)) {
-        return { raw_no: line, raw_title: '' };
-      }
-      return { raw_no: '', raw_title: line };
+      // 单列输入：同时传入 raw_no 与 raw_title，后端优先按标准编号匹配，未命中自动降级按标准名称匹配（支持英文/数字开头的品名）
+      return { raw_no: line, raw_title: line };
     });
   }, [pasteText]);
 
@@ -247,11 +245,11 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
     }
   };
 
-  // 导出对账清单 Excel
+  // 导出交付回执清单 Excel
   const handleExportManifest = async () => {
     if (!matchResult || !matchResult.details.length) return;
     setIsExporting(true);
-    const hide = message.loading('正在导出匹配与对账清单 Excel，请稍候...', 0);
+    const hide = message.loading('正在导出交付回执清单 Excel，请稍候...', 0);
     try {
       const { data: fileBlob } = await apiClient.post(
         '/client/standards/export-match-manifest/',
@@ -263,18 +261,11 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
       const blob = new Blob([fileBlob], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', '企标匹配与下载对账清单.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      message.success('对账清单 Excel 导出成功！');
+      triggerBlobDownload(blob, '企标匹配交付回执清单.xlsx');
+      message.success('交付回执清单 Excel 导出成功！');
     } catch (err) {
       hide();
-      message.error('导出对账清单失败，请稍后重试');
+      message.error('导出交付回执清单失败，请稍后重试');
     } finally {
       setIsExporting(false);
     }
@@ -409,7 +400,7 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 16 }}>
           <CloudDownloadOutlined style={{ color: '#00838f', fontSize: 20 }} />
-          <span>按外部清单批量匹配与打包下载</span>
+          <span>外部清单匹配与打包下载</span>
         </div>
       }
       footer={null}
@@ -609,25 +600,28 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
       {/* ── 步骤 1：匹配结果核对与确认打包 ──────────────────────────── */}
       {currentStep === 1 && matchResult && (
         <div>
-          {/* 指标卡片面板 */}
+          {/* 指标卡片面板（规范对齐 ADR-0004 §4 个独立统计指标） */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
             <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: 12, color: '#64748b' }}>待匹配总数</div>
               <div style={{ fontSize: 20, fontWeight: 'bold', color: '#1e293b' }}>{matchResult.total_input}</div>
             </div>
             <div style={{ padding: '12px 16px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
-              <div style={{ fontSize: 12, color: '#166534' }}>成功匹配条数</div>
-              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#15803d' }}>{matchResult.matched_count}</div>
-            </div>
-            <div style={{ padding: '12px 16px', background: '#f0fdfa', borderRadius: 8, border: '1px solid #99f6e4' }}>
-              <div style={{ fontSize: 12, color: '#0f766e' }}>可下载 PDF 全文</div>
-              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#0d9488' }}>{matchResult.available_file_count}</div>
+              <div style={{ fontSize: 12, color: '#166534' }}>
+                可下载 PDF 全文
+                <span style={{ fontSize: 11, marginLeft: 6, fontWeight: 'normal', color: '#15803d' }}>
+                  (命中 {matchResult.matched_count})
+                </span>
+              </div>
+              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#15803d' }}>{matchResult.available_file_count}</div>
             </div>
             <div style={{ padding: '12px 16px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a' }}>
-              <div style={{ fontSize: 12, color: '#92400e' }}>缺档 / 未收录</div>
-              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#b45309' }}>
-                {matchResult.missing_file_count + matchResult.not_found_count}
-              </div>
+              <div style={{ fontSize: 12, color: '#92400e' }}>命中但暂无 PDF</div>
+              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#b45309' }}>{matchResult.missing_file_count}</div>
+            </div>
+            <div style={{ padding: '12px 16px', background: '#fef2f2', borderRadius: 8, border: '1px solid #fecaca' }}>
+              <div style={{ fontSize: 12, color: '#991b1b' }}>库内未收录</div>
+              <div style={{ fontSize: 20, fontWeight: 'bold', color: '#dc2626' }}>{matchResult.not_found_count}</div>
             </div>
           </div>
 
@@ -643,7 +637,7 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
               loading={isExporting}
               style={{ borderRadius: 6 }}
             >
-              导出匹配明细表 (.xlsx)
+              导出交付回执清单 (.xlsx)
             </Button>
           </div>
 

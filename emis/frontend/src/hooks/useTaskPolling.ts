@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { notification, message } from 'antd';
 import apiClient from '@/api/client';
+import { triggerFileDownload } from '@/utils/download';
 
 export interface BackgroundTask {
   id: string;
@@ -138,30 +139,6 @@ export const useTaskPolling = () => {
             t.id === token ? { ...t, status: 'done', progress: 100, downloadUrl } : t
           ));
 
-          // 跨浏览器安全触发下载：使用 <a> 模拟点击与 iframe 兜底，避免非用户手势下的 window.open 被 Edge/Firefox 拦截
-          const triggerDownload = (url: string) => {
-            try {
-              const link = document.createElement('a');
-              link.href = url;
-              link.setAttribute('download', '');
-              link.style.display = 'none';
-              document.body.appendChild(link);
-              link.click();
-              setTimeout(() => {
-                link.remove();
-              }, 1000);
-            } catch (e) {
-              console.warn('[TaskPolling] a.click() failed, fallback to iframe:', e);
-              const iframe = document.createElement('iframe');
-              iframe.style.display = 'none';
-              iframe.src = url;
-              document.body.appendChild(iframe);
-              setTimeout(() => {
-                iframe.remove();
-              }, 30000);
-            }
-          };
-
           notification.success({
             message: '打包任务完成',
             description: `${name} 已就绪，请在上方【任务中心】点击【下载】或查看浏览器下载进度。`,
@@ -169,7 +146,7 @@ export const useTaskPolling = () => {
           });
 
           if (downloadUrl) {
-            triggerDownload(downloadUrl);
+            triggerFileDownload(downloadUrl);
           }
         } else if (mappedStatus === 'failed') {
           clearInterval(intervalId);

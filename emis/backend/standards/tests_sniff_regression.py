@@ -87,3 +87,68 @@ class SniffExcelRegressionTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data['total_input'], 1)
         self.assertIn('details', response.data)
+
+    def test_false_positive_pdf_prevention(self):
+        """
+        验证当数据库记录中 disk_filename 指向磁盘不存在的路径时，
+        check_standard_has_pdf 严谨返回 False，杜绝假阳性标记
+        """
+        from standards.models import Standard
+        from standards.services_list_match import check_standard_has_pdf
+
+        std = Standard(
+            standard_no="Q/FAKE 001-2024",
+            title="不存在物理文件的测试标准",
+            type="enterprise",
+            disk_filename="fake/path/does_not_exist_9999.pdf"
+        )
+        self.assertFalse(check_standard_has_pdf(std))
+
+    def test_title_fallback_with_english_prefix(self):
+        """
+        验证当输入以英文前缀命名的标准标题（如 LED平板灯）且未带有效标准号时，
+        第二层降级策略能够准确命中该标准，不发生误判漏检
+        """
+        from standards.models import Standard
+        from standards.services_list_match import match_single_item
+
+        std = Standard.objects.create(
+            standard_no="Q/LED 001-2023",
+            title="LED平板灯技术要求",
+            type="enterprise",
+            status="active"
+        )
+
+        candidate, mode = match_single_item(raw_no="LED平板灯技术要求", raw_title="LED平板灯技术要求")
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate.id, std.id)
+        self.assertEqual(mode, 'title_fallback')
+
+    def test_export_manifest_endpoint_and_filename(self):
+        """
+        验证交付回执清单导出端点返回正确的 Content-Disposition 标头
+        """
+        response = self.client.post(
+            '/api/client/standards/export-match-manifest/',
+            data={
+                'details': [
+                    {
+                        'index': 1,
+                        'input_no': 'Q/TEST 001-2023',
+                        'input_title': '测试标准',
+                        'status_text': '标准号精确命中',
+                        'matched_no': 'Q/TEST 001-2023',
+                        'matched_title': '测试标准',
+                        'company_name': '测试企业',
+                        'status_label': '现行',
+                        'publish_date': '2023-01-01',
+                        'has_pdf': True
+                    }
+                ]
+            },
+            format='json'
+        )
+        import urllib.parse
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('Content-Disposition', response.headers)
+        self.assertIn('企标匹配交付回执清单.xlsx', urllib.parse.unquote(response.headers['Content-Disposition']))
