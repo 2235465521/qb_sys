@@ -158,7 +158,7 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
     setTitleColIdx(undefined);
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', file, file.name || 'upload.xlsx');
 
     try {
       const { data } = await apiClient.post<SniffResult>('/client/standards/sniff-excel/', formData, {
@@ -218,7 +218,7 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
         }
 
         const formData = new FormData();
-        formData.append('file', uploadedFileRaw);
+        formData.append('file', uploadedFileRaw, uploadedFileRaw.name || 'upload.xlsx');
         if (sniffResult?.current_sheet) {
           formData.append('sheet_name', sniffResult.current_sheet);
         }
