@@ -15,8 +15,14 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
-import { Badge, Popover, List, Progress, Tooltip } from 'antd';
-import { BellOutlined } from '@ant-design/icons';
+import {
+  Badge,
+  Popover,
+  List,
+  Progress,
+  Tooltip,
+} from 'antd';
+import { BellOutlined, DownloadOutlined } from '@ant-design/icons';
 import { useTaskContext } from '@/store/TaskContext';
 import BrandLogo from '@/components/BrandLogo';
 
@@ -97,6 +103,25 @@ const ClientLayout: React.FC = () => {
                   <span style={{ fontSize: 12, color: item.status === 'failed' ? '#ff4d4f' : item.status === 'done' ? '#52c41a' : '#1890ff' }}>
                     {item.status === 'running' ? '打包中' : item.status === 'done' ? '已完成' : '失败'}
                   </span>
+                  {item.status === 'done' && item.downloadUrl && (
+                    <Button
+                      type="primary"
+                      size="small"
+                      icon={<DownloadOutlined />}
+                      href={item.downloadUrl}
+                      target="_blank"
+                      style={{
+                        padding: '0 8px',
+                        fontSize: 12,
+                        background: '#00838f',
+                        borderColor: '#00838f',
+                        height: 22,
+                        borderRadius: 4,
+                      }}
+                    >
+                      下载
+                    </Button>
+                  )}
                   {item.status === 'running' && (
                     <Button type="link" size="small" style={{ padding: 0, fontSize: 12, color: '#999' }} onClick={() => cancelTask(item.id)}>取消</Button>
                   )}
