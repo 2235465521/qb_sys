@@ -632,6 +632,7 @@ class SampledPackRequestView(APIView):
 import json
 import urllib.parse
 from django.http import HttpResponse
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from standards.services_list_match import (
     sniff_excel_structure,
     extract_items_from_excel,
@@ -647,6 +648,7 @@ class SniffExcelHeaderView(APIView):
     上传 Excel 并智能嗅探表头和列映射
     """
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
         uploaded_file = request.FILES.get('file')
@@ -667,6 +669,7 @@ class ListMatchPreviewView(APIView):
     预匹配校验接口：支持直接传 items 或上传 Excel 文件及列映射
     """
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def post(self, request):
         items = []

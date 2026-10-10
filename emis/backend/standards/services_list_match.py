@@ -48,25 +48,86 @@ def sanitize_filename(name: str) -> str:
     return s[:150]
 
 
+try:
+    import xlrd
+except ImportError:
+    xlrd = None
+
+
+def _is_xls_bytes(file_bytes: bytes) -> bool:
+    """检查是否为老版本 .xls (Compound File Binary Format / OLE2)"""
+    return file_bytes.startswith(b'\xd0\xcf\x11\xe0')
+
+
 def sniff_excel_structure(file_bytes: bytes):
     """
     智能嗅探 Excel 文件的表头与列结构。
+    支持 .xlsx 与 .xls 双格式。
     扫描前 5 行，正则匹配标准编号列与标准名称列。
     """
-    wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    sheet_names = wb.sheetnames
-    if not sheet_names:
-        raise ValueError("Excel 文件中没有有效的工作表 (Sheet)")
-
-    sheet = wb[sheet_names[0]]
+    sheet_names = []
     rows = []
-    max_scan_rows = 15
-    for idx, row in enumerate(sheet.iter_rows(values_only=True)):
-        if idx >= max_scan_rows:
-            break
-        rows.append([str(c).strip() if c is not None else '' for c in row])
+    total_data_rows = 0
 
-    wb.close()
+    if _is_xls_bytes(file_bytes):
+        if not xlrd:
+            raise ValueError("当前服务缺少 xlrd 库支持，无法解析 .xls 文件，请转换为 .xlsx 后重试")
+        try:
+            wb = xlrd.open_workbook(file_contents=file_bytes)
+            sheet_names = wb.sheet_names()
+            if not sheet_names:
+                raise ValueError("Excel 文件中没有有效的工作表 (Sheet)")
+            sheet = wb.sheet_by_name(sheet_names[0])
+            for r_idx in range(min(15, sheet.nrows)):
+                row_vals = []
+                for c_idx in range(sheet.ncols):
+                    val = sheet.cell_value(r_idx, c_idx)
+                    if isinstance(val, float) and val.is_integer():
+                        val = int(val)
+                    row_vals.append(str(val).strip() if val is not None else '')
+                rows.append(row_vals)
+            # 计算总数据行数
+            total_raw_rows = sheet.nrows
+        except Exception as e:
+            raise ValueError(f"解析 .xls 文件失败: {str(e)}")
+    else:
+        # 默认尝试 openpyxl 解析 .xlsx
+        try:
+            wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            sheet_names = wb.sheetnames
+            if not sheet_names:
+                raise ValueError("Excel 文件中没有有效的工作表 (Sheet)")
+            sheet = wb[sheet_names[0]]
+            for idx, row in enumerate(sheet.iter_rows(values_only=True)):
+                if idx >= 15:
+                    break
+                rows.append([str(c).strip() if c is not None else '' for c in row])
+            wb.close()
+
+            wb2 = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+            sheet2 = wb2[sheet_names[0]]
+            total_raw_rows = sheet2.max_row or 0
+            wb2.close()
+        except Exception as e:
+            # 若 openpyxl 解析失败且可能为 xls，尝试 xlrd 兜底
+            if xlrd:
+                try:
+                    wb = xlrd.open_workbook(file_contents=file_bytes)
+                    sheet_names = wb.sheet_names()
+                    sheet = wb.sheet_by_name(sheet_names[0])
+                    for r_idx in range(min(15, sheet.nrows)):
+                        row_vals = []
+                        for c_idx in range(sheet.ncols):
+                            val = sheet.cell_value(r_idx, c_idx)
+                            if isinstance(val, float) and val.is_integer():
+                                val = int(val)
+                            row_vals.append(str(val).strip() if val is not None else '')
+                        rows.append(row_vals)
+                    total_raw_rows = sheet.nrows
+                except Exception:
+                    raise ValueError(f"解析 Excel 失败（请确保文件为有效 .xlsx 或 .xls 格式）: {str(e)}")
+            else:
+                raise ValueError(f"解析 Excel 失败（请确保文件为有效 .xlsx 格式）: {str(e)}")
 
     if not rows:
         raise ValueError("Excel 表格为空")
@@ -111,11 +172,7 @@ def sniff_excel_structure(file_bytes: bytes):
         elif not suggested_title_col and title_regex.search(cell):
             suggested_title_col = col_letter
 
-    # 计算总有效数据行数
-    wb2 = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
-    sheet2 = wb2[sheet_names[0]]
-    total_data_rows = max(0, sheet2.max_row - (header_row_idx + 1))
-    wb2.close()
+    total_data_rows = max(0, total_raw_rows - (header_row_idx + 1))
 
     return {
         'sheet_names': sheet_names,
@@ -130,12 +187,47 @@ def sniff_excel_structure(file_bytes: bytes):
 
 def extract_items_from_excel(file_bytes: bytes, sheet_name=None, std_no_col_idx=None, title_col_idx=None, header_row_idx=0):
     """
-    根据用户选定或自动识别的列索引提取标准数据项
+    根据用户选定或自动识别的列索引提取标准数据项，支持 .xlsx 与 .xls
     """
+    items = []
+
+    if _is_xls_bytes(file_bytes) or (xlrd and not file_bytes.startswith(b'PK')):
+        if not xlrd:
+            raise ValueError("当前服务缺少 xlrd 库支持，无法读取 .xls 文件")
+        wb = xlrd.open_workbook(file_contents=file_bytes)
+        sheet = wb.sheet_by_name(sheet_name) if sheet_name and sheet_name in wb.sheet_names() else wb.sheet_by_index(0)
+
+        for r_idx in range(sheet.nrows):
+            if r_idx <= header_row_idx:
+                continue
+            if len(items) >= MAX_LIST_MATCH_LIMIT:
+                break
+
+            val_no = ''
+            val_title = ''
+            if std_no_col_idx is not None and 0 <= std_no_col_idx < sheet.ncols:
+                cell_val = sheet.cell_value(r_idx, std_no_col_idx)
+                if isinstance(cell_val, float) and cell_val.is_integer():
+                    cell_val = int(cell_val)
+                val_no = str(cell_val).strip() if cell_val is not None else ''
+
+            if title_col_idx is not None and 0 <= title_col_idx < sheet.ncols:
+                cell_val = sheet.cell_value(r_idx, title_col_idx)
+                if isinstance(cell_val, float) and cell_val.is_integer():
+                    cell_val = int(cell_val)
+                val_title = str(cell_val).strip() if cell_val is not None else ''
+
+            if val_no or val_title:
+                items.append({
+                    'raw_no': val_no,
+                    'raw_title': val_title
+                })
+        return items
+
+    # 默认使用 openpyxl 解析 .xlsx
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
     sheet = wb[sheet_name] if sheet_name and sheet_name in wb.sheetnames else wb.active
 
-    items = []
     for r_idx, row in enumerate(sheet.iter_rows(values_only=True)):
         if r_idx <= header_row_idx:
             continue

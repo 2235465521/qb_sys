@@ -161,7 +161,9 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
     formData.append('file', file);
 
     try {
-      const { data } = await apiClient.post<SniffResult>('/client/standards/sniff-excel/', formData);
+      const { data } = await apiClient.post<SniffResult>('/client/standards/sniff-excel/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
       setSniffResult(data);
 
       // 自动预选列索引
@@ -175,7 +177,7 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
       }
       message.success(`成功识别表格，包含 ${data.headers.length} 列，约 ${data.total_rows} 行数据`);
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || '识别 Excel 表格结构失败，请确保格式正确';
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || '识别 Excel 表格结构失败，请确保格式正确';
       message.error(errorMsg);
       setFileList([]);
       setUploadedFileRaw(null);
@@ -230,13 +232,15 @@ const ListMatchDownloadModal: React.FC<ListMatchDownloadModalProps> = ({ open, o
           formData.append('header_row_idx', String(sniffResult.header_row_index));
         }
 
-        const { data } = await apiClient.post<MatchResultData>('/client/standards/list-match-preview/', formData);
+        const { data } = await apiClient.post<MatchResultData>('/client/standards/list-match-preview/', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
         setMatchResult(data);
         setCurrentStep(1);
         message.success(`匹配完成！共命中 ${data.matched_count} 条，其中 ${data.available_file_count} 份已有归档 PDF`);
       }
     } catch (err: any) {
-      const errorMsg = err.response?.data?.error || '匹配分析请求失败，请检查网络或数据格式';
+      const errorMsg = err.response?.data?.error || err.response?.data?.detail || '匹配分析请求失败，请检查网络或数据格式';
       message.error(errorMsg);
     } finally {
       setIsMatching(false);

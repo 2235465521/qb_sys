@@ -8,7 +8,7 @@ const apiClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// 请求拦截：自动附加 JWT Token
+// 请求拦截：自动附加 JWT Token 与 FormData Content-Type 自适应
 apiClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) {
@@ -18,6 +18,16 @@ apiClient.interceptors.request.use((config) => {
       config.headers['Authorization'] = `Bearer ${token}`
     }
   }
+
+  // 针对 FormData 自动移除默认的 application/json，让浏览器/Axios 自动生成带 boundary 的 multipart/form-data
+  if (config.data instanceof FormData) {
+    if (config.headers?.delete) {
+      config.headers.delete('Content-Type')
+    } else if (config.headers) {
+      delete config.headers['Content-Type']
+    }
+  }
+
   return config
 })
 
