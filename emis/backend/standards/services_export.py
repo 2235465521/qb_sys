@@ -187,10 +187,10 @@ class StandardExportService:
     @classmethod
     def build_queryset(cls, export_scope: str = 'query', ids: list = None, filters: dict = None):
         """
-        根据导出范围及过滤条件构造基础 Standard QuerySet
+        根据导出范围及过滤条件构造基础 Standard QuerySet（全面支持管理端与客户端过滤语法）
         """
         filters = filters or {}
-        qs = Standard.objects.all()
+        qs = Standard.objects.all().select_related('company')
 
         # 1. 勾选指定数据
         if export_scope == 'selected':
@@ -208,11 +208,34 @@ class StandardExportService:
         if export_scope == 'all':
             return qs.order_by('-created_at')
 
-        # query 模式下的高级条件过滤
+        # 3. 关键词、品类扩展与精确/全文模式
         kw = (filters.get('keyword') or '').strip()
+        search_mode = filters.get('search_mode', 'title')
+        exact_match = filters.get('exact_match') in (True, 'true', '1')
+
         if kw:
-            search_q = build_smart_search_q(kw, ['standard_no', 'title'], clean_id_field='clean_id')
-            qs = qs.filter(search_q | Q(company__name__icontains=kw))
+            if search_mode == 'full_text':
+                from standards.models import StandardContent
+                from standards.utils.search_utils import normalize_search_keyword
+                norm_kw = normalize_search_keyword(kw)
+                tokens = norm_kw.split() if norm_kw else [kw]
+                content_q = Q()
+                for token in tokens:
+                    content_q &= Q(content__icontains=token)
+                matching_std_ids = StandardContent.objects.filter(
+                    content_q
+                ).values_list('standard_id', flat=True).distinct()
+                qs = qs.filter(id__in=matching_std_ids)
+            else:
+                if exact_match:
+                    from standards.services import generate_clean_id
+                    from standards.utils.search_utils import normalize_search_keyword
+                    norm_kw = normalize_search_keyword(kw)
+                    kw_clean = generate_clean_id(norm_kw)
+                    qs = qs.filter(Q(clean_id=kw_clean) | Q(title__iexact=kw) | Q(title__iexact=norm_kw))
+                else:
+                    search_q = build_smart_search_q(kw, ['standard_no', 'title'], clean_id_field='clean_id')
+                    qs = qs.filter(search_q | Q(company__name__icontains=kw))
 
         status_val = filters.get('status')
         if status_val:
@@ -228,28 +251,58 @@ class StandardExportService:
         elif has_pdf is False or has_pdf == 'false' or has_pdf == '0':
             qs = qs.filter((Q(pdf_file__isnull=True) | Q(pdf_file='')) & (Q(disk_filename__isnull=True) | Q(disk_filename='')))
 
-        is_parsed = filters.get('is_parsed')
-        if is_parsed:
-            qs = qs.filter(is_parsed=is_parsed)
+        # 解析状态（兼容客户端 pending_reference / pending_indicator 以及管理端 choices）
+        parse_status = filters.get('parse_status')
+        if parse_status and parse_status != 'all':
+            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
+            q_status = Q()
+            if 'pending_reference' in statuses or 'unparsed' in statuses:
+                q_status |= Q(is_parsed='unparsed')
+            if 'pending_indicator' in statuses or 'references_parsed' in statuses:
+                q_status |= Q(is_parsed='references_parsed')
+            if 'indicators_parsed' in statuses:
+                q_status |= Q(is_parsed='indicators_parsed')
+            if q_status:
+                qs = qs.filter(q_status)
 
-        date_type = filters.get('date_type', 'publish_date')
-        start_date = filters.get('start_date')
-        end_date = filters.get('end_date')
+        # 日期范围过滤：支持客户端 pub_start/pub_end 及管理端 start_date/end_date
+        from standards.services import parse_date_param
+        pub_start = filters.get('pub_start')
+        pub_end = filters.get('pub_end')
+        imp_start = filters.get('imp_start')
+        imp_end = filters.get('imp_end')
 
-        date_field = 'publish_date' if date_type == 'publish_date' else 'implement_date'
-        if start_date:
-            try:
-                s_dt = datetime.strptime(start_date.split('T')[0], '%Y-%m-%d').date()
-                qs = qs.filter(**{f'{date_field}__gte': s_dt})
-            except Exception:
-                pass
-        if end_date:
-            try:
-                e_dt = datetime.strptime(end_date.split('T')[0], '%Y-%m-%d').date()
-                qs = qs.filter(**{f'{date_field}__lte': e_dt})
-            except Exception:
-                pass
+        if (pub_start and pub_end) or (imp_start and imp_end):
+            time_filters = Q()
+            if pub_start and pub_end:
+                pub_s, pub_e = parse_date_param(pub_start, pub_end)
+                if pub_s and pub_e:
+                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
+            if imp_start and imp_end:
+                imp_s, imp_e = parse_date_param(imp_start, imp_end)
+                if imp_s and imp_e:
+                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
+            if time_filters:
+                qs = qs.filter(time_filters)
+        else:
+            date_type = filters.get('date_type', 'publish_date')
+            start_date = filters.get('start_date')
+            end_date = filters.get('end_date')
+            date_field = 'publish_date' if date_type == 'publish_date' else 'implement_date'
+            if start_date:
+                try:
+                    s_dt = datetime.strptime(start_date.split('T')[0], '%Y-%m-%d').date()
+                    qs = qs.filter(**{f'{date_field}__gte': s_dt})
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    e_dt = datetime.strptime(end_date.split('T')[0], '%Y-%m-%d').date()
+                    qs = qs.filter(**{f'{date_field}__lte': e_dt})
+                except Exception:
+                    pass
 
+        # 行政区划
         prov_id = filters.get('province_id')
         if prov_id:
             qs = qs.filter(company__province_id=prov_id)
@@ -259,6 +312,32 @@ class StandardExportService:
         district_id = filters.get('district_id')
         if district_id:
             qs = qs.filter(company__district_id=district_id)
+
+        # 排序处理
+        ordering = filters.get('ordering')
+        if ordering:
+            allowed_orderings = {
+                'publish_date': 'publish_date',
+                '-publish_date': '-publish_date',
+                'implement_date': 'implement_date',
+                '-implement_date': '-implement_date',
+                'standard_no': 'standard_no',
+                '-standard_no': '-standard_no',
+                'title': 'title',
+                '-title': '-title',
+                'company_name': 'company__name',
+                '-company_name': '-company__name',
+                'created_at': 'created_at',
+                '-created_at': '-created_at',
+            }
+            db_ordering = allowed_orderings.get(ordering)
+            if db_ordering:
+                return qs.order_by(db_ordering)
+
+        if kw and search_mode != 'full_text' and not exact_match:
+            from standards.utils.search_utils import build_relevance_annotation
+            qs = qs.annotate(relevance_score=build_relevance_annotation(kw))
+            return qs.order_by('-relevance_score', '-created_at')
 
         return qs.order_by('-created_at')
 

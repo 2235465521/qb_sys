@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Button, Pagination, message } from 'antd';
-import { CloudDownloadOutlined } from '@ant-design/icons';
+import { Button, Pagination, message, Space } from 'antd';
+import { CloudDownloadOutlined, FileExcelOutlined } from '@ant-design/icons';
 import SearchForm from './components/SearchForm';
 import StandardsTable from './components/StandardsTable';
 import InlineDownloadBar from './components/InlineDownloadBar';
 import DownloadEstimateModal from './components/DownloadEstimateModal';
+import ClientExportModal from './components/ClientExportModal';
 import { useClientStandardSearch } from '@/hooks/useClientStandardSearch';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
@@ -23,6 +24,9 @@ const SearchStandardsPage: React.FC = () => {
 
   // 容量估算及下载配置弹窗状态
   const [estimateModalVisible, setEstimateModalVisible] = useState(false);
+
+  // 企标目录 Excel 导出配置弹窗状态
+  const [clientExportModalVisible, setClientExportModalVisible] = useState(false);
 
   // 选中的标准行ID
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
@@ -84,44 +88,8 @@ const SearchStandardsPage: React.FC = () => {
     setEstimateModalVisible(false);
 
     if (mode === 'excel') {
-      const hide = message.loading('正在生成企业标准目录 Excel，请稍候...', 0);
-      try {
-        const { data: fileBlob, headers } = await apiClient.get('/client/standards/export/', {
-          params,
-          responseType: 'blob'
-        });
-        hide();
-
-        const blob = new Blob([fileBlob], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-
-        const contentDisposition = headers['content-disposition'];
-        let filename = '企业标准目录.xlsx';
-        if (contentDisposition) {
-          const match = contentDisposition.match(/filename\*=UTF-8''(.+)$/);
-          if (match && match[1]) {
-            filename = decodeURIComponent(match[1]);
-          } else {
-            const match2 = contentDisposition.match(/filename=(.+)$/);
-            if (match2 && match2[1]) {
-              filename = decodeURIComponent(match2[1]);
-            }
-          }
-        }
-
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        message.success('Excel 目录文件导出成功！');
-      } catch (err: any) {
-        hide();
-        message.error('导出 Excel 失败，请检查网络或稍后重试');
-        console.error(err);
-      }
+      // 统一打开高级目录导出弹窗
+      setClientExportModalVisible(true);
     } else {
       // mode === 'zip'
       try {
@@ -138,7 +106,6 @@ const SearchStandardsPage: React.FC = () => {
     }
   };
 
-
   return (
     <div className="search-standards-page" style={{ padding: '4px' }}>
       <SearchForm
@@ -146,7 +113,7 @@ const SearchStandardsPage: React.FC = () => {
         loading={isFetching}
       />
 
-      {/* 玻离浮雕质感的操作工具栏 */}
+      {/* 玻璃浮雕质感的操作工具栏 */}
       <div 
         style={{
           display: 'flex',
@@ -166,10 +133,11 @@ const SearchStandardsPage: React.FC = () => {
           当前条件共检索到 <span style={{ fontSize: 16, fontWeight: 'bold', color: '#0d9488' }}>{data?.count || 0}</span> 条企业标准
         </div>
 
-        {/* 内联操作栏：抽样策略 + 数量 + 打包下载 */}
+        {/* 内联操作栏：导出目录 Excel + 清单匹配下载 + 抽样策略/数量/打包 */}
         <InlineDownloadBar
           totalCount={data?.count ?? 0}
           filters={params}
+          onOpenExportModal={() => setClientExportModalVisible(true)}
         />
       </div>
 
@@ -195,18 +163,33 @@ const SearchStandardsPage: React.FC = () => {
               取消选择
             </Button>
           </div>
-          <Button
-            type="primary"
-            icon={<CloudDownloadOutlined />}
-            onClick={handleBatchDownload}
-            style={{ 
-              borderRadius: 8,
-              background: 'linear-gradient(135deg, #1890ff 0%, #0050b3 100%)',
-              borderColor: '#1890ff'
-            }}
-          >
-            批量下载已选标准
-          </Button>
+          <Space>
+            <Button
+              icon={<FileExcelOutlined />}
+              onClick={() => setClientExportModalVisible(true)}
+              style={{ 
+                borderRadius: 8,
+                borderColor: '#0d9488',
+                color: '#0f766e',
+                background: '#fff',
+                fontWeight: 500
+              }}
+            >
+              导出已选目录 (Excel)
+            </Button>
+            <Button
+              type="primary"
+              icon={<CloudDownloadOutlined />}
+              onClick={handleBatchDownload}
+              style={{ 
+                borderRadius: 8,
+                background: 'linear-gradient(135deg, #1890ff 0%, #0050b3 100%)',
+                borderColor: '#1890ff'
+              }}
+            >
+              批量下载已选标准
+            </Button>
+          </Space>
         </div>
       )}
 
@@ -240,11 +223,21 @@ const SearchStandardsPage: React.FC = () => {
         </div>
       )}
 
+      {/* 预估下载弹窗（历史兼容保留） */}
       <DownloadEstimateModal
         open={estimateModalVisible}
         onCancel={() => setEstimateModalVisible(false)}
         onDownload={handleEstimateDownload}
         searchParams={params}
+      />
+
+      {/* 客户端企标目录 Excel 导出轻量配置弹窗 */}
+      <ClientExportModal
+        open={clientExportModalVisible}
+        onCancel={() => setClientExportModalVisible(false)}
+        selectedIds={selectedRowKeys}
+        currentFilters={params}
+        totalFilteredCount={data?.count || 0}
       />
     </div>
   );

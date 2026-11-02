@@ -213,6 +213,11 @@ def search_standards_service(params):
         if db_ordering:
             return qs.order_by(db_ordering)
 
+    if keyword and params.get('search_mode', 'title') != 'full_text' and params.get('exact_match') != 'true':
+        from standards.utils.search_utils import build_relevance_annotation
+        qs = qs.annotate(relevance_score=build_relevance_annotation(keyword))
+        return qs.order_by('-relevance_score', '-created_at')
+
     return qs.order_by('-created_at')
 
 

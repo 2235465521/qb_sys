@@ -1,20 +1,20 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { Select, InputNumber, Button, Space, message, Tooltip } from 'antd';
-import { DownloadOutlined, InfoCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { DownloadOutlined, InfoCircleOutlined, UnorderedListOutlined, FileExcelOutlined } from '@ant-design/icons';
 import apiClient from '@/api/client';
 import { useTaskContext } from '@/store/TaskContext';
 import ListMatchDownloadModal from './ListMatchDownloadModal';
-
-// Removed unused Text declaration
 
 interface InlineDownloadBarProps {
   /** 当前检索条件返回的总记录数 */
   totalCount: number;
   /** 当前搜索页面所有过滤参数（和 SearchForm 提交给父组件的 params 一致） */
   filters: Record<string, any>;
+  /** 打开目录导出弹窗的回调函数 */
+  onOpenExportModal?: () => void;
 }
 
-const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filters }) => {
+const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filters, onOpenExportModal }) => {
   const [listMatchModalOpen, setListMatchModalOpen] = useState(false);
   const [strategy, setStrategy] = useState<'random' | 'latest'>('random');
 
@@ -99,7 +99,24 @@ const InlineDownloadBar: React.FC<InlineDownloadBarProps> = ({ totalCount, filte
         align="center"
         style={{ flexWrap: 'nowrap' }}
       >
-        {/* 新增：按清单批量下载入口 */}
+        {/* 新增：导出目录 Excel 入口 */}
+        <Button
+          icon={<FileExcelOutlined style={{ color: '#0d9488' }} />}
+          onClick={onOpenExportModal}
+          disabled={disabled}
+          style={{
+            borderRadius: 8,
+            borderColor: '#0d9488',
+            color: '#0f766e',
+            background: 'rgba(240, 253, 250, 0.7)',
+            fontWeight: 500,
+            boxShadow: '0 2px 6px rgba(13, 148, 136, 0.1)',
+          }}
+        >
+          导出目录 Excel
+        </Button>
+
+        {/* 按清单批量下载入口 */}
         <Button
           icon={<UnorderedListOutlined style={{ color: '#00838f' }} />}
           onClick={() => setListMatchModalOpen(true)}

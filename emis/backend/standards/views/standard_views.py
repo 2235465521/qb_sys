@@ -572,130 +572,61 @@ class StandardDownloadEstimateView(APIView):
 
 class ExportStandardListView(APIView):
     """
-    GET /api/client/standards/export/
-    导出当前高级过滤条件下的企业标准目录为 Excel 文件
+    GET / POST /api/client/standards/export/
+    高性能流式导出企业标准目录 Excel 文件：
+    - 支持 POST（携带 export_scope, ids, filters, selected_fields）与 GET（基于 query_params 兜底）
+    - 底层复用 StandardExportService 投影查询与 write_only 流式引擎
+    - 超 10 万条数据自动拆分多 Sheet（Part1、Part2...），有效规避 OOM 和 HTTP 超时
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        params = request.query_params
-        qs = Standard.objects.filter(type='enterprise').select_related('company')
+        return self._do_export(request.query_params.dict(), export_scope='query', ids=[], selected_fields=[])
 
-        # 1. 地域级联筛选
-        province_id = params.get('province_id')
-        city_id = params.get('city_id')
-        district_id = params.get('district_id')
+    def post(self, request):
+        data = request.data or {}
+        export_scope = data.get('export_scope', 'query')
+        ids = data.get('ids', [])
+        filters = data.get('filters', {})
+        selected_fields = data.get('selected_fields', [])
+        return self._do_export(filters, export_scope, ids, selected_fields)
 
-        if province_id:
-            qs = qs.filter(company__province_id=province_id)
-        if city_id:
-            qs = qs.filter(company__city_id=city_id)
-        if district_id:
-            qs = qs.filter(company__district_id=district_id)
-
-        # 时间维度筛选 (AND 并列关系)
-        pub_start = params.get('pub_start')
-        pub_end = params.get('pub_end')
-        imp_start = params.get('imp_start')
-        imp_end = params.get('imp_end')
-
-        if (pub_start and pub_end) or (imp_start and imp_end):
-            from django.db.models import Q
-            time_filters = Q()
-            if pub_start and pub_end:
-                pub_s, pub_e = parse_date_param(pub_start, pub_end)
-                if pub_s and pub_e:
-                    time_filters &= Q(publish_date__range=(pub_s, pub_e))
-            if imp_start and imp_end:
-                imp_s, imp_e = parse_date_param(imp_start, imp_end)
-                if imp_s and imp_e:
-                    time_filters &= Q(implement_date__range=(imp_s, imp_e))
-            if time_filters:
-                qs = qs.filter(time_filters)
-
-        # 2. 解析状态筛选
-        parse_status = params.get('parse_status')
-        if parse_status:
-            from django.db.models import Q
-            statuses = parse_status.split(',') if isinstance(parse_status, str) else parse_status
-            q_status = Q()
-            if 'pending_reference' in statuses:
-                q_status |= Q(is_parsed='unparsed')
-            if 'pending_indicator' in statuses:
-                q_status |= Q(is_parsed='references_parsed')
-            if q_status:
-                qs = qs.filter(q_status)
-
-        # 3. 关键词筛选
-        keyword = params.get('keyword')
-        search_mode = params.get('search_mode', 'title')
-        if keyword:
-            from standards.utils.search_utils import build_smart_search_q, normalize_search_keyword
-            from django.db.models import Q
-            if search_mode == 'full_text':
-                from standards.models import StandardContent
-                norm_kw = normalize_search_keyword(keyword)
-                tokens = norm_kw.split() if norm_kw else [keyword]
-                content_q = Q()
-                for token in tokens:
-                    content_q &= Q(content__icontains=token)
-                matching_std_ids = StandardContent.objects.filter(
-                    content_q
-                ).values_list('standard_id', flat=True).distinct()
-                qs = qs.filter(id__in=matching_std_ids)
-            else:
-                search_q = build_smart_search_q(keyword, ['standard_no', 'title'], clean_id_field='clean_id')
-                qs = qs.filter(search_q)
-
-        standards = qs.order_by('-created_at')
-
-        # 4. 生成 Excel
-        import openpyxl
-        import io
+    def _do_export(self, filters, export_scope, ids, selected_fields):
         from django.http import HttpResponse
         from urllib.parse import quote
-        from django.utils import timezone
+        from standards.services_export import StandardExportService
 
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "企业标准目录"
+        if export_scope == 'selected' and not ids:
+            return Response({'error': '未提供选中的企业标准 ID 列表'}, status=status.HTTP_400_BAD_REQUEST)
 
-        headers = ["序号", "标准编号", "标准名称", "所属省份", "所属城市", "所属区县", "起草单位/企业", "标准状态", "发布日期"]
-        ws.append(headers)
+        # 默认只导出企标
+        if 'type' not in filters:
+            filters['type'] = 'enterprise'
 
-        for idx, std in enumerate(standards):
-            prov = std.company.province.name if std.company and std.company.province else "--"
-            city = std.company.city.name if std.company and std.company.city else "--"
-            dist = std.company.district.name if std.company and std.company.district else "--"
-            company_name = std.company.name if std.company else "--"
-            
-            ws.append([
-                idx + 1,
-                std.standard_no,
-                std.title or "--",
-                prov,
-                city,
-                dist,
-                company_name,
-                std.get_status_display() or "现行",
-                std.publish_date.strftime('%Y-%m-%d') if std.publish_date else "--"
-            ])
-
-        buffer = io.BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-
-        response = HttpResponse(
-            buffer.getvalue(),
-            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        qs = StandardExportService.build_queryset(
+            export_scope=export_scope,
+            ids=ids,
+            filters=filters
         )
 
-        filename = f"企标检索导出清单_{timezone.now().strftime('%Y%m%d%H%M')}.xlsx"
-        try:
-            response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
-        except Exception:
-            response['Content-Disposition'] = f"attachment; filename={quote(filename)}"
+        total_count = qs.count()
+        if total_count == 0:
+            return Response({'error': '当前筛选条件下没有找到任何符合条件的企业标准数据。'}, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            file_bytes, filename, content_type = StandardExportService.export_standards(
+                queryset=qs,
+                selected_fields=selected_fields,
+                chunk_size=100000
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger('django.request').error(f"Client standard export error: {e}", exc_info=True)
+            return Response({'error': f'生成企标目录导出文件失败: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+        response['Access-Control-Expose-Headers'] = 'Content-Disposition'
         return response
 
 
