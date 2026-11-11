@@ -1256,15 +1256,28 @@ def pack_list_matched_standards_zip(self, standard_ids: list, download_token: st
 @shared_task(name='standards.auto_sync_version_chains')
 def auto_sync_version_chains_task():
     """
-    定时兜底任务：全量扫描并自动补全/修复 standards_standard 表的 all_chain 与 part_chain
-    （涵盖直接入库或异常兜底默认自身 ID 的记录）。
+    定时兜底任务：快速检查是否存在 all_chain 为空的记录（兼容 70 万级大表），
+    仅针对未同步记录及其所在完整版本链分组执行增量补全；若均已同步则毫秒级返回。
     """
-    from standards.services_version_chain import run_version_chain_completion
+    from django.db.models import Q
+    from standards.models import Standard
+    from standards.services_version_chain import (
+        extract_affected_bodies,
+        sync_version_chains_for_targets,
+    )
 
-    result = run_version_chain_completion(execute=True, save_report=False)
+    pending = list(
+        Standard.objects.filter(Q(all_chain=[]) | Q(all_chain__isnull=True))
+        .values_list('id', 'standard_no')[:5000]
+    )
+    if not pending:
+        return {'pending_checked': 0, 'applied_count': 0}
+
+    pending_ids = [row[0] for row in pending]
+    bodies = extract_affected_bodies(row[1] for row in pending)
+    res = sync_version_chains_for_targets(target_ids=pending_ids, extra_bodies=bodies or None)
     return {
-        'total_scanned': result.total_scanned,
-        'applied_count': result.applied_count,
-        'unchanged_count': result.unchanged_count,
-        'anomalies_count': result.anomalies_count,
+        'pending_checked': len(pending_ids),
+        'applied_count': res.applied_count if res else 0,
+        'anomalies_count': res.anomalies_count if res else 0,
     }

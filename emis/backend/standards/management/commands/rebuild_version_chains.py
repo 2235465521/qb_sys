@@ -92,8 +92,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--batch-size',
             type=int,
-            default=200,
-            help='正式写入时每批处理的分组数量并输出进度（默认 200）',
+            default=1000,
+            help='正式写入时按整组打包后每批事务写入的记录数上限并输出进度（默认 1000）',
         )
         parser.add_argument(
             '--report-dir',

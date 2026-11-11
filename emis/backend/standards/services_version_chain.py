@@ -26,6 +26,7 @@ from typing import Callable, Iterable, Optional
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
 from standards.models import Standard
 
@@ -106,7 +107,7 @@ def _extract_suspected_compact_body(raw_body: str, error_code: str) -> Optional[
     return compact or None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class ParsedStandardNo:
     raw: str
     normalized_body: Optional[str]
@@ -268,21 +269,21 @@ def _is_strict_int_list(value) -> bool:
     return type(value) is list and all(type(item) is int for item in value)
 
 
-@dataclass
+@dataclass(slots=True)
 class StandardRow:
     id: int
     standard_no: str
     type: str
-    title: str
     company_id: Optional[int]
     company_name: Optional[str]
     publish_date: Optional[datetime.date]
     all_chain: object
     part_chain: object
+    title: str = ''
     explicit_year: Optional[int] = None
 
 
-@dataclass
+@dataclass(slots=True)
 class PlannedChange:
     id: int
     standard_no: str
@@ -298,7 +299,7 @@ class PlannedChange:
     change_type: str = 'chain'
 
 
-@dataclass
+@dataclass(slots=True)
 class AnomalyRecord:
     id: int
     standard_no: str
@@ -348,36 +349,149 @@ class VersionChainRunResult:
         }
 
 
-def _fetch_all_rows() -> list[StandardRow]:
-    qs = (
-        Standard.objects.select_related('company')
-        .order_by('id')
-        .values_list(
-            'id',
-            'standard_no',
-            'type',
-            'title',
-            'company_id',
-            'company__name',
-            'publish_date',
-            'all_chain',
-            'part_chain',
-        )
-    )
+_ROW_FIELDS = (
+    'id',
+    'standard_no',
+    'type',
+    'company_id',
+    'company__name',
+    'publish_date',
+    'all_chain',
+    'part_chain',
+)
+
+
+def _rows_from_values_qs(qs, chunk_size: int = 10000) -> list[StandardRow]:
     return [
         StandardRow(
             id=row[0],
             standard_no=row[1],
             type=row[2],
-            title=row[3],
-            company_id=row[4],
-            company_name=row[5],
-            publish_date=row[6],
-            all_chain=row[7],
-            part_chain=row[8],
+            company_id=row[3],
+            company_name=row[4],
+            publish_date=row[5],
+            all_chain=row[6],
+            part_chain=row[7],
         )
-        for row in qs.iterator(chunk_size=5000)
+        for row in qs.iterator(chunk_size=chunk_size)
     ]
+
+
+def _fetch_all_rows(chunk_size: int = 10000) -> list[StandardRow]:
+    qs = Standard.objects.select_related('company').order_by('id').values_list(*_ROW_FIELDS)
+    return _rows_from_values_qs(qs, chunk_size=chunk_size)
+
+
+def _half_to_full_ascii(text: str) -> str:
+    chars = []
+    for ch in text:
+        code = ord(ch)
+        if ch == ' ':
+            chars.append('\u3000')
+        elif 33 <= code <= 126:
+            chars.append(chr(code + 65248))
+        else:
+            chars.append(ch)
+    return ''.join(chars)
+
+
+def _build_body_prefixes(compact_body: str) -> set[str]:
+    """为单个 compact_body 生成用于命中索引的前缀变体（含空格、全角及重复 Q/ 畸形前缀）。"""
+    prefixes: set[str] = set()
+    if not compact_body:
+        return prefixes
+
+    if '/' in compact_body:
+        head, tail = compact_body.split('/', 1)
+        m_alpha = re.match(r'^([A-Za-z]{2,4})', tail)
+        if m_alpha:
+            anchor = m_alpha.group(1)
+            anchors = {anchor}
+        elif tail and tail[0].isalpha():
+            anchors = {f'{tail[0]} ', f'{tail[0]}-', tail[:2]}
+        else:
+            anchors = {tail[:3]}
+
+        base_variants: set[str] = set()
+        for anc in anchors:
+            if not anc:
+                continue
+            base_variants.update({
+                f'{head}/{anc}',
+                f'{head}/ {anc}',
+                f'{head}//{anc}',
+                f'{head}／{anc}',
+            })
+            if head.upper() == 'Q':
+                base_variants.add(f'Q/Q/{anc}')
+        if len(tail) >= 2:
+            base_variants.add(f'{head}/{tail[0]} {tail[1:2]}')
+        if len(tail) >= 3:
+            base_variants.add(f'{head}/{tail[:2]} {tail[2:3]}')
+    else:
+        anchor = compact_body[:4]
+        base_variants = {anchor}
+
+    for v in base_variants:
+        if v:
+            prefixes.add(v)
+            prefixes.add(_half_to_full_ascii(v))
+    return prefixes
+
+
+def _fetch_rows_for_scope(
+    *,
+    target_bodies: Optional[Iterable[str]] = None,
+    target_ids: Optional[Iterable[int]] = None,
+    extra_bodies: Optional[Iterable[str]] = None,
+) -> list[StandardRow]:
+    """
+    智能按作用域拉取候选行：
+    - 全量模式：流式拉取全表最小列集合；
+    - 局部模式（≤30 个标准主体）：利用 standard_no / clean_id / company_id 索引范围查询，毫秒级返回。
+    """
+    if target_bodies is None and target_ids is None and extra_bodies is None:
+        return _fetch_all_rows()
+
+    norm_bodies: set[str] = set()
+    if target_bodies:
+        norm_bodies.update(normalize_body_key(b) for b in target_bodies if b)
+    if extra_bodies:
+        norm_bodies.update(normalize_body_key(b) for b in extra_bodies if b)
+
+    seed_rows: list[StandardRow] = []
+    seed_company_ids: set[int] = set()
+    if target_ids is not None:
+        id_list = [int(i) for i in target_ids]
+        if id_list:
+            seed_qs = Standard.objects.select_related('company').filter(id__in=id_list).values_list(*_ROW_FIELDS)
+            seed_rows = _rows_from_values_qs(seed_qs, chunk_size=2000)
+            for r in seed_rows:
+                if r.company_id is not None:
+                    seed_company_ids.add(r.company_id)
+            norm_bodies.update(extract_affected_bodies(r.standard_no for r in seed_rows))
+
+    if not norm_bodies:
+        return seed_rows
+
+    if len(norm_bodies) > 30:
+        return _fetch_all_rows()
+
+    q_filter = Q()
+    if seed_company_ids:
+        q_filter |= Q(company_id__in=seed_company_ids)
+    if target_ids is not None:
+        q_filter |= Q(id__in=[int(i) for i in target_ids])
+
+    prefixes: set[str] = set()
+    for body in norm_bodies:
+        prefixes.update(_build_body_prefixes(body))
+
+    for p in prefixes:
+        q_filter |= Q(standard_no__istartswith=p) | Q(clean_id__istartswith=p)
+
+    qs = Standard.objects.select_related('company').filter(q_filter).order_by('id').values_list(*_ROW_FIELDS)
+    return _rows_from_values_qs(qs, chunk_size=5000)
 
 
 def _format_group_key(std_type: str, compact_body: str, company_id: Optional[int]) -> str:
@@ -739,7 +853,7 @@ def compute_version_chains(
 
 
 def _save_reports(result: VersionChainRunResult, report_dir: str | Path) -> dict[str, str]:
-    """保存 JSON 审计/回滚文件与可读性 Markdown 报告。"""
+    """流式写入 JSON 审计/回滚文件与 Markdown 报告，支持 70 万级大规模数据低内存输出。"""
     out_dir = Path(report_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -747,59 +861,110 @@ def _save_reports(result: VersionChainRunResult, report_dir: str | Path) -> dict
 
     json_path = out_dir / f'{prefix}.audit.json'
     md_path = out_dir / f'{prefix}.report.md'
+    now_iso = datetime.datetime.now().isoformat(timespec='seconds')
+    now_human = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    stats_dict = {
+        'total_scanned': result.total_scanned,
+        'total_groups': result.total_groups,
+        'valid_groups': result.valid_groups,
+        'paused_groups_count': result.paused_groups_count,
+        'unchanged_count': result.unchanged_count,
+        'planned_changes_count': result.planned_changes_count,
+        'applied_count': result.applied_count,
+        'anomalies_count': result.anomalies_count,
+        'missing_ids': result.missing_ids,
+    }
 
     with json_path.open('w', encoding='utf-8') as f:
-        json.dump(result.to_audit_dict(), f, ensure_ascii=False, indent=2)
+        f.write('{\n')
+        f.write(f'  "generated_at": {json.dumps(now_iso)},\n')
+        f.write(f'  "mode": {json.dumps(result.mode)},\n')
+        f.write(f'  "scope": {json.dumps(result.scope, ensure_ascii=False)},\n')
+        f.write(f'  "stats": {json.dumps(stats_dict, ensure_ascii=False)},\n')
+        f.write('  "changes": [\n')
+        total_c = len(result.changes)
+        for idx, c in enumerate(result.changes):
+            comma = ',' if idx + 1 < total_c else ''
+            f.write('    ' + json.dumps(asdict(c), ensure_ascii=False) + comma + '\n')
+        f.write('  ],\n')
+        f.write('  "anomalies": [\n')
+        total_a = len(result.anomalies)
+        for idx, a in enumerate(result.anomalies):
+            comma = ',' if idx + 1 < total_a else ''
+            f.write('    ' + json.dumps(asdict(a), ensure_ascii=False) + comma + '\n')
+        f.write('  ]\n')
+        f.write('}\n')
 
-    lines = [
-        f'# 标准版本链处理报告 ({result.mode})',
-        '',
-        f'- 生成时间: {datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")}',
-        f'- 运行模式: `{result.mode}`',
-        f'- 处理范围: `{result.scope}`',
-        f'- 扫描记录总数: {result.total_scanned}',
-        f'- 纳入范围分组数: {result.total_groups}（有效组 {result.valid_groups}，异常暂停组 {result.paused_groups_count}）',
-        f'- 待更新/已更新记录数: {result.planned_changes_count}（实际写入 {result.applied_count}）',
-        f'- 无需变更记录数: {result.unchanged_count}',
-        f'- 异常/跳过记录数: {result.anomalies_count}',
-    ]
-    if result.missing_ids:
-        lines.append(f'- 未找到的指定 ID: {result.missing_ids}')
-
-    lines.extend(['', '## 一、变更明细', ''])
-    if result.changes:
-        lines.append('| 变更类型 | 分组依据 | 记录 ID | 标准编号 | 年份 | 原 all_chain | 新 all_chain | 原 part_chain | 新 part_chain |')
-        lines.append('|---|---|---|---|---|---|---|---|---|')
-        for c in result.changes:
-            ctype = '默认兜底自身ID' if c.change_type == 'fallback_self' else '版本链计算'
-            year_str = str(c.year) if c.year is not None else '-'
-            lines.append(
-                f'| {ctype} | {c.group_label} | {c.id} | `{c.standard_no}` | {year_str} | '
-                f'`{json.dumps(c.old_all_chain, ensure_ascii=False)}` | '
-                f'`{json.dumps(c.new_all_chain, separators=(",", ":"))}` | '
-                f'`{json.dumps(c.old_part_chain, ensure_ascii=False)}` | '
-                f'`{json.dumps(c.new_part_chain, separators=(",", ":"))}` |'
-            )
-    else:
-        lines.append('无需要变更的记录。')
-
-    lines.extend(['', '## 二、异常与跳过清单', ''])
-    if result.anomalies:
-        lines.append('| 分组依据 | 记录 ID | 标准编号 | 关联企业 | 异常代码 | 跳过原因 |')
-        lines.append('|---|---|---|---|---|---|')
-        for a in result.anomalies:
-            comp = f'{a.company_id or ""} {a.company_name or ""}'.strip() or '-'
-            lines.append(
-                f'| {a.group_label or "-"} | {a.id} | `{a.standard_no}` | {comp} | '
-                f'`{a.reason_code}` | {a.reason_detail} |'
-            )
-    else:
-        lines.append('无异常记录。')
-
+    max_md_changes = 10000
     with md_path.open('w', encoding='utf-8') as f:
-        f.write('\n'.join(lines) + '\n')
+        f.write(f'# 标准版本链处理报告 ({result.mode})\n\n')
+        f.write(f'- 生成时间: {now_human}\n')
+        f.write(f'- 运行模式: `{result.mode}`\n')
+        f.write(f'- 处理范围: `{result.scope}`\n')
+        f.write(f'- 扫描记录总数: {result.total_scanned}\n')
+        f.write(f'- 纳入范围分组数: {result.total_groups}（有效组 {result.valid_groups}，异常暂停组 {result.paused_groups_count}）\n')
+        f.write(f'- 待更新/已更新记录数: {result.planned_changes_count}（实际写入 {result.applied_count}）\n')
+        f.write(f'- 无需变更记录数: {result.unchanged_count}\n')
+        f.write(f'- 异常/跳过记录数: {result.anomalies_count}\n')
+        if result.missing_ids:
+            f.write(f'- 未找到的指定 ID: {result.missing_ids}\n')
+
+        f.write('\n## 一、变更明细\n\n')
+        if result.changes:
+            if len(result.changes) > max_md_changes:
+                f.write(f'> 变更共 {len(result.changes)} 条，为保证报告可读性本表仅展示前 {max_md_changes} 条，完整全量明细请查看同目录 `.audit.json` 文件。\n\n')
+            f.write('| 变更类型 | 分组依据 | 记录 ID | 标准编号 | 年份 | 原 all_chain | 新 all_chain | 原 part_chain | 新 part_chain |\n')
+            f.write('|---|---|---|---|---|---|---|---|---|\n')
+            for c in result.changes[:max_md_changes]:
+                ctype = '默认兜底自身ID' if c.change_type == 'fallback_self' else '版本链计算'
+                year_str = str(c.year) if c.year is not None else '-'
+                f.write(
+                    f'| {ctype} | {c.group_label} | {c.id} | `{c.standard_no}` | {year_str} | '
+                    f'`{json.dumps(c.old_all_chain, ensure_ascii=False)}` | '
+                    f'`{json.dumps(c.new_all_chain, separators=(",", ":"))}` | '
+                    f'`{json.dumps(c.old_part_chain, ensure_ascii=False)}` | '
+                    f'`{json.dumps(c.new_part_chain, separators=(",", ":"))}` |\n'
+                )
+        else:
+            f.write('无需要变更的记录。\n')
+
+        f.write('\n## 二、异常与跳过清单\n\n')
+        if result.anomalies:
+            f.write('| 分组依据 | 记录 ID | 标准编号 | 关联企业 | 异常代码 | 跳过原因 |\n')
+            f.write('|---|---|---|---|---|---|\n')
+            for a in result.anomalies:
+                comp = f'{a.company_id or ""} {a.company_name or ""}'.strip() or '-'
+                f.write(
+                    f'| {a.group_label or "-"} | {a.id} | `{a.standard_no}` | {comp} | '
+                    f'`{a.reason_code}` | {a.reason_detail} |\n'
+                )
+        else:
+            f.write('无异常记录。\n')
 
     return {'audit_json': str(json_path), 'report_md': str(md_path)}
+
+
+def _pack_whole_groups_into_batches(
+    grouped_changes: list[tuple[str, list[PlannedChange]]],
+    max_records_per_batch: int,
+) -> list[list[PlannedChange]]:
+    """
+    将分组打包为不超过 max_records_per_batch 条记录的批次，绝不将同一分组拆分到不同事务中。
+    """
+    limit = max(1, max_records_per_batch)
+    batches: list[list[PlannedChange]] = []
+    current_batch: list[PlannedChange] = []
+
+    for _gkey, group_changes in grouped_changes:
+        if current_batch and len(current_batch) + len(group_changes) > limit:
+            batches.append(current_batch)
+            current_batch = []
+        current_batch.extend(group_changes)
+
+    if current_batch:
+        batches.append(current_batch)
+    return batches
 
 
 def run_version_chain_completion(
@@ -808,15 +973,19 @@ def run_version_chain_completion(
     target_bodies: Optional[Iterable[str]] = None,
     target_ids: Optional[Iterable[int]] = None,
     extra_bodies: Optional[Iterable[str]] = None,
-    batch_size: int = 200,
+    batch_size: int = 1000,
     report_dir: Optional[str | Path] = None,
     save_report: bool = True,
     progress_callback: Optional[Callable[[str], None]] = None,
 ) -> VersionChainRunResult:
     """
-    执行标准版本链补全（默认仅试运行预览，execute=True 时按组事务写入数据库）。
+    执行标准版本链补全（默认仅试运行预览，execute=True 时按整组打包在事务内批量写入数据库）。
     """
-    rows = _fetch_all_rows()
+    rows = _fetch_rows_for_scope(
+        target_bodies=target_bodies,
+        target_ids=target_ids,
+        extra_bodies=extra_bodies,
+    )
     grouped_changes, result = compute_version_chains(
         rows,
         target_bodies=target_bodies,
@@ -826,31 +995,35 @@ def run_version_chain_completion(
     result.mode = 'execute' if execute else 'dry_run'
 
     if execute and grouped_changes:
-        total_groups = len(grouped_changes)
-        processed_groups = 0
+        batches = _pack_whole_groups_into_batches(grouped_changes, batch_size)
+        total_records = result.planned_changes_count
+        total_batches = len(batches)
         applied = 0
 
         with suppress_version_chain_signals():
-            for start in range(0, total_groups, max(1, batch_size)):
-                batch = grouped_changes[start:start + max(1, batch_size)]
-                for _gkey, changes in batch:
-                    ids = [c.id for c in changes]
-                    change_by_id = {c.id: c for c in changes}
-                    with transaction.atomic():
-                        objs = list(Standard.objects.select_for_update().filter(id__in=ids))
-                        if len(objs) != len(ids):
-                            found = {o.id for o in objs}
-                            raise RuntimeError(f'组内记录缺失，回滚更新: missing={set(ids) - found}')
-                        for obj in objs:
-                            ch = change_by_id[obj.id]
-                            obj.all_chain = ch.new_all_chain
-                            obj.part_chain = ch.new_part_chain
-                        Standard.objects.bulk_update(objs, ['all_chain', 'part_chain'])
-                    applied += len(objs)
-                    processed_groups += 1
+            for batch_idx, batch_changes in enumerate(batches, start=1):
+                ids = [c.id for c in batch_changes]
+                change_by_id = {c.id: c for c in batch_changes}
+                with transaction.atomic():
+                    objs = list(
+                        Standard.objects.select_for_update()
+                        .only('id', 'all_chain', 'part_chain')
+                        .filter(id__in=ids)
+                    )
+                    if len(objs) != len(ids):
+                        found = {o.id for o in objs}
+                        raise RuntimeError(f'组内记录缺失，回滚更新: missing={set(ids) - found}')
+                    for obj in objs:
+                        ch = change_by_id[obj.id]
+                        obj.all_chain = ch.new_all_chain
+                        obj.part_chain = ch.new_part_chain
+                    Standard.objects.bulk_update(objs, ['all_chain', 'part_chain'], batch_size=max(1, batch_size))
+                applied += len(objs)
 
                 if progress_callback:
-                    progress_callback(f'已处理变更分组 {processed_groups}/{total_groups}，累计更新 {applied} 条记录')
+                    progress_callback(
+                        f'批次 {batch_idx}/{total_batches}，累计更新 {applied}/{total_records} 条记录'
+                    )
 
         result.applied_count = applied
 
@@ -907,10 +1080,11 @@ def rollback_from_audit_file(
     audit_json_path: str | Path,
     *,
     execute: bool = False,
+    batch_size: int = 1000,
 ) -> dict:
     """
     根据保存的审计 JSON 文件中的 old_all_chain / old_part_chain 回滚数据库记录。
-    按 group_key 分组在事务内回滚。
+    按整组打包在事务内批量回滚，绝不拆分同组记录。
     """
     path = Path(audit_json_path)
     with path.open('r', encoding='utf-8') as f:
@@ -922,18 +1096,34 @@ def rollback_from_audit_file(
         by_group[item['group_key']].append(item)
 
     restored_count = 0
-    if execute:
-        for _gkey, items in by_group.items():
-            ids = [int(i['id']) for i in items]
-            by_id = {int(i['id']): i for i in items}
-            with transaction.atomic():
-                objs = list(Standard.objects.select_for_update().filter(id__in=ids))
-                for obj in objs:
-                    rec = by_id[obj.id]
-                    obj.all_chain = rec['old_all_chain'] if rec['old_all_chain'] is not None else []
-                    obj.part_chain = rec['old_part_chain'] if rec['old_part_chain'] is not None else []
-                Standard.objects.bulk_update(objs, ['all_chain', 'part_chain'])
-                restored_count += len(objs)
+    if execute and by_group:
+        limit = max(1, batch_size)
+        batches: list[list[dict]] = []
+        cur: list[dict] = []
+        for items in by_group.values():
+            if cur and len(cur) + len(items) > limit:
+                batches.append(cur)
+                cur = []
+            cur.extend(items)
+        if cur:
+            batches.append(cur)
+
+        with suppress_version_chain_signals():
+            for batch_items in batches:
+                ids = [int(i['id']) for i in batch_items]
+                by_id = {int(i['id']): i for i in batch_items}
+                with transaction.atomic():
+                    objs = list(
+                        Standard.objects.select_for_update()
+                        .only('id', 'all_chain', 'part_chain')
+                        .filter(id__in=ids)
+                    )
+                    for obj in objs:
+                        rec = by_id[obj.id]
+                        obj.all_chain = rec['old_all_chain'] if rec['old_all_chain'] is not None else []
+                        obj.part_chain = rec['old_part_chain'] if rec['old_part_chain'] is not None else []
+                    Standard.objects.bulk_update(objs, ['all_chain', 'part_chain'], batch_size=limit)
+                    restored_count += len(objs)
 
     return {
         'mode': 'execute' if execute else 'dry_run',

@@ -71,10 +71,13 @@ python manage.py rebuild_version_chains --ids 234,12234 --execute
 ### 3.3 全量正式写入（需显式参数触发）
 
 ```powershell
-python manage.py rebuild_version_chains --execute --all --batch-size 200
+python manage.py rebuild_version_chains --execute --all --batch-size 1000
 ```
 
-> 安全保护：若只传 `--execute` 而未传 `--all`、`--body` 或 `--ids`，命令会直接拒绝执行，防止误写全表。
+> 性能与安全说明：
+> - 若只传 `--execute` 而未传 `--all`、`--body` 或 `--ids`，命令会直接拒绝执行，防止误写全表。
+> - `--batch-size 1000`（默认 `1000`）表示按整组打包后每批事务写入的记录上限（绝不拆散同组记录）；支持 70 万级数据量在数十秒内分批原子写入并流式输出 `.audit.json` 与 `.report.md`。
+> - 指定 `--ids` / `--body` 局部运行或实时信号联动时，会自动走索引前缀/企业外键定向查询，无需扫描全表。
 
 ### 3.4 回滚本次更新
 
