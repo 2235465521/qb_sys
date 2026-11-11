@@ -187,6 +187,11 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'standards.auto_scan_missing_dates',
         'schedule': 1800.0,  # 30 分钟
     },
+    # 每 30 分钟自动核验并补全标准版本链（all_chain / part_chain）
+    'auto-sync-version-chains-every-30m': {
+        'task': 'standards.auto_sync_version_chains',
+        'schedule': 1800.0,  # 30 分钟
+    },
     # 每 24 小时刷新一次省市区字典缓存（数据几乎不变，24小时足够）
     'warm-area-dict-daily': {
         'task': 'companies.tasks.warm_area_dict_task',

@@ -266,7 +266,12 @@ def parse_normative_reference_excel(file_obj) -> dict:
                 if '最新标准号' in str(col) or '最新被引用标准号' in str(col):
                     df.rename(columns={col: '最新标准号'}, inplace=True)
                     break
-        with transaction.atomic():
+        from standards.services_version_chain import (
+            suppress_version_chain_signals,
+            sync_version_chains_for_targets,
+        )
+        touched_standard_ids = set()
+        with transaction.atomic(), suppress_version_chain_signals():
             for idx, row in df.iterrows():
                 row_idx = idx + 2  # Excel 行号 1-indexed (加上表头)
                 
@@ -321,6 +326,8 @@ def parse_normative_reference_excel(file_obj) -> dict:
                             standard.is_parsed = True
                             standard.save(update_fields=['is_parsed'])
                             result['parsed_standards'] += 1
+                    if standard and standard.id:
+                        touched_standard_ids.add(standard.id)
                             
                     # 3. 关联或建档被引用的国标（统计引用热度）
                     cited_std = Standard.objects.filter(standard_no=cited_no, type='national').first()
@@ -347,7 +354,14 @@ def parse_normative_reference_excel(file_obj) -> dict:
                 except Exception as e:
                     result['errors'].append(f"第 {row_idx} 行解析失败: {str(e)}")
                     
-        # 5. 后置自动扫盘匹配一次 PDF 相对路径
+        # 5. 批量自动同步标准版本链
+        if touched_standard_ids:
+            try:
+                sync_version_chains_for_targets(target_ids=touched_standard_ids)
+            except Exception:
+                pass
+
+        # 6. 后置自动扫盘匹配一次 PDF 相对路径
         try:
             scan_res = scan_and_align_pdf_assets()
             result['pdf_aligned_count'] = scan_res.get('matched_count', 0)
@@ -434,7 +448,14 @@ def parse_normative_reference_excel(file_obj) -> dict:
                     citation_count=F('citation_count') + delta
                 )
 
-        # 5. 后置自动扫盘匹配一次 PDF 相对路径
+        # 5. 批量自动同步标准版本链
+        if touched_standard_ids:
+            try:
+                sync_version_chains_for_targets(target_ids=touched_standard_ids)
+            except Exception:
+                pass
+
+        # 6. 后置自动扫盘匹配一次 PDF 相对路径
         try:
             scan_res = scan_and_align_pdf_assets()
             result['pdf_aligned_count'] = scan_res.get('matched_count', 0)
@@ -831,6 +852,11 @@ def import_standards_from_excel(file_obj) -> dict:
             
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+            from standards.services_version_chain import sync_version_chains_for_standards
+            try:
+                sync_version_chains_for_standards(standards_to_create)
+            except Exception:
+                pass
             from django.core.cache import cache
             from standards.models import _invalidate_search_cache
             try:
@@ -1020,6 +1046,11 @@ def import_standards_by_type(file_obj, std_type: str) -> dict:
 
         if standards_to_create:
             Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+            from standards.services_version_chain import sync_version_chains_for_standards
+            try:
+                sync_version_chains_for_standards(standards_to_create)
+            except Exception:
+                pass
             from standards.models import _invalidate_search_cache
             try:
                 _invalidate_search_cache()

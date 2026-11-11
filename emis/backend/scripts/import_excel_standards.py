@@ -179,6 +179,11 @@ def run_import(excel_path):
         # --- 步骤 E: bulk_create 极速批量写入 ---
         if standards_to_create:
             created_objs = Standard.objects.bulk_create(standards_to_create, batch_size=1000)
+            from standards.services_version_chain import sync_version_chains_for_standards
+            try:
+                sync_version_chains_for_standards(standards_to_create)
+            except Exception as chain_err:
+                print(f"  [警告] 自动同步版本链失败: {chain_err}")
             print("\n数据导入圆满成功！")
             print(f"  -> 成功创建新企业并建档: {companies_created_count} 家")
             print(f"  -> 成功补充更新旧企业定位: {companies_updated_count} 家")

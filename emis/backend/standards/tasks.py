@@ -345,6 +345,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
     success_count = 0
     batch_standard_ids = set()
 
+    from standards.services_version_chain import (
+        suppress_version_chain_signals,
+        sync_version_chains_for_targets,
+    )
+
     try:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"暂存的导入文件未找到: {file_path}")
@@ -412,7 +417,9 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
         import uuid
         from companies.models import Province, City, District
 
-        # 2. 循环遍历各行
+        # 2. 循环遍历各行（批量导入期间屏蔽逐行信号，导入完成后统一整批刷新版本链）
+        _chain_suppress_ctx = suppress_version_chain_signals()
+        _chain_suppress_ctx.__enter__()
         for idx, row in df.iterrows():
             row_idx = idx + 2  # Excel 行号以 2 开始
 
@@ -626,6 +633,8 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             except Exception as row_err:
                 errors.append({'row': row_idx, 'reason': f"数据库写入失败: {str(row_err)}"})
 
+        _chain_suppress_ctx.__exit__(None, None, None)
+
         # 行数据处理完毕，推进到 95%
         cache.set(f'import_task_{task_token}', {
             'status': 'running',
@@ -637,7 +646,13 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             'updated_at': time.time()
         }, timeout=86400)
 
-        # 3. 后置仅针对本批次新导入/更新的企标扫盘 PDF 对齐（毫秒级完成，防止全库扫盘超时挂起）
+        # 3. 后置仅针对本批次新导入/更新的企标统一同步版本链 & 扫盘 PDF 对齐
+        try:
+            if batch_standard_ids:
+                sync_version_chains_for_targets(target_ids=batch_standard_ids)
+        except Exception:
+            pass
+
         try:
             if batch_standard_ids:
                 scan_and_align_pdf_assets(target_standard_ids=list(batch_standard_ids))
@@ -680,6 +695,11 @@ def import_standards_and_references_task(self, file_path: str, task_token: str):
             pass
 
     except Exception as e:
+        if '_chain_suppress_ctx' in locals():
+            try:
+                _chain_suppress_ctx.__exit__(None, None, None)
+            except Exception:
+                pass
         cache.set(f'import_task_{task_token}', {
             'status': 'failed',
             'progress': 100,
@@ -1231,3 +1251,20 @@ def pack_list_matched_standards_zip(self, standard_ids: list, download_token: st
             }
         )
         raise exc
+
+
+@shared_task(name='standards.auto_sync_version_chains')
+def auto_sync_version_chains_task():
+    """
+    定时兜底任务：全量扫描并自动补全/修复 standards_standard 表的 all_chain 与 part_chain
+    （涵盖直接入库或异常兜底默认自身 ID 的记录）。
+    """
+    from standards.services_version_chain import run_version_chain_completion
+
+    result = run_version_chain_completion(execute=True, save_report=False)
+    return {
+        'total_scanned': result.total_scanned,
+        'applied_count': result.applied_count,
+        'unchanged_count': result.unchanged_count,
+        'anomalies_count': result.anomalies_count,
+    }

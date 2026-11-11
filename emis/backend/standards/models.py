@@ -219,13 +219,15 @@ class StandardContent(models.Model):
         return f'{self.standard.standard_no} - P.{self.page_number}'
 
 
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
 from django.core.cache import cache
 
 
 import logging
 logger = logging.getLogger(__name__)
+
+_VERSION_CHAIN_TRIGGER_FIELDS = frozenset({'standard_no', 'type', 'company', 'company_id', 'publish_date'})
 
 
 def _invalidate_search_cache():
@@ -261,15 +263,62 @@ def update_company_standards_count(company):
         logger.error(f"Error in update_company_standards_count for company {company.id}: {e}")
 
 
+@receiver(pre_save, sender=Standard)
+def standard_pre_save(sender, instance, **kwargs):
+    """记录变更前的 standard_no / type / company_id，便于变更编号或企业时同步刷新原分组版本链。"""
+    update_fields = kwargs.get('update_fields')
+    if update_fields is not None and _VERSION_CHAIN_TRIGGER_FIELDS.isdisjoint(update_fields):
+        return
+    try:
+        from standards.services_version_chain import is_version_chain_signals_suppressed
+        if is_version_chain_signals_suppressed():
+            return
+    except Exception:
+        return
+
+    if instance.pk:
+        prev = Standard.objects.filter(pk=instance.pk).values_list('standard_no', 'type', 'company_id').first()
+        if prev is not None:
+            instance._prev_chain_state = prev
+
+
 @receiver(post_save, sender=Standard)
 def standard_post_save(sender, instance, created, **kwargs):
     """
-    当企标记录保存时，精准清除搜索缓存并异步触发 PDF 解析任务，同时更新企业标准总数
+    当企标记录保存时，精准清除搜索缓存、自动维护标准版本链、异步触发 PDF 解析任务，同时更新企业标准总数
     """
     try:
         _invalidate_search_cache()
     except Exception:
         pass
+
+    update_fields = kwargs.get('update_fields')
+    should_sync_chain = created or update_fields is None or not _VERSION_CHAIN_TRIGGER_FIELDS.isdisjoint(update_fields)
+    if should_sync_chain:
+        try:
+            from standards.services_version_chain import (
+                extract_affected_bodies,
+                is_version_chain_signals_suppressed,
+                sync_version_chains_for_targets,
+            )
+            if not is_version_chain_signals_suppressed():
+                extra_bodies = None
+                prev_state = getattr(instance, '_prev_chain_state', None)
+                if prev_state is not None:
+                    old_std_no, _, _ = prev_state
+                    if old_std_no != instance.standard_no:
+                        extra_bodies = extract_affected_bodies([old_std_no])
+                    delattr(instance, '_prev_chain_state')
+
+                sync_version_chains_for_targets(
+                    target_ids=[instance.id],
+                    extra_bodies=extra_bodies,
+                )
+                refreshed = Standard.objects.filter(pk=instance.pk).values_list('all_chain', 'part_chain').first()
+                if refreshed is not None:
+                    instance.all_chain, instance.part_chain = refreshed
+        except Exception as e:
+            logger.error(f"Error in auto version chain sync for standard {instance.id}: {e}")
 
     if instance.company:
         try:
@@ -290,12 +339,25 @@ def standard_post_save(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=Standard)
 def standard_post_delete(sender, instance, **kwargs):
     """
-    当企标记录删除时，精准清除搜索缓存，并更新企业标准总数
+    当企标记录删除时，精准清除搜索缓存、同步刷新同组剩余版本链，并更新企业标准总数
     """
     try:
         _invalidate_search_cache()
     except Exception:
         pass
+
+    try:
+        from standards.services_version_chain import (
+            extract_affected_bodies,
+            is_version_chain_signals_suppressed,
+            sync_version_chains_for_targets,
+        )
+        if not is_version_chain_signals_suppressed():
+            bodies = extract_affected_bodies([instance.standard_no])
+            if bodies:
+                sync_version_chains_for_targets(extra_bodies=bodies)
+    except Exception as e:
+        logger.error(f"Error in post_delete version chain sync for standard {instance.id}: {e}")
 
     if instance.company:
         try:
